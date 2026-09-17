@@ -1,3 +1,4 @@
+<br>
 <div align="center">
 
 <img src="docs/logo.svg" alt="pAIring" height="64">
