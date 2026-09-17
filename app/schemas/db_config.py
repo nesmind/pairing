@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, model_validator
 
 class SqliteParams(BaseModel):
     directory: str = Field(min_length=1)
-    filename: str = Field(min_length=1, default="pAIchat.db")
+    filename: str = Field(min_length=1, default="pAIring.db")
 
 
 class MysqlParams(BaseModel):

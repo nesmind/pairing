@@ -67,10 +67,10 @@ def test_write_env_database_url_replaces_existing_line_in_place(isolated_env):
 
 
 def test_parse_url_round_trips_sqlite():
-    cfg = db_config_url._parse_url("sqlite:////data/pAIchat.db")
+    cfg = db_config_url._parse_url("sqlite:////data/pAIring.db")
     assert cfg.db_type == "sqlite"
     assert cfg.sqlite.directory == "/data"
-    assert cfg.sqlite.filename == "pAIchat.db"
+    assert cfg.sqlite.filename == "pAIring.db"
 
 
 def test_parse_url_round_trips_mysql():

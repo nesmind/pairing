@@ -19,7 +19,7 @@ from app.services.env_file import read_env_value, write_env_value
 
 
 def _default_url() -> str:
-    return f"sqlite:///{DATA_DIR / 'pAIchat.db'}"
+    return f"sqlite:///{DATA_DIR / 'pAIring.db'}"
 
 
 def _read_env_database_url() -> str:

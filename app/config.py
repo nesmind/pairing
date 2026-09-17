@@ -111,7 +111,7 @@ if not SESSION_COOKIE_SECURE:
 # install, configure, or migrate data into.
 DATA_DIR = Path(os.environ.get("DATA_DIR", BASE_DIR / "data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{DATA_DIR / 'pAIchat.db'}")
+DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{DATA_DIR / 'pAIring.db'}")
 
 # Whether the app migrates its own schema automatically on every startup — on by default, so a fresh single-instance
 # install just works with no separate step. Running more than one app instance against the same database? Set this
