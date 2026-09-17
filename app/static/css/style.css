@@ -1,0 +1,56 @@
+/* Small hand-written touches Tailwind's utility classes don't cover on
+   their own — everything else in the UI is styled with Tailwind classes
+   directly in the templates. Colors reference the same CSS custom
+   properties app/static/css/themes.css defines per [data-theme="..."]
+   (see base.html's Tailwind color remap) so these rules stay themed
+   too, instead of staying permanently dark. */
+
+body {
+  font-family: var(--font-sans);
+}
+
+/* Chat message bubbles render model markdown; these rules make that
+   markdown (lists, code blocks, links) look native to the active theme
+   instead of using the browser's default black-on-white styling. */
+.markdown-body p { margin: 0 0 0.6em; }
+.markdown-body p:last-child { margin-bottom: 0; }
+.markdown-body ul, .markdown-body ol { margin: 0 0 0.6em 1.25em; }
+.markdown-body pre {
+  background: rgb(var(--color-slate-900));
+  border: 1px solid rgb(var(--color-slate-800));
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  margin: 0.6em 0;
+}
+.markdown-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+}
+.markdown-body :not(pre) > code {
+  background: rgb(var(--color-slate-400) / 0.15);
+  padding: 0.1em 0.35em;
+  border-radius: 0.3rem;
+}
+.markdown-body a { color: rgb(var(--color-brand-400)); text-decoration: underline; }
+
+/* Small pulsing dot shown while the assistant is generating a reply. */
+.typing-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: typing-pulse 1s infinite ease-in-out;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.typing-dot:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing-pulse {
+  0%, 80%, 100% { opacity: 0.2; transform: scale(0.85); }
+  40% { opacity: 1; transform: scale(1); }
+}
+
+/* Thin, unobtrusive scrollbars that fit the active theme. */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: rgb(var(--color-slate-700)); border-radius: 9999px; }
+::-webkit-scrollbar-track { background: transparent; }

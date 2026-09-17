@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Log in — {{ app_name }}{% endblock %}
+{% block body %}
+<div class="flex h-full items-center justify-center px-4">
+  <div class="w-full max-w-sm">
+    <div class="flex flex-col items-center mb-6">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" class="h-10 w-10 rounded-xl mb-3" aria-hidden="true">
+        <rect width="32" height="32" rx="8" style="fill: rgb(var(--color-brand-600))"/>
+        <path d="M9 11h14M12.5 11v8.5c0 1-1 1-1 1M19.5 11v6c0 2 1.2 2.4 2.6 3.1.5.25.5.95-.1 1.05"
+              fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="text-lg font-bold tracking-tight text-slate-100">p<span class="text-brand-500">AI</span>ring</span>
+      <span class="mt-0.5 text-[10px] font-mono text-slate-500">v{{ app_version }}</span>
+    </div>
+
+    <form method="post" action="/login" class="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-6">
+      {% if error %}
+      <p class="rounded-lg bg-red-950/40 border border-red-900 px-3 py-2 text-sm text-red-400">{{ error }}</p>
+      {% endif %}
+
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1">Username</label>
+        <input type="text" name="username" required autofocus autocomplete="username"
+          class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-brand-500">
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1">Password</label>
+        <input type="password" name="password" required autocomplete="current-password"
+          class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-brand-500">
+      </div>
+
+      <button type="submit"
+        class="w-full rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+        Log in
+      </button>
+    </form>
+
+    <p class="mt-4 text-center text-xs text-slate-500">
+      Runs entirely on your own hardware via {{ app_name }} &amp; Ollama — no data leaves this server.
+    </p>
+  </div>
+</div>
+{% endblock %}

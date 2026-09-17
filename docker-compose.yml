@@ -1,0 +1,25 @@
+# Brings up the chat app itself. 
+# Before first run, put a SECRET_KEY in a `.env` file next to this one —
+# Docker Compose reads it automatically for the ${SECRET_KEY} below (the
+# same file app/config.py itself would read if run outside Docker):
+#   echo "SECRET_KEY=$(openssl rand -hex 32)" >> .env
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DEFAULT_MODEL=hf.co/google/gemma-4-12B-it-qat-q4_0-gguf:gemma-4-12b-it-qat-q4_0
+      - EMBEDDING_MODEL=hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF:Q8_0
+      - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in a .env file next to docker-compose.yml — see the comment above}
+    volumes:
+      - app-data:/app/data
+      # Bind mount (not a named volume) so dropping a file into
+      # ./knowledge on the host — the whole point of the feature — works
+      # with no `docker cp`/exec required.
+      - ./knowledge:/app/knowledge
+    restart: unless-stopped
+
+volumes:
+  app-data:

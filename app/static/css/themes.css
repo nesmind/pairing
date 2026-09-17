@@ -1,0 +1,485 @@
+/*
+ * App-wide UI theme tokens — CSS custom properties consumed by
+ * app/templates/base.html's Tailwind config (which remaps `slate`,
+ * `brand`, `amber`, `red`, `rose`, `emerald` to `rgb(var(--color-x) /
+ * <alpha-value>)`) plus the D3/SVG chart JS files (which read these
+ * directly via getComputedStyle — see app/static/js/theme.js's
+ * ThemeColors class).
+ *
+ * Every RGB value below is a bare "R G B" triplet (no rgb()/commas) —
+ * that's what Tailwind's <alpha-value> substitution and opacity
+ * modifiers (e.g. bg-slate-900/50) require.
+ *
+ * Shade NUMBERS are positional, not literal-lightness: 950 always means
+ * "the deepest background-ish role", 50 always means "the strongest
+ * foreground/text-ish role" — for a dark theme that puts 950 near-black
+ * and 50 near-white; for a light theme it's the other way around. This
+ * is what lets every existing bg-slate-950/text-slate-100-style class
+ * already in the templates stay correct across every theme with zero
+ * template changes.
+ *
+ * "midnight" is byte-for-byte today's original hardcoded look (stock
+ * Tailwind `slate` + this app's original `brand` scale from
+ * base.html) — the regression gate: a user who never opens Appearance
+ * settings should see no visual change at all.
+ */
+
+/* Nunito (variable weight 200-1000), vendored locally — see "Vendored frontend libraries" in README.md. Used by
+   the sunshine/bubblegum themes for a rounder, more playful feel; every other theme uses the system font stack.
+   Two subsets only (latin + latin-ext, ~75KB total) — this app's UI text doesn't need cyrillic/vietnamese, and
+   Hebrew (which this app also renders) isn't in any Nunito subset, so it falls through to the next font in
+   --font-sans's stack automatically via normal CSS font-fallback, no special-casing needed. */
+@font-face {
+  font-family: "Nunito";
+  src: url("/static/vendor/fonts/nunito/Nunito-Variable-latin.woff2") format("woff2");
+  font-weight: 200 1000;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Nunito";
+  src: url("/static/vendor/fonts/nunito/Nunito-Variable-latin-ext.woff2") format("woff2");
+  font-weight: 200 1000;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+:root {
+  --font-sans-system: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-sans-nunito: "Nunito", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Fixed (never themed) solid-fill colors for the handful of "success"/"danger" CTA buttons (Create user, Delete
+ * channel, ...) that pair a colored background with plain text-white — the --color-emerald-N and --color-rose-N
+ * ramps invert per dark/light theme (see the shared semantic ramps further below), which is correct for a tinted banner's
+ * background but wrong for a *solid* button fill: in a light theme, "emerald-600" resolves to a pale green, and
+ * white text on a pale background is nearly invisible. These two pairs stay the same stock-dark value in every
+ * theme, the same way --color-brand-* already does, so text-white stays readable regardless of the active theme.
+ *
+ * Deliberately declared on every [data-theme="..."] selector rather than once on :root, even though every theme
+ * gets the identical value: the vendored Tailwind build's arbitrary-value JIT (bg-[rgb(var(--x))], used on the
+ * buttons that consume these) does not reliably resolve a var() that's defined ONLY on a bare :root rule — even
+ * though the same variable read from plain hand-written CSS (no Tailwind arbitrary-value class involved) works
+ * fine either way. Confirmed empirically (an isolated test page) rather than assumed; see the PR/commit this
+ * comment shipped in for the repro. --font-sans-* above is unaffected by this and stays on :root because nothing
+ * reads it through a Tailwind arbitrary-value class — only via plain `font-family: var(--font-sans)` in style.css.
+ */
+[data-theme="midnight"], [data-theme="nord"], [data-theme="monokai"], [data-theme="forest-dusk"], [data-theme="ember"],
+[data-theme="sunshine"], [data-theme="bubblegum"], [data-theme="sky"], [data-theme="meadow"], [data-theme="sand"] {
+  --solid-emerald: 5 150 105;
+  --solid-emerald-hover: 4 120 87;
+  --solid-rose: 225 29 72;
+  --solid-rose-hover: 190 18 60;
+}
+
+/* ---------------------------------------------------------------- Dark themes */
+
+[data-theme="midnight"] {
+  --font-sans: var(--font-sans-system);
+  --color-slate-50: 248 250 252;
+  --color-slate-100: 241 245 249;
+  --color-slate-200: 226 232 240;
+  --color-slate-300: 203 213 225;
+  --color-slate-400: 148 163 184;
+  --color-slate-500: 100 116 139;
+  --color-slate-600: 71 85 105;
+  --color-slate-700: 51 65 85;
+  --color-slate-800: 30 41 59;
+  --color-slate-900: 15 23 42;
+  --color-slate-950: 2 6 23;
+  --color-brand-50: 242 247 255;
+  --color-brand-100: 230 239 255;
+  --color-brand-200: 194 217 255;
+  --color-brand-300: 157 194 255;
+  --color-brand-400: 83 149 255;
+  --color-brand-500: 10 104 255;
+  --color-brand-600: 9 84 204;
+  --color-brand-700: 7 63 153;
+  --color-brand-800: 5 42 102;
+  --color-brand-900: 3 21 51;
+  --color-brand-950: 2 12 31;
+  --chart-1: 56 189 248;
+  --chart-2: 167 139 250;
+  --chart-3: 251 146 60;
+  --chart-4: 52 211 153;
+  --chart-5: 244 114 182;
+  --chart-6: 250 204 21;
+  --chart-7: 251 191 36;
+  --chart-8: 251 113 133;
+  --chart-9: 248 113 113;
+}
+
+[data-theme="nord"] {
+  --font-sans: var(--font-sans-system);
+  --color-slate-50: 249 250 251;
+  --color-slate-100: 240 242 244;
+  --color-slate-200: 222 225 231;
+  --color-slate-300: 196 201 212;
+  --color-slate-400: 151 161 180;
+  --color-slate-500: 101 113 139;
+  --color-slate-600: 77 87 106;
+  --color-slate-700: 58 65 80;
+  --color-slate-800: 41 46 56;
+  --color-slate-900: 28 31 38;
+  --color-slate-950: 15 17 21;
+  --color-brand-50: 240 247 249;
+  --color-brand-100: 222 238 242;
+  --color-brand-200: 189 220 229;
+  --color-brand-300: 153 201 214;
+  --color-brand-400: 109 178 197;
+  --color-brand-500: 73 159 182;
+  --color-brand-600: 60 130 150;
+  --color-brand-700: 48 105 120;
+  --color-brand-800: 36 79 91;
+  --color-brand-900: 26 57 66;
+  --color-brand-950: 15 32 36;
+  --chart-1: 83 201 234;
+  --chart-2: 128 83 234;
+  --chart-3: 83 130 234;
+  --chart-4: 234 83 151;
+  --chart-5: 83 234 191;
+  --chart-6: 83 88 234;
+  --chart-7: 83 181 234;
+  --chart-8: 83 234 221;
+  --chart-9: 83 234 115;
+}
+
+[data-theme="monokai"] {
+  --font-sans: var(--font-sans-system);
+  --color-slate-50: 250 250 249;
+  --color-slate-100: 243 243 241;
+  --color-slate-200: 228 229 225;
+  --color-slate-300: 207 208 200;
+  --color-slate-400: 171 173 159;
+  --color-slate-500: 126 129 110;
+  --color-slate-600: 97 99 84;
+  --color-slate-700: 73 74 63;
+  --color-slate-800: 51 52 45;
+  --color-slate-900: 35 36 30;
+  --color-slate-950: 19 19 16;
+  --color-brand-50: 254 235 242;
+  --color-brand-100: 254 210 226;
+  --color-brand-200: 253 165 197;
+  --color-brand-300: 251 116 166;
+  --color-brand-400: 250 56 127;
+  --color-brand-500: 249 6 95;
+  --color-brand-600: 204 5 78;
+  --color-brand-700: 164 4 63;
+  --color-brand-800: 124 3 48;
+  --color-brand-900: 90 2 34;
+  --color-brand-950: 50 1 19;
+  --chart-1: 234 83 138;
+  --chart-2: 234 191 83;
+  --chart-3: 234 98 83;
+  --chart-4: 88 234 83;
+  --chart-5: 234 83 214;
+  --chart-6: 234 140 83;
+  --chart-7: 234 83 118;
+  --chart-8: 234 83 183;
+  --chart-9: 178 83 234;
+}
+
+[data-theme="forest-dusk"] {
+  --font-sans: var(--font-sans-system);
+  --color-slate-50: 249 251 250;
+  --color-slate-100: 240 245 243;
+  --color-slate-200: 221 233 229;
+  --color-slate-300: 194 214 207;
+  --color-slate-400: 148 184 172;
+  --color-slate-500: 96 144 128;
+  --color-slate-600: 73 110 98;
+  --color-slate-700: 55 83 73;
+  --color-slate-800: 39 58 52;
+  --color-slate-900: 27 40 35;
+  --color-slate-950: 14 21 19;
+  --color-brand-50: 246 251 239;
+  --color-brand-100: 235 246 218;
+  --color-brand-200: 215 237 182;
+  --color-brand-300: 192 226 141;
+  --color-brand-400: 165 214 92;
+  --color-brand-500: 143 204 51;
+  --color-brand-600: 117 167 42;
+  --color-brand-700: 94 135 34;
+  --color-brand-800: 71 102 25;
+  --color-brand-900: 51 73 18;
+  --color-brand-950: 29 41 10;
+  --chart-1: 173 234 83;
+  --chart-2: 83 234 156;
+  --chart-3: 103 234 83;
+  --chart-4: 83 123 234;
+  --chart-5: 234 219 83;
+  --chart-6: 83 234 105;
+  --chart-7: 153 234 83;
+  --chart-8: 219 234 83;
+  --chart-9: 234 143 83;
+}
+
+[data-theme="ember"] {
+  --font-sans: var(--font-sans-system);
+  --color-slate-50: 251 249 249;
+  --color-slate-100: 245 241 239;
+  --color-slate-200: 234 225 220;
+  --color-slate-300: 217 200 191;
+  --color-slate-400: 188 158 143;
+  --color-slate-500: 150 110 90;
+  --color-slate-600: 115 84 69;
+  --color-slate-700: 86 63 52;
+  --color-slate-800: 61 44 36;
+  --color-slate-900: 41 30 25;
+  --color-slate-950: 22 16 13;
+  --color-brand-50: 254 241 236;
+  --color-brand-100: 253 222 211;
+  --color-brand-200: 250 190 168;
+  --color-brand-300: 248 154 119;
+  --color-brand-400: 245 110 61;
+  --color-brand-500: 242 74 13;
+  --color-brand-600: 199 61 10;
+  --color-brand-700: 160 49 8;
+  --color-brand-800: 121 37 6;
+  --color-brand-900: 87 27 5;
+  --color-brand-950: 48 15 3;
+  --chart-1: 234 123 83;
+  --chart-2: 181 234 83;
+  --chart-3: 234 193 83;
+  --chart-4: 83 234 173;
+  --chart-5: 234 83 118;
+  --chart-6: 231 234 83;
+  --chart-7: 234 143 83;
+  --chart-8: 234 83 88;
+  --chart-9: 234 83 193;
+}
+
+/* ---------------------------------------------------------------- Light ("happy") themes */
+
+[data-theme="sunshine"] {
+  --font-sans: var(--font-sans-nunito);
+  --color-slate-50: 26 21 10;
+  --color-slate-100: 48 38 18;
+  --color-slate-200: 70 56 27;
+  --color-slate-300: 100 79 38;
+  --color-slate-400: 133 106 50;
+  --color-slate-500: 174 138 66;
+  --color-slate-600: 206 179 126;
+  --color-slate-700: 227 212 181;
+  --color-slate-800: 240 231 214;
+  --color-slate-900: 248 244 237;
+  --color-slate-950: 252 251 248;
+  --color-brand-50: 254 245 235;
+  --color-brand-100: 254 234 210;
+  --color-brand-200: 253 212 165;
+  --color-brand-300: 251 188 116;
+  --color-brand-400: 250 159 56;
+  --color-brand-500: 249 136 6;
+  --color-brand-600: 204 111 5;
+  --color-brand-700: 164 89 4;
+  --color-brand-800: 124 68 3;
+  --color-brand-900: 90 49 2;
+  --color-brand-950: 50 27 1;
+  --chart-1: 209 123 26;
+  --chart-2: 96 209 26;
+  --chart-3: 209 209 26;
+  --chart-4: 26 209 184;
+  --chart-5: 209 32 26;
+  --chart-6: 157 209 26;
+  --chart-7: 209 148 26;
+  --chart-8: 209 69 26;
+  --chart-9: 209 26 111;
+}
+
+[data-theme="bubblegum"] {
+  --font-sans: var(--font-sans-nunito);
+  --color-slate-50: 24 12 20;
+  --color-slate-100: 45 22 37;
+  --color-slate-200: 65 31 54;
+  --color-slate-300: 93 45 77;
+  --color-slate-400: 124 60 103;
+  --color-slate-500: 162 78 134;
+  --color-slate-600: 197 135 176;
+  --color-slate-700: 222 186 210;
+  --color-slate-800: 237 217 230;
+  --color-slate-900: 247 238 244;
+  --color-slate-950: 252 248 250;
+  --color-brand-50: 253 237 245;
+  --color-brand-100: 250 214 232;
+  --color-brand-200: 246 172 209;
+  --color-brand-300: 241 126 184;
+  --color-brand-400: 235 71 153;
+  --color-brand-500: 230 25 128;
+  --color-brand-600: 188 21 105;
+  --color-brand-700: 151 17 84;
+  --color-brand-800: 115 13 64;
+  --color-brand-900: 83 9 46;
+  --color-brand-950: 46 5 26;
+  --chart-1: 209 26 117;
+  --chart-2: 209 133 26;
+  --chart-3: 209 26 32;
+  --chart-4: 56 209 26;
+  --chart-5: 209 26 209;
+  --chart-6: 209 72 26;
+  --chart-7: 209 26 93;
+  --chart-8: 209 26 172;
+  --chart-9: 117 26 209;
+}
+
+[data-theme="sky"] {
+  --font-sans: var(--font-sans-system);
+  --color-slate-50: 11 19 25;
+  --color-slate-100: 20 35 46;
+  --color-slate-200: 29 52 68;
+  --color-slate-300: 41 73 96;
+  --color-slate-400: 55 98 129;
+  --color-slate-500: 72 128 168;
+  --color-slate-600: 130 172 201;
+  --color-slate-700: 184 207 224;
+  --color-slate-800: 216 229 238;
+  --color-slate-900: 237 243 247;
+  --color-slate-950: 248 250 252;
+  --color-brand-50: 236 246 253;
+  --color-brand-100: 213 235 252;
+  --color-brand-200: 170 216 248;
+  --color-brand-300: 123 194 244;
+  --color-brand-400: 66 167 240;
+  --color-brand-500: 19 146 236;
+  --color-brand-600: 16 119 193;
+  --color-brand-700: 13 96 156;
+  --color-brand-800: 10 73 118;
+  --color-brand-900: 7 52 85;
+  --color-brand-950: 4 29 47;
+  --chart-1: 26 133 209;
+  --chart-2: 117 26 209;
+  --chart-3: 26 47 209;
+  --chart-4: 209 26 72;
+  --chart-5: 26 209 194;
+  --chart-6: 56 26 209;
+  --chart-7: 26 108 209;
+  --chart-8: 26 187 209;
+  --chart-9: 26 209 102;
+}
+
+[data-theme="meadow"] {
+  --font-sans: var(--font-sans-system);
+  --color-slate-50: 12 23 16;
+  --color-slate-100: 23 43 30;
+  --color-slate-200: 34 63 44;
+  --color-slate-300: 48 90 62;
+  --color-slate-400: 64 119 83;
+  --color-slate-500: 84 156 108;
+  --color-slate-600: 139 193 157;
+  --color-slate-700: 189 219 199;
+  --color-slate-800: 219 235 224;
+  --color-slate-900: 238 246 241;
+  --color-slate-950: 248 251 249;
+  --color-brand-50: 239 250 243;
+  --color-brand-100: 219 245 229;
+  --color-brand-200: 184 234 202;
+  --color-brand-300: 144 223 173;
+  --color-brand-400: 97 209 138;
+  --color-brand-500: 57 198 109;
+  --color-brand-600: 47 162 89;
+  --color-brand-700: 38 130 72;
+  --color-brand-800: 29 99 54;
+  --color-brand-900: 21 71 39;
+  --color-brand-950: 11 40 22;
+  --chart-1: 26 209 93;
+  --chart-2: 26 126 209;
+  --chart-3: 26 209 178;
+  --chart-4: 154 26 209;
+  --chart-5: 50 209 26;
+  --chart-6: 26 187 209;
+  --chart-7: 26 209 117;
+  --chart-8: 26 209 38;
+  --chart-9: 142 209 26;
+}
+
+[data-theme="sand"] {
+  --font-sans: var(--font-sans-system);
+  --color-slate-50: 23 18 12;
+  --color-slate-100: 43 33 23;
+  --color-slate-200: 63 48 34;
+  --color-slate-300: 90 69 48;
+  --color-slate-400: 119 92 64;
+  --color-slate-500: 156 120 84;
+  --color-slate-600: 193 166 139;
+  --color-slate-700: 219 204 189;
+  --color-slate-800: 235 227 219;
+  --color-slate-900: 246 242 238;
+  --color-slate-950: 251 250 248;
+  --color-brand-50: 250 243 239;
+  --color-brand-100: 245 229 219;
+  --color-brand-200: 234 202 184;
+  --color-brand-300: 223 173 144;
+  --color-brand-400: 209 138 97;
+  --color-brand-500: 198 109 57;
+  --color-brand-600: 162 89 47;
+  --color-brand-700: 130 72 38;
+  --color-brand-800: 99 54 29;
+  --color-brand-900: 71 39 21;
+  --color-brand-950: 40 22 11;
+  --chart-1: 209 93 26;
+  --chart-2: 126 209 26;
+  --chart-3: 209 178 26;
+  --chart-4: 26 209 154;
+  --chart-5: 209 26 50;
+  --chart-6: 187 209 26;
+  --chart-7: 209 117 26;
+  --chart-8: 209 38 26;
+  --chart-9: 209 26 142;
+}
+
+/* ---------------------------------------------------------------- Shared semantic ramps (warning/error/success)
+ *
+ * amber/red/rose/emerald aren't given 10 separate ramps — every dark theme shares one ramp, every light theme
+ * shares another. Without this, a light theme would inherit dark-mode's near-black 900/950 shades verbatim and a
+ * warning banner like settings.html's `bg-amber-950/40 text-amber-300` would render as a muddy near-black patch
+ * on a light background. The light ramp is the dark ramp's stops in reverse (950<->50, 900<->100, ... 500 stays
+ * put) — same "shade number is positional" rule as the neutral/brand ramps above, applied to real, unmodified
+ * stock Tailwind amber/red/rose/emerald swatches, just reassigned.
+ */
+
+[data-theme="midnight"], [data-theme="nord"], [data-theme="monokai"],
+[data-theme="forest-dusk"], [data-theme="ember"] {
+  --color-amber-50: 255 251 235;   --color-amber-100: 254 243 199;  --color-amber-200: 253 230 138;
+  --color-amber-300: 252 211 77;   --color-amber-400: 251 191 36;   --color-amber-500: 245 158 11;
+  --color-amber-600: 217 119 6;    --color-amber-700: 180 83 9;     --color-amber-800: 146 64 14;
+  --color-amber-900: 120 53 15;    --color-amber-950: 69 26 3;
+
+  --color-red-50: 254 242 242;     --color-red-100: 254 226 226;    --color-red-200: 254 202 202;
+  --color-red-300: 252 165 165;    --color-red-400: 248 113 113;    --color-red-500: 239 68 68;
+  --color-red-600: 220 38 38;      --color-red-700: 185 28 28;      --color-red-800: 153 27 27;
+  --color-red-900: 127 29 29;      --color-red-950: 69 10 10;
+
+  --color-rose-50: 255 241 242;    --color-rose-100: 255 228 230;   --color-rose-200: 254 205 211;
+  --color-rose-300: 253 164 175;   --color-rose-400: 251 113 133;   --color-rose-500: 244 63 94;
+  --color-rose-600: 225 29 72;     --color-rose-700: 190 18 60;     --color-rose-800: 159 18 57;
+  --color-rose-900: 136 19 55;     --color-rose-950: 76 5 25;
+
+  --color-emerald-50: 236 253 245; --color-emerald-100: 209 250 229; --color-emerald-200: 167 243 208;
+  --color-emerald-300: 110 231 183; --color-emerald-400: 52 211 153; --color-emerald-500: 16 185 129;
+  --color-emerald-600: 5 150 105;  --color-emerald-700: 4 120 87;   --color-emerald-800: 6 95 70;
+  --color-emerald-900: 6 78 59;    --color-emerald-950: 2 44 34;
+}
+
+[data-theme="sunshine"], [data-theme="bubblegum"], [data-theme="sky"],
+[data-theme="meadow"], [data-theme="sand"] {
+  --color-amber-50: 69 26 3;       --color-amber-100: 120 53 15;    --color-amber-200: 146 64 14;
+  --color-amber-300: 180 83 9;     --color-amber-400: 217 119 6;    --color-amber-500: 245 158 11;
+  --color-amber-600: 251 191 36;   --color-amber-700: 252 211 77;   --color-amber-800: 253 230 138;
+  --color-amber-900: 254 243 199;  --color-amber-950: 255 251 235;
+
+  --color-red-50: 69 10 10;        --color-red-100: 127 29 29;      --color-red-200: 153 27 27;
+  --color-red-300: 185 28 28;      --color-red-400: 220 38 38;      --color-red-500: 239 68 68;
+  --color-red-600: 248 113 113;    --color-red-700: 252 165 165;    --color-red-800: 254 202 202;
+  --color-red-900: 254 226 226;    --color-red-950: 254 242 242;
+
+  --color-rose-50: 76 5 25;        --color-rose-100: 136 19 55;     --color-rose-200: 159 18 57;
+  --color-rose-300: 190 18 60;     --color-rose-400: 225 29 72;     --color-rose-500: 244 63 94;
+  --color-rose-600: 251 113 133;   --color-rose-700: 253 164 175;   --color-rose-800: 254 205 211;
+  --color-rose-900: 255 228 230;   --color-rose-950: 255 241 242;
+
+  --color-emerald-50: 2 44 34;     --color-emerald-100: 6 78 59;    --color-emerald-200: 6 95 70;
+  --color-emerald-300: 4 120 87;   --color-emerald-400: 5 150 105;  --color-emerald-500: 16 185 129;
+  --color-emerald-600: 52 211 153; --color-emerald-700: 110 231 183; --color-emerald-800: 167 243 208;
+  --color-emerald-900: 209 250 229; --color-emerald-950: 236 253 245;
+}

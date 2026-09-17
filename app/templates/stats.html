@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block title %}Stats — {{ app_name }}{% endblock %}
+{% block body %}
+<div class="flex h-full flex-col">
+  <header class="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
+    <div class="flex items-center gap-3">
+      <a href="/" class="rounded-lg p-1.5 hover:bg-slate-800 transition-colors" title="Back to chat">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+      </a>
+      <h1 class="text-sm font-semibold">Stats</h1>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs text-slate-500">{{ username }}</span>
+      <form method="post" action="/logout" class="flex items-center">
+        <button type="submit" class="text-xs text-slate-500 hover:text-slate-300 transition-colors">Log out</button>
+      </form>
+      <!-- Opens the slide-in account panel — see
+           app/static/js/account_panel.js and app/templates/_account_panel.html. -->
+      <button id="account-panel-badge" type="button"
+        class="h-7 w-7 shrink-0 rounded-full overflow-hidden bg-slate-800 text-xs font-medium text-slate-300 hover:opacity-80 transition-opacity"
+        title="{{ username }}"></button>
+    </div>
+  </header>
+
+  <div class="flex flex-1 min-h-0">
+
+    <!-- This page's OWN left sidebar — distinct from chat.html's main app sidebar (not rendered here at all, same
+         as settings.html's tab nav being its own thing). "Overview" is the default view (a real usage dashboard,
+         populated by stats.js); "Visual chat workflow" swaps the main area for the D3 pipeline diagram
+         (workflow_diagram.js); "Telemetry" swaps it for the Ollama call-telemetry dashboard (telemetry.js);
+         "System" swaps it for this machine's own live CPU/RAM/disk dashboard (system_metrics.js). Extensible: a
+         future option just needs a new data-view button here + a matching #stats-view-<name> panel in <main>
+         below. -->
+    <aside class="hidden md:flex w-64 shrink-0 flex-col border-r border-slate-800 bg-slate-900/60">
+      <nav class="flex-1 overflow-y-auto px-2 py-3 space-y-1">
+        <button type="button" data-view="overview"
+          class="stats-nav-btn w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors">
+          Overview
+        </button>
+        <button type="button" data-view="workflow"
+          class="stats-nav-btn w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors">
+          Visual chat workflow
+        </button>
+        <button type="button" data-view="telemetry"
+          class="stats-nav-btn w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors">
+          Telemetry
+        </button>
+        <button type="button" data-view="system"
+          class="stats-nav-btn w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors">
+          System
+        </button>
+      </nav>
+    </aside>
+
+    <!-- Main area: exactly one of these two is visible at a time (see stats.js: activateView), each occupying the
+         entire remaining space next to the page-local sidebar above. -->
+    <main class="relative flex flex-1 flex-col min-w-0 overflow-hidden">
+
+      <div id="stats-view-overview" class="flex-1 overflow-y-auto p-6">
+        <h2 class="text-lg font-semibold text-slate-100 mb-6">Usage overview</h2>
+        <div id="stats-overview-content" class="space-y-8"></div>
+        <p id="stats-overview-error" class="hidden text-sm text-red-400"></p>
+      </div>
+
+      <div id="stats-view-workflow" class="hidden flex-1 min-h-0 relative">
+        <!-- Vertical, top-to-bottom diagram — taller than any viewport, so this scrolls natively (both axes,
+             though height dominates) rather than relying on drag-to-pan/wheel-to-zoom, which had no visible
+             indication a user needed to do either. The <svg> itself is sized to its real content (see
+             workflow_diagram.js), not stretched to the container, so normal scrollbars appear exactly where the
+             content actually overflows. -->
+        <div id="workflow-canvas-wrap" class="absolute inset-0 overflow-auto">
+          <svg id="workflow-svg"></svg>
+        </div>
+        <!-- Legend: which border color means which layer of the app — see workflow_diagram.js: renderWorkflowLegend.
+             Fixed in the corner (outside the scrolling canvas above) so it stays visible at any scroll position. -->
+        <div id="workflow-legend"
+          class="absolute top-4 left-4 z-10 rounded-lg border border-slate-800 bg-slate-900/90 backdrop-blur px-3 py-2.5 space-y-1.5 text-xs">
+        </div>
+        <!-- Detail panel: plain DOM (not D3-rendered), opened by clicking a node — see workflow_diagram.js: showDetail. -->
+        <aside id="workflow-detail-panel"
+          class="hidden absolute top-0 right-0 h-full w-96 border-l border-slate-800 bg-slate-900/95 backdrop-blur overflow-y-auto p-5">
+          <button id="workflow-detail-close" type="button"
+            class="absolute top-3 right-3 text-slate-500 hover:text-slate-300 transition-colors" aria-label="Close">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 6 6 18M6 6l12 12"/>
+            </svg>
+          </button>
+          <div id="workflow-detail-content"></div>
+        </aside>
+      </div>
+
+      <div id="stats-view-telemetry" class="hidden flex-1 overflow-y-auto p-6 space-y-6">
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-lg font-semibold text-slate-100">Telemetry</h2>
+          <!-- Only "Ollama" exists today — see telemetry.js's own note on why the rest of this view already
+               lives inside a per-source container, ready for a future option here ("later we can add inner-app
+               telemetry data as well"). onchange swaps which #telemetry-source-view-<value> panel is visible;
+               default is "ollama". -->
+          <select id="telemetry-source-select"
+            class="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-brand-500">
+            <option value="ollama">Ollama</option>
+          </select>
+        </div>
+
+        <div id="telemetry-source-view-ollama" class="space-y-8">
+          <div>
+            <!-- Sets honest expectations up front: no presence/heartbeat tracking exists in this app, so this
+                 is only ever call-level data (see app/services/telemetry_service.py). -->
+            <p class="text-xs text-slate-500">
+              Every Ollama chat/embedding call this app makes, instrumented via OpenTelemetry — not a per-user
+              presence feed.
+            </p>
+            <div id="telemetry-summary-tiles" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3"></div>
+          </div>
+
+          <div>
+            <h3 class="text-sm font-semibold text-slate-200 mb-3">Latency over time</h3>
+            <div class="rounded-lg bg-slate-900 border border-slate-800 p-3 overflow-x-auto">
+              <svg id="telemetry-latency-chart"></svg>
+              <p id="telemetry-latency-empty" class="hidden text-xs text-slate-500 py-8 text-center">
+                No completed requests yet.
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <h3 class="text-sm font-semibold text-slate-200 mb-3">Requests by host</h3>
+            <div class="rounded-lg bg-slate-900 border border-slate-800 p-3 overflow-x-auto">
+              <svg id="telemetry-host-chart"></svg>
+              <p id="telemetry-host-empty" class="hidden text-xs text-slate-500 py-8 text-center">No requests yet.</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div id="telemetry-by-model" class="rounded-lg bg-slate-900 border border-slate-800 divide-y divide-slate-800"></div>
+            <div id="telemetry-latency-by-model" class="rounded-lg bg-slate-900 border border-slate-800 divide-y divide-slate-800"></div>
+          </div>
+
+          <div>
+            <h3 class="text-sm font-semibold text-slate-200 mb-3">Currently loaded models</h3>
+            <div id="telemetry-loaded-models" class="rounded-lg bg-slate-900 border border-slate-800 divide-y divide-slate-800"></div>
+          </div>
+
+          <p id="telemetry-error" class="hidden text-sm text-red-400"></p>
+        </div>
+      </div>
+
+      <div id="stats-view-system" class="hidden flex-1 overflow-y-auto p-6 space-y-8">
+        <div>
+          <h2 class="text-lg font-semibold text-slate-100 mb-1">System</h2>
+          <p class="text-xs text-slate-500 mb-6">
+            Live CPU/RAM/disk/GPU usage on this machine, sampled every 15s.
+          </p>
+          <div id="system-gauges" class="grid grid-cols-1 sm:grid-cols-3 gap-4"></div>
+        </div>
+
+        <div id="system-stat-tiles" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+
+        <div>
+          <h3 class="text-sm font-semibold text-slate-200 mb-3">CPU &amp; memory over time</h3>
+          <div class="rounded-lg bg-slate-900 border border-slate-800 p-3 overflow-x-auto">
+            <svg id="system-history-chart"></svg>
+            <p id="system-history-empty" class="hidden text-xs text-slate-500 py-8 text-center">
+              Not enough data yet — check back in a minute.
+            </p>
+          </div>
+          <div class="flex items-center gap-4 mt-2 text-xs text-slate-400">
+            <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full inline-block" style="background: rgb(var(--chart-1))"></span>CPU</span>
+            <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full inline-block" style="background: rgb(var(--chart-2))"></span>Memory</span>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="text-sm font-semibold text-slate-200 mb-3">GPU</h3>
+          <!-- Best-effort via nvidia-smi, or (macOS) ioreg's IOAccelerator registry (see
+               app/services/system_metrics_poller.py) — empty and replaced by #gpu-empty on any machine neither
+               path finds a GPU on, not shown as an error. One gauge per detected GPU, built dynamically since
+               the count varies per machine (see system_metrics.js: renderGpuGauges). -->
+          <div id="gpu-gauges" class="hidden grid grid-cols-1 sm:grid-cols-3 gap-4"></div>
+          <p id="gpu-empty" class="hidden text-xs text-slate-500 rounded-lg bg-slate-900 border border-slate-800 px-4 py-3">
+            No GPU detected on this machine.
+          </p>
+        </div>
+
+        <div id="gpu-history-section">
+          <h3 class="text-sm font-semibold text-slate-200 mb-3">GPU utilization over time</h3>
+          <div class="rounded-lg bg-slate-900 border border-slate-800 p-3 overflow-x-auto">
+            <svg id="gpu-history-chart"></svg>
+            <p id="gpu-history-empty" class="hidden text-xs text-slate-500 py-8 text-center">
+              Not enough data yet — check back in a minute.
+            </p>
+          </div>
+          <!-- Populated dynamically, one swatch per detected GPU (see system_metrics.js: renderGpuLegend) —
+               unlike the fixed CPU/Memory legend above, GPU count varies per machine. -->
+          <div id="gpu-history-legend" class="flex items-center gap-4 mt-2 text-xs text-slate-400"></div>
+        </div>
+
+        <p id="system-error" class="hidden text-sm text-red-400"></p>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+{% include "_account_panel.html" %}
+
+<script src="/static/vendor/d3/d3.min.js"></script>
+<script src="/static/js/app.js?v={{ static_version }}"></script>
+<script src="/static/js/theme.js?v={{ static_version }}"></script>
+<script src="/static/js/account_panel.js?v={{ static_version }}"></script>
+<script src="/static/js/workflow_diagram_data.js?v={{ static_version }}"></script>
+<script src="/static/js/workflow_diagram.js?v={{ static_version }}"></script>
+<script src="/static/js/telemetry_charts.js?v={{ static_version }}"></script>
+<script src="/static/js/telemetry_bar_chart.js?v={{ static_version }}"></script>
+<script src="/static/js/telemetry.js?v={{ static_version }}"></script>
+<script src="/static/js/system_charts.js?v={{ static_version }}"></script>
+<script src="/static/js/system_metrics.js?v={{ static_version }}"></script>
+<script src="/static/js/stats.js?v={{ static_version }}"></script>
+{% endblock %}

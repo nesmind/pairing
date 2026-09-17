@@ -1,0 +1,10 @@
+# Extra tools for working on pAIring itself (tests, linting) — not
+# needed just to run the app. Install with:
+#   .venv/bin/pip install -r requirements-dev.txt
+# (pulls in requirements.txt too, via the -r line below.)
+
+-r requirements.txt
+
+pytest>=8.0.0
+pytest-asyncio>=0.24.0
+ruff>=0.16.0

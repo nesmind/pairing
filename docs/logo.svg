@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="199" height="64" viewBox="0 0 199 64">
+  <rect x="2" y="14" width="42" height="36" rx="10" fill="#499fb6"/>
+  <text x="23" y="39" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-style="italic" font-weight="500" font-size="24" fill="#ffffff">&#960;</text>
+  <text x="50" y="47" font-family="Arial, Helvetica, sans-serif" font-weight="800" font-size="44" letter-spacing="-1">
+    <tspan fill="#f472b6">p</tspan><tspan fill="#499fb6">A</tspan><tspan fill="#f472b6">I</tspan><tspan fill="#1f2328">ring</tspan>
+  </text>
+</svg>

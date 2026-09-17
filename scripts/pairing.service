@@ -1,0 +1,35 @@
+# pAIring systemd unit — a template, not ready to use as-is.
+#
+# EDIT the three values marked below to match your install (the ones
+# scripts/install.sh's own manual setup would have used), then:
+#
+#   sudo cp scripts/pairing.service /etc/systemd/system/pairing.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now pairing
+#
+# Useful afterward:
+#   systemctl status pairing       # is it running?
+#   journalctl -u pairing -f       # tail its logs (stdout/stderr go to journald, not data/logs/app.log)
+#   sudo systemctl restart pairing # after pulling new code / changing .env
+#
+# Linux only — systemd doesn't exist on macOS (see scripts/install.sh's
+# own closing note for a launchd-based alternative there).
+
+[Unit]
+Description=pAIring — on-prem multi-user platform for deploying & using private models
+After=network.target
+
+[Service]
+Type=simple
+# EDIT: the user this should run as (never root — create a dedicated
+# one if you don't already have one, e.g. `sudo useradd -r -m pairing`).
+User=pairing
+# EDIT: the full path to this project's own checkout.
+WorkingDirectory=/opt/pairing
+# EDIT: match WorkingDirectory above in both paths below.
+ExecStart=/opt/pairing/.venv/bin/python /opt/pairing/run.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

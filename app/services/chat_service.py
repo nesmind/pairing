@@ -1,0 +1,246 @@
+"""
+The core chat business logic: trims history to fit the model's context
+window, builds the system prompt from active notes + RAG context, calls
+Ollama, and persists both sides of the exchange. app/routers/chat.py
+only wraps this generator's structured events into the SSE wire format
+and returns the StreamingResponse — see build_reply_stream below for the
+actual "what happens when you send a message" logic. Conversation-title
+generation (both the "simple" and "smart" modes build_reply_stream picks
+between) lives in app/services/title_service.py instead — a separable
+enough concern, and substantial enough on its own, to keep out of this
+file under CLAUDE.md's file-size rule.
+"""
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import ATTACHMENTS_DIR
+from app.models import Conversation, Message, MessageAttachment, User
+from app.services import (
+    chat_attachment_service,
+    chat_prompt_service,
+    chat_settings_service,
+    conversation_service,
+    reply_generation_service,
+    title_service,
+)
+from app.services.chat_attachment_service import AttachmentInfo
+
+# Rough characters-per-token ratio for English text. Ollama doesn't expose
+# a cheap client-side tokenizer, so this estimate is used only to decide
+# how much history to keep on our side of the wire — Ollama still applies
+# its own real token limit (num_ctx) server-side as the source of truth.
+_CHARS_PER_TOKEN = 4
+
+
+def _trim_history(messages: list[Message], num_ctx: int, reserved_tokens: int = 512) -> list[dict]:
+    """Keeps only as much recent history as should comfortably fit in the
+    model's context window, so a long-running chat doesn't silently lose
+    coherence by overflowing num_ctx. `reserved_tokens` leaves headroom
+    for the system prompt, RAG context, and the model's own reply.
+
+    Walks from the newest message backwards, keeping messages until the
+    running character budget would be exceeded, then reverses back to
+    chronological order.
+    """
+    budget_chars = max(num_ctx - reserved_tokens, 256) * _CHARS_PER_TOKEN
+    kept: list[Message] = []
+    used = 0
+    for message in reversed(messages):
+        used += len(message.content)
+        if used > budget_chars and kept:
+            break
+        kept.append(message)
+    kept.reverse()
+    return [{"role": m.role, "content": m.content} for m in kept]
+
+
+async def build_reply_stream(
+    db: AsyncSession,
+    conversation: Conversation,
+    user: User,
+    content: str,
+    *,
+    ask_ai: bool = True,
+    attachments: list[AttachmentInfo] | None = None,
+):
+    """Async generator yielding plain structured events for
+    app/routers/chat.py to SSE-encode:
+      {"user_message_id": str}                      — first event, always
+      {"chunk": str}                                — while streaming
+      {"error": str}                                — Ollama failed mid-stream
+      {"done": True, "title": str, "sources": [...]} — once persisted
+    ("title" only ever appears for a personal chat — see below. If
+    `ask_ai` is False, "done" is the very next event after
+    "user_message_id" — see below.)
+
+    The "user_message_id" event exists purely for chat.js: it's the only
+    way the sender's own tab ever learns the id of the *user* message it
+    just optimistically rendered, needed to tag that bubble so a later
+    channel poll/live-watch catch-up (see
+    reply_generation_service.stream_reply's cancel_on_disconnect and
+    chat.js's ownSendInFlight) recognizes it as already shown instead of
+    creating a duplicate for it.
+
+    `ask_ai=False` (only ever sent by chat.js for a channel's shared
+    conversation — a personal chat always asks the AI regardless, since
+    there's no one else to just message there) saves the user's message
+    like normal but skips generating a reply entirely: no RAG/history is
+    built, reply_generation_service.stream_reply is never called, and no
+    assistant Message is ever created for it. It still counts as part of
+    the conversation's history for a *later* message that does ask the
+    AI — _trim_history below reads every message regardless of how it
+    was sent.
+
+    Saves the user's message immediately (so it's not lost even if the
+    reply itself fails). Title handling depends on the admin-configured
+    mode (see app.services.chat_settings_service.get_title_mode): "simple"
+    (app.services.title_service.maybe_set_title) sets it right alongside
+    the user's message, since it's derived from that message alone and
+    needs no reply to already exist; "smart"
+    (title_service.maybe_generate_title_with_model) instead asks the
+    model, which happens *after* "done" is yielded below so that second,
+    slower call never delays the reply itself. Skipped either way for a
+    channel's shared conversation, whose display name is the channel's
+    own `name` (edited via the admin Channels tab, not by chatting) —
+    see conversation_service.update_conversation, which already refuses
+    to let a channel conversation's title be edited.
+
+    The reply itself — for a personal chat and a channel's shared
+    conversation alike — is generated by app.services.reply_generation_service
+    as a detached background task, decoupled from this request. What
+    happens if the request disconnects mid-reply differs by conversation
+    type though (see stream_reply's cancel_on_disconnect parameter,
+    passed below): a channel's shared conversation always finishes
+    regardless, since other members may still be watching; a personal
+    chat is cancelled instead, since only its owner ever could be — but
+    either way, unlike before this module existed, the attempt always
+    leaves a clean status="error" record (with whatever was generated so
+    far) rather than silently vanishing. This function only adds what's
+    specific to *this* conversation: title handling above, and injecting
+    the current title into personal chats' "done" event below
+    (reply_generation_service itself knows nothing about titles —
+    channels never have one).
+    """
+    attachments = attachments or []
+    params = conversation.params
+    is_personal = conversation.channel_id is None
+    title_mode = await chat_settings_service.get_title_mode(db) if is_personal else None
+    # A personal chat always asks the AI, regardless of what a caller
+    # passes — it has no "other human" to just chat with (unlike a
+    # channel, where a plain message is meaningful on its own). Enforced
+    # here, not only by the frontend never offering the choice there, so
+    # this stays true even if a client sends ask_ai=False directly.
+    ask_ai = ask_ai or is_personal
+
+    user_message = Message(conversation_id=conversation.id, role="user", content=content, sender_id=user.id)
+    # Appended through the relationship (rather than setting message_id
+    # explicitly) since user_message.id isn't assigned until flush —
+    # SQLAlchemy wires the foreign key up itself once it is.
+    user_message.attachments = [
+        MessageAttachment(
+            # Stored relative to ATTACHMENTS_DIR so a later move of that
+            # folder (e.g. via the ATTACHMENTS_DIR env var) doesn't
+            # strand every existing attachment's url.
+            path=str(attachment.path.relative_to(ATTACHMENTS_DIR)),
+            filename=attachment.filename,
+            type=attachment.type,
+        )
+        for attachment in attachments
+    ]
+    db.add(user_message)
+
+    if title_mode == "simple":
+        title_service.maybe_set_title(conversation, content)
+
+    await db.commit()
+
+    yield {"user_message_id": user_message.id}
+
+    # "Simple" mode already knows the real title at this point — no
+    # reason to make the sidebar wait for the *entire reply* to finish
+    # streaming just to learn something that was already decided before
+    # a single token of it was generated. ("Smart" mode doesn't know its
+    # title yet here — this just resends whatever's already there, which
+    # is a harmless no-op on the still-unchanged "New chat" placeholder.)
+    if is_personal:
+        yield {"title": conversation.title}
+
+    if not ask_ai:
+        done_event = {"done": True, "sources": []}
+        if is_personal:
+            done_event["title"] = conversation.title
+        yield done_event
+        return
+
+    # Build history from conversation_service.visible_messages (which
+    # excludes anything a channel admin/manager has deleted — see its own
+    # docstring) *plus* user_message explicitly, rather than trusting
+    # conversation.messages to already include the latter after the
+    # commit above: the app's AsyncSession is configured with
+    # expire_on_commit=False (see app/database.py), so committing never
+    # invalidates this already-loaded relationship collection, and adding
+    # user_message via db.add() alone (not through the
+    # conversation.messages collection itself) never updates it in memory
+    # either. Without this, history would only ever reflect everything
+    # *before* this turn — never the question actually being asked now.
+    history = _trim_history([*conversation_service.visible_messages(conversation), user_message], params["num_ctx"])
+
+    # See chat_prompt_service.build_system_prompt's own docstring for the
+    # notes/RAG/attachment layering this produces.
+    system_prompt, source_filenames = await chat_prompt_service.build_system_prompt(
+        db, conversation, user, content, params, attachments
+    )
+    ollama_messages = ([{"role": "system", "content": system_prompt}] if system_prompt else []) + history
+
+    # None (no override — reply_generation_service.stream_reply falls
+    # back to conversation.model) unless one of `attachments` is an
+    # image, in which case this is the admin-configured default vision
+    # model for this one reply only (see apply_image_attachment's own
+    # docstring) — also reused below as the has_image signal, since the
+    # two conditions are identical by that same contract.
+    reply_model = (
+        await chat_attachment_service.apply_image_attachment(db, attachments, ollama_messages) if attachments else None
+    )
+
+    # A channel's shared conversation always finishes generating
+    # regardless of who's still connected — other members may be
+    # relying on it. A personal chat has exactly one possible viewer, so
+    # leaving it stops generation (cancel_on_disconnect=True) exactly
+    # like before this module existed — the difference now is that it
+    # always leaves a clean status="error" record instead of silently
+    # vanishing. See reply_generation_service.stream_reply's own
+    # docstring for the mechanism.
+    async for event in reply_generation_service.stream_reply(
+        db,
+        conversation,
+        ollama_messages,
+        source_filenames,
+        reply_to_message_id=user_message.id,
+        cancel_on_disconnect=is_personal,
+        model=reply_model,
+        has_image=reply_model is not None,
+    ):
+        if is_personal and event.get("done"):
+            # In "simple" mode, conversation.title was already set (if
+            # this was the first message) before the reply even started
+            # streaming — see title_service.maybe_set_title — so this is
+            # already the final title. In "smart" mode it's still
+            # whatever it was before this call (usually "New chat" the
+            # first time around) — chat.js polls separately afterward to
+            # pick up whatever the scheduled call below eventually lands
+            # on. reply_generation_service itself knows nothing about
+            # titles (a channel conversation never has one), so this is
+            # layered on here rather than passed in.
+            event = {**event, "title": conversation.title}
+        yield event
+
+        if is_personal and event.get("done") and title_mode == "smart":
+            # Scheduled as a detached background task (see
+            # title_service.schedule_smart_title_generation), not
+            # awaited here directly: chat.js is designed to stop reading
+            # this response right after the "done" event above, and once
+            # it disconnects, ASGI cancels this generator — an `await`
+            # on the model call at this point would simply never finish,
+            # silently dropping the title every time. The scheduled task
+            # runs entirely independently of this request's lifecycle.
+            title_service.schedule_smart_title_generation(conversation.id, content)
