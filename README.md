@@ -129,14 +129,16 @@ Full setup, MySQL migration, and multi-server deployment notes: see
 |---|---|
 | ![Workflow diagram](docs/screenshots/stats-workflow.png) | ![System dashboard](docs/screenshots/stats-system.png) |
 
+| Settings->behavior | Settings->models |
+|---|---|
+| ![Workflow diagram](docs/screenshots/settings-behavior.png) | ![System dashboard](docs/screenshots/settings-model.png) |
+
+| Settings->account | Settings->system |
+|---|---|
+| ![Workflow diagram](docs/screenshots/settings-account.png) | ![System dashboard](docs/screenshots/settings-system.png) |
 
 
-
-
-
-
-
-<br><br><br>
+<br><br>
 
 ## License
 
