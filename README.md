@@ -112,12 +112,16 @@ Full setup, MySQL migration, and multi-server deployment notes: see
   database reachable), not just "is the process alive" — built for a load balancer or uptime monitor to poll.
 - Same session-based login as the browser UI secures it — no separate API-key system (yet).
 
+<br>
+
 **💻 Runs on**
 - Linux — All features installed.
 - macOS also works — install Ollama yourself and point pAIring at it.
   Windows isn't supported at this point.
 - x86_64 or arm64, GPU optional — CPU-only works fine, a GPU (NVIDIA or Apple Silicon) just makes replies much faster.
 - No fixed RAM requirement — depends on which model(s) you run; Models settings section shows what actually fits your hardware.
+
+<br><br>
 
 ## 📸 Screenshots
 
@@ -137,6 +141,13 @@ Full setup, MySQL migration, and multi-server deployment notes: see
 |---|---|
 | ![Workflow diagram](docs/screenshots/settings-account.png) | ![System dashboard](docs/screenshots/settings-system.png) |
 
+
+<br><br>
+
+![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-async-009688)
+![Self-hosted](https://img.shields.io/badge/self--hosted-yes-brightgreen)
+![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 
 <br><br>
 
