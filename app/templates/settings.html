@@ -1,0 +1,1454 @@
+{% extends "base.html" %}
+{% block title %}Settings — {{ app_name }}{% endblock %}
+{% block body %}
+<div class="flex h-full flex-col">
+  <header class="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
+    <div class="flex items-center gap-3">
+      <a href="/" class="rounded-lg p-1.5 hover:bg-slate-800 transition-colors" title="Back to chat">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+      </a>
+      <h1 class="text-sm font-semibold">Settings</h1>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs text-slate-500">{{ username }}</span>
+      <form method="post" action="/logout" class="flex items-center">
+        <button type="submit" class="text-xs text-slate-500 hover:text-slate-300 transition-colors">Log out</button>
+      </form>
+    </div>
+  </header>
+
+  <!-- Tab nav: Model + Behavior + Knowledge + Account are for everyone
+       (every user has their own default model, generation params, RAG
+       chunk count, and password); System and Users are admin-only
+       extras appended when is_admin. -->
+  <div class="border-b border-slate-800 px-4">
+    <nav class="mx-auto max-w-2xl flex gap-1 -mb-px">
+      <button type="button" data-tab="model"
+        class="settings-tab-btn border-b-2 border-brand-500 px-3 py-2.5 text-sm font-medium text-slate-100">
+        Model
+      </button>
+      <button type="button" data-tab="behavior"
+        class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
+        Behavior
+      </button>
+      <button type="button" data-tab="knowledge"
+        class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
+        Knowledge
+      </button>
+      <button type="button" data-tab="account"
+        class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
+        Account
+      </button>
+      {% if is_admin %}
+      <button type="button" data-tab="system"
+        class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
+        System
+      </button>
+      <button type="button" data-tab="external-servers"
+        class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
+        External servers
+      </button>
+      <button type="button" data-tab="users"
+        class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
+        Users
+      </button>
+      <button type="button" data-tab="channels"
+        class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
+        Channels
+      </button>
+      {% endif %}
+    </nav>
+  </div>
+
+  <div class="flex-1 overflow-y-auto">
+    <!-- Model tab: picks the default model new chats start with — an
+         existing conversation's model is changed from that chat's own
+         model badge instead (see chat.html/chat.js), not from here, so
+         this tab needs no "editing settings for" target picker at all
+         (unlike Behavior below, it only ever means one thing). No save
+         bar of its own either — selecting a model here saves itself
+         immediately (see settings.js: saveModelSelection), same as it
+         always has. Split out of what used to be one combined "Model &
+         behavior" tab — Behavior's own shared save-bar no longer needs
+         its old blockedByModels check, since it doesn't touch the model
+         at all anymore. -->
+    <div id="tab-model" class="mx-auto max-w-2xl px-4 py-8 space-y-8">
+      <section class="space-y-4">
+        <h2 class="text-sm font-semibold text-slate-200">Model</h2>
+        <p class="text-xs text-slate-500 -mt-2">The model every new chat starts with by default.</p>
+
+        <div id="model-field">
+          <div id="model-unavailable" class="hidden text-xs text-amber-400 bg-amber-950/40 border border-amber-900 rounded-lg px-3 py-2">
+            System is not configured for models yet, ask your admin.
+          </div>
+          <div id="model-field-normal">
+            <div class="flex items-center justify-between mb-3">
+              <label class="block text-xs font-medium text-slate-400">Default model for new chats</label>
+              <span id="hardware-summary" class="text-xs text-slate-500"></span>
+            </div>
+            <p class="text-xs text-slate-500 mb-4">Selecting a model saves it immediately — no need to press Save below.</p>
+            <div id="model-no-default-banner" class="hidden mb-4 text-xs text-amber-400 bg-amber-950/40 border border-amber-900 rounded-lg px-3 py-2">
+              No default model selected for the current engine — pick one below.
+            </div>
+            <div id="model-catalog" class="space-y-3"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Embedding model: powers the Knowledge base (RAG) feature on the Knowledge tab, never used for chat —
+           kept as its own small section here rather than mixed into the chat-model catalog above (see
+           app.model_catalog.EMBEDDING_CATALOG's own docstring for why it's a wholly separate list). Visible to
+           every user (installed status isn't admin-secret, same as the #rag-unavailable banner on the Knowledge
+           tab this mirrors); only the Pull button itself is admin-gated. -->
+      <section class="space-y-3 border-t border-slate-800 pt-6">
+        <h2 class="text-sm font-semibold text-slate-200">Embedding model</h2>
+        <p class="text-xs text-slate-500 -mt-2">Powers the Knowledge base (RAG) feature on the Knowledge tab — not used for chat.</p>
+        <div id="embedding-model-catalog" class="space-y-2"></div>
+      </section>
+
+      <!-- Browse more models: the small hand-curated list above (app/model_catalog.py) stays fixed; this is the
+           separate, admin-extensible catalog behind app/services/extended_model_catalog_service.py. Collapsed by
+           default — most people never need more than the defaults above. pb-16: this is the last section on the
+           Model tab, and with the extended list empty (just the search box + "Nothing here yet.") the page
+           otherwise ends right at the search box with no breathing room below it. -->
+      <section class="space-y-3 border-t border-slate-800 pt-6 pb-16">
+        <button type="button" id="browse-more-models-toggle"
+          class="flex w-full items-center justify-between text-sm font-semibold text-slate-200">
+          <span>Browse more models</span>
+          <svg id="browse-more-models-chevron" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 transition-transform"
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+
+        <div id="browse-more-models-panel" class="hidden space-y-4">
+          <p class="text-xs text-slate-500">
+            Searched live on Hugging Face — the largest public library of GGUF models.
+          </p>
+
+          {% if is_admin %}
+          <!-- Admin-only, three steps: search Hugging Face for a repo, pick a repo to see its real GGUF files
+               (both read-only — see app/services/huggingface_client.py), then Add a specific file, which
+               re-verifies it from scratch server-side rather than trusting this search/file-list round trip (see
+               extended_model_catalog_service.add_model's own docstring on why). All three route through the same
+               admin-configured outbound proxy as the Ollama/ComfyUI installers (Settings > System), and need a
+               real internet connection or that proxy to succeed — unless the resulting tag is already installed
+               on this machine, which skips the network round trip entirely for Add. -->
+          <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
+            <label class="block text-xs font-medium text-slate-400">Search Hugging Face</label>
+            <div class="flex items-center gap-2">
+              <input id="hf-search-input" type="text" placeholder="e.g. nemotron-3"
+                class="flex-1 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+              <button type="button" id="hf-search-btn"
+                class="shrink-0 rounded-md border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-800 transition-colors">
+                Search
+              </button>
+            </div>
+            <p class="text-xs text-slate-500">
+              Needs this server to have internet access, or an outbound proxy configured under System.
+            </p>
+            <p id="hf-search-status" class="text-xs text-slate-500"></p>
+
+            <!-- Repo search results: click a repo to load its file list below (see settings.js). -->
+            <div id="hf-search-results" class="hidden space-y-1.5"></div>
+
+            <!-- File picker for whichever repo was just clicked above — each file gets its own Add button.
+                 Its own status line (hf-repo-files-status) sits right below it, not the search-step one above —
+                 confirmed live: "Adding…"/"Loading files…" showing only in hf-search-status (well above this
+                 panel) was invisible once an admin had scrolled down to actually click something down here. -->
+            <div id="hf-repo-files" class="hidden rounded-md bg-slate-950 border border-slate-800 px-3 py-3 space-y-2"></div>
+            <p id="hf-repo-files-status" class="text-xs text-slate-500"></p>
+          </div>
+          {% endif %}
+
+          <div id="extended-model-catalog" class="space-y-3"></div>
+          <p id="extended-model-catalog-empty" class="hidden text-xs text-slate-500">Nothing here yet.</p>
+        </div>
+      </section>
+    </div>
+
+    <!-- Behavior tab: generation parameters, per target (a specific
+         conversation, or "Defaults for new chats") — unlike Model above,
+         saving here for an existing conversation changes its live
+         behavior immediately (already-sent messages included, since
+         these are read fresh on the next reply), while saving under
+         "Defaults for new chats" only ever affects a chat created from
+         that point on (see settings.js: loadTarget's per-target hint
+         text). Shares its save-bar with Knowledge below (both edit the
+         same currentParams for the target picked here). -->
+    <div id="tab-behavior" class="hidden mx-auto max-w-2xl px-4 py-8 space-y-10">
+
+      <!-- Same "no models installed at all" banner as the Model tab's own #model-unavailable, and the same
+           reasoning: generation parameters here mean nothing without a model to actually apply them to (the
+           conversation-select below still populates with "Defaults for new chats", and the sliders still
+           render — nothing else here would tell the admin *why* a new chat still won't reply). See settings.js:
+           loadTarget, which toggles this the same way initModelTab toggles #model-unavailable. -->
+      <div id="behavior-model-unavailable" class="hidden text-xs text-amber-400 bg-amber-950/40 border border-amber-900 rounded-lg px-3 py-2">
+        System is not configured for models yet, ask your admin.
+      </div>
+
+      <!-- Which conversation these params apply to -->
+      <section>
+        <label class="block text-xs font-medium uppercase tracking-wide text-slate-400 mb-2">Editing settings for</label>
+        <select id="conversation-select"
+          class="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm focus:outline-none focus:border-brand-500"></select>
+        <p class="mt-1 text-xs text-slate-500">
+          Pick an existing chat to adjust it directly, or "Defaults for new chats" to change what every
+          new chat starts with instead.
+        </p>
+      </section>
+
+      <section class="space-y-4">
+        <h2 class="text-sm font-semibold text-slate-200">Generation parameters</h2>
+        <p id="params-section-hint" class="text-xs text-slate-500 -mt-3"></p>
+
+        <div id="param-sliders" class="space-y-5"></div>
+      </section>
+
+      <!-- Save bar: shared by Behavior and Knowledge (both edit the
+           same currentParams for the target picked above) — hidden on
+           the admin-only tabs, which save their own changes inline.
+           This is its default (Behavior) position; settings.js
+           physically relocates this same element to just above the
+           "Knowledge base" section while that tab is active, and back
+           here otherwise — see activateTab(). It deliberately has no
+           mx-auto/max-w-2xl/px-4 of its own: it's always a direct child
+           of whichever tab div is currently showing it, and that tab
+           div already provides all of that — adding it again here would
+           double up the left padding and misalign it from the tab's own
+           section titles. -->
+      <div id="save-bar" class="pt-2 flex items-center gap-3">
+        <button id="save-btn" class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+          Save changes
+        </button>
+        <span id="save-status" class="text-xs text-slate-500"></span>
+      </div>
+    </div>
+
+    <!-- Knowledge tab: RAG chunk count + the shared knowledge base status.
+         Available to every user, not just admin — everyone can tune how
+         many chunks their own chats retrieve. Operates on the same
+         conversation/defaults target picked on the Behavior tab. -->
+    <div id="tab-knowledge" class="hidden mx-auto max-w-2xl px-4 py-8 space-y-8">
+      <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Document knowledge (RAG)</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          Every chat automatically searches your knowledge base below — there's nothing to turn on.
+        </p>
+
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label class="text-xs font-medium text-slate-300">Chunks retrieved per question</label>
+            <span class="text-xs font-mono text-slate-400" id="rag-top-k-value">4</span>
+          </div>
+          <input type="range" id="rag-top-k" min="1" max="10" step="1" value="4" class="w-full accent-brand-600">
+          <p class="mt-1 text-xs text-slate-500">More chunks give the model more potentially-relevant context, but also more noise and a larger prompt.</p>
+        </div>
+      </section>
+
+      <!-- Knowledge base: not tied to any one conversation, so it saves
+           itself (upload/delete) rather than going through the Save
+           button. Every chat automatically searches whatever's in
+           scope for its owner — an upload is ingested immediately,
+           there's nothing else to trigger. Only "My documents"
+           (private) is exposed here for now — the shared/global scope
+           still exists server-side (see app/rag.py) but has no UI yet;
+           file management there will get its own pass later. -->
+      <section id="knowledge-base-section" class="space-y-4">
+        <h2 class="text-sm font-semibold text-slate-200">Knowledge base</h2>
+        <p class="text-xs text-slate-500 -mt-3">
+          Supported types: <code class="font-mono">.txt</code>, <code class="font-mono">.md</code>,
+          <code class="font-mono">.pdf</code>, <code class="font-mono">.docx</code>,
+          <code class="font-mono">.odt</code>, <code class="font-mono">.rtf</code>,
+          <code class="font-mono">.html</code>, <code class="font-mono">.csv</code>, and
+          <code class="font-mono">.json</code> — up to 5 files per upload.
+        </p>
+
+        <div id="rag-unavailable" class="hidden text-xs text-amber-400 bg-amber-950/40 border border-amber-900 rounded-lg px-3 py-2">
+          No embedding model found yet — see Settings &gt; Model to install one.
+        </div>
+
+        <!-- My documents: private, visible only to your own chats. Five
+             separate file pickers rather than one multi-select input, so
+             each file gets its own visible row and its own progress bar
+             — embedding a file can take a long time on slow hardware,
+             and one shared bar for a whole batch made it unclear which
+             file (if any) was actually still moving. -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-400">My documents</h3>
+            <span id="my-docs-summary" class="text-xs text-slate-500"></span>
+          </div>
+          <p class="text-xs text-slate-500">Private — only your own chats can search these.</p>
+
+          <div id="my-docs-upload-slots" class="space-y-1.5">
+            {% for i in range(5) %}
+            <div class="space-y-1" data-slot="{{ i }}">
+              <div class="flex items-center gap-2">
+                <input type="file"
+                  class="upload-slot-input flex-1 min-w-0 text-xs text-slate-400 file:mr-2 file:w-28 file:rounded-lg file:border file:border-slate-700 file:bg-slate-900 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-slate-200 hover:file:bg-slate-800">
+                <span class="upload-slot-status w-28 shrink-0 truncate text-right text-xs text-slate-500">—</span>
+              </div>
+              <div class="upload-slot-bar-wrap hidden h-1 w-full overflow-hidden rounded-full bg-slate-800">
+                <div class="upload-slot-bar h-full w-0 rounded-full bg-brand-600 transition-[width] duration-300"></div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+
+          <button id="my-docs-upload-btn" type="button"
+            class="!mt-6 w-28 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-500 transition-colors">
+            Upload
+          </button>
+
+          <div id="my-docs-overall-wrap" class="hidden space-y-1 pt-1">
+            <div class="flex items-center justify-between text-xs text-slate-500">
+              <span>Overall progress</span>
+              <span id="my-docs-overall-pct">0%</span>
+            </div>
+            <div class="h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
+              <div id="my-docs-overall-bar" class="h-full w-0 rounded-full bg-brand-600 transition-[width] duration-300"></div>
+            </div>
+          </div>
+          <p id="my-docs-status" class="text-xs text-slate-500"></p>
+          <div id="my-docs-list" class="!mt-6 rounded-lg bg-slate-900 border border-slate-800 divide-y divide-slate-800 text-sm"></div>
+          <div id="my-docs-pagination" class="hidden flex items-center justify-between text-xs text-slate-500">
+            <button id="my-docs-prev-btn" type="button"
+              class="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent">
+              Prev
+            </button>
+            <span id="my-docs-page-info"></span>
+            <button id="my-docs-next-btn" type="button"
+              class="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent">
+              Next
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Account tab: everyone gets this, not just admin — starting with
+         your own password; a natural place for more personal-account
+         preferences later. Saves inline (its own status text), no use
+         for the shared save-bar. -->
+    <div id="tab-account" class="hidden mx-auto max-w-2xl px-4 py-8 space-y-8">
+      <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Profile</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          Shown as a small round picture beside your messages in a channel. With no picture, your initials (or your
+          username's first letter) are shown instead.
+        </p>
+
+        <div class="flex items-center gap-4">
+          <div id="account-avatar-preview"
+            class="h-16 w-16 shrink-0 rounded-full bg-slate-800 flex items-center justify-center text-lg font-medium text-slate-300 overflow-hidden">
+          </div>
+          <div class="space-y-1.5">
+            <div class="flex items-center gap-2">
+              <label
+                class="cursor-pointer rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 transition-colors">
+                Upload picture
+                <input id="account-avatar-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp"
+                  class="hidden">
+              </label>
+              <button id="account-avatar-remove-btn" type="button"
+                class="hidden text-xs text-slate-500 hover:text-red-400 transition-colors">
+                Remove
+              </button>
+            </div>
+            <span id="account-avatar-status" class="text-xs text-slate-500"></span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 rounded-lg bg-slate-900 border border-slate-800 px-4 py-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">First name</label>
+            <input id="account-first-name" type="text" autocomplete="given-name"
+              class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Last name</label>
+            <input id="account-last-name" type="text" autocomplete="family-name"
+              class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <button id="account-profile-save-btn" type="button"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save profile
+          </button>
+          <span id="account-profile-status" class="text-xs text-slate-500"></span>
+        </div>
+      </section>
+
+      <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Password</h2>
+        <p class="text-xs text-slate-500 -mt-2">Change the password for your own account, {{ username }}.</p>
+
+        <button id="account-password-toggle" type="button"
+          class="text-xs text-brand-500 hover:text-brand-400 transition-colors">
+          Update password
+        </button>
+
+        <div id="account-password-form" class="hidden space-y-3">
+          <div class="space-y-2 rounded-lg bg-slate-900 border border-slate-800 px-4 py-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Current password</label>
+              <input id="account-current-password" type="password" autocomplete="current-password"
+                class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">New password</label>
+              <input id="account-new-password" type="password" autocomplete="new-password"
+                class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Confirm new password</label>
+              <input id="account-confirm-password" type="password" autocomplete="new-password"
+                class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <button id="account-password-save-btn" type="button"
+              class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+              Change password
+            </button>
+            <span id="account-password-status" class="text-xs text-slate-500"></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Appearance</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          Only affects your own view — no one else's changes with yours.
+        </p>
+
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-2">UI theme</label>
+            <div class="text-[11px] uppercase tracking-wide text-slate-500 mb-1.5">Dark</div>
+            <div id="ui-theme-dark-swatches" class="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-3">
+              {% for t in ui_themes if t.mode == "dark" %}
+              <button type="button" data-theme-id="{{ t.id }}" data-theme-swatch
+                class="ui-theme-swatch flex flex-col items-center gap-1 rounded-md border border-slate-700 px-2 py-2 hover:border-brand-500 transition-colors {{ "ring-2 ring-brand-500" if t.id == theme else "" }}">
+                <span class="flex h-6 w-6 rounded-full border border-white/10" style="background: {{ t.swatch_bg }}">
+                  <span class="m-auto h-2.5 w-2.5 rounded-full" style="background: {{ t.swatch_accent }}"></span>
+                </span>
+                <span class="text-[11px] text-slate-300">{{ t.label }}</span>
+              </button>
+              {% endfor %}
+            </div>
+            <div class="text-[11px] uppercase tracking-wide text-slate-500 mb-1.5">Light</div>
+            <div id="ui-theme-light-swatches" class="grid grid-cols-3 sm:grid-cols-5 gap-2">
+              {% for t in ui_themes if t.mode == "light" %}
+              <button type="button" data-theme-id="{{ t.id }}" data-theme-swatch
+                class="ui-theme-swatch flex flex-col items-center gap-1 rounded-md border border-slate-700 px-2 py-2 hover:border-brand-500 transition-colors {{ "ring-2 ring-brand-500" if t.id == theme else "" }}">
+                <span class="flex h-6 w-6 rounded-full border border-black/10" style="background: {{ t.swatch_bg }}">
+                  <span class="m-auto h-2.5 w-2.5 rounded-full" style="background: {{ t.swatch_accent }}"></span>
+                </span>
+                <span class="text-[11px] text-slate-300">{{ t.label }}</span>
+              </button>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3 border-t border-slate-800 pt-3">
+            <button id="ui-theme-save-btn" type="button"
+              class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+              Save theme
+            </button>
+            <span id="ui-theme-status" class="text-xs text-slate-500"></span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    {% if is_admin %}
+    <!-- System tab: admin-only. Hardware/Ollama info plus the shared
+         model catalog's Pull/Uninstall/Hide actions live on the Model
+         tab's own picker itself (visible to admin there too) — this
+         tab is just environment context. -->
+    <div id="tab-system" class="hidden mx-auto max-w-2xl px-4 py-8 space-y-8">
+      <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Environment</h2>
+        <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm rounded-lg bg-slate-900 border border-slate-800 px-4 py-3">
+          <dt class="text-slate-500">App version</dt>
+          <dd id="system-app-version" class="font-mono text-slate-200">—</dd>
+          <dt class="text-slate-500">Hardware</dt>
+          <dd id="system-hardware" class="text-slate-200">—</dd>
+        </dl>
+      </section>
+
+      <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Local {{ app_name }} server mode</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          How multiple local instances (below) get combined behind one URL — only matters once
+          instance count is more than 1. <span class="font-mono">Local</span> (default) makes this
+          app balance the load itself: this instance forwards each request to whichever local
+          instance is least busy and streams the reply straight back — no external proxy needed.
+          <span class="font-mono">External balancing</span> leaves it to your own external reverse proxy instead.
+        </p>
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3">
+          <label class="block text-xs font-medium text-slate-400 mb-1">Mode</label>
+          <select id="proxy-mode"
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+            <option value="local">Local — balance across local instances (default)</option>
+            <option value="proxy">External balancing — full load balance</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="proxy-mode-save-btn" type="button"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save
+          </button>
+          <span id="proxy-mode-status" class="text-xs text-slate-500"></span>
+        </div>
+      </section>
+
+      <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Local instances</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          How many local {{ app_name }} processes should be running on this machine, sharing the same
+          database/models/knowledge base — takes effect immediately, no restart needed. A single
+          instance (the default) is a plain-text answer to "no scaling"; anything above that only
+          does something once combined behind one URL — either your own external reverse proxy
+          (nginx/Caddy), or the built-in "Local {{ app_name }} server mode" option above. See ROADMAP.md's "Concurrency"
+          section.
+        </p>
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Instance count</label>
+            <select id="instance-count"
+              class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+              <option value="6">6</option>
+              <option value="7">7</option>
+              <option value="8">8</option>
+            </select>
+          </div>
+          <ul id="instance-list" class="space-y-0.5 text-xs text-slate-400 font-mono"></ul>
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="instance-count-save-btn" type="button"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save
+          </button>
+          <span id="instance-count-status" class="text-xs text-slate-500"></span>
+        </div>
+      </section>
+
+      <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Outbound HTTP proxy</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          Is used to download models from this UI as well as external servers if you configure them to run
+          locally. Unrelated to "Local {{ app_name }} server mode" above, which is about requests <em>to</em> this
+          app, not requests <em>from</em> it. Username/password are optional — no scheme picker, always
+          built as <span class="font-mono">http://[user[:pass]@]host:port</span>.
+        </p>
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
+          <label class="flex items-center gap-2 text-sm text-slate-300">
+            <input type="checkbox" id="http-proxy-enabled" class="rounded border-slate-700 bg-slate-950">
+            Enabled
+          </label>
+          <div class="grid grid-cols-[2fr_1fr] gap-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Host / IP</label>
+              <input type="text" id="http-proxy-host" placeholder="192.168.1.10"
+                class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Port</label>
+              <input type="number" id="http-proxy-port" min="1" max="65535" placeholder="8080"
+                class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Username (optional)</label>
+              <input type="text" id="http-proxy-username" autocomplete="off"
+                class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Password (optional)</label>
+              <input type="password" id="http-proxy-password" autocomplete="new-password" placeholder="(unchanged if left blank)"
+                class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="http-proxy-save-btn" type="button"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save
+          </button>
+          <span id="http-proxy-status" class="text-xs text-slate-500"></span>
+        </div>
+      </section>
+
+      <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Database</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          Which database {{ app_name }} stores everything in. Saving builds the schema if needed and switches
+          {{ app_name }} over immediately — no restart needed.
+        </p>
+        <div class="rounded-lg border border-amber-700/50 bg-amber-950/40 px-3 py-2 text-xs text-amber-300">
+          <strong>Switching does not move anything from the current database.</strong> The new database only
+          ever gets the same starter data a fresh install gets (one admin account, 3 default notes) — every
+          existing conversation, message, channel, non-admin user, and document, plus every admin setting on
+          this page and elsewhere (RAG limits, model visibility, channel delivery mode, and so on), stays
+          behind in the old database and won't be visible here anymore. Nothing is deleted, but nothing is
+          copied over either.
+        </div>
+        <div id="db-restart-banner" class="hidden rounded-lg border border-amber-700/50 bg-amber-950/40 px-3 py-2 text-xs text-amber-300">
+          The <span class="font-mono">.env</span> file was edited by hand and doesn't match what's
+          currently running — save here (or restart) to bring them back in sync.
+        </div>
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Database type</label>
+            <select id="db-type"
+              class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+              <option value="sqlite">SQLite — a single local file</option>
+              <option value="mysql">MySQL — a separate database server</option>
+            </select>
+          </div>
+
+          <div id="db-fields-sqlite" class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Directory</label>
+              <input id="db-sqlite-directory" type="text" placeholder="/path/to/data"
+                class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:border-brand-500">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Filename</label>
+              <input id="db-sqlite-filename" type="text" placeholder="pAIchat.db"
+                class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:border-brand-500">
+            </div>
+          </div>
+
+          <div id="db-fields-mysql" class="hidden space-y-3">
+            <div class="grid grid-cols-[2fr_1fr] gap-3">
+              <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Host</label>
+                <input id="db-mysql-host" type="text" placeholder="localhost"
+                  class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:border-brand-500">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Port</label>
+                <input id="db-mysql-port" type="number" min="1" max="65535" placeholder="3306"
+                  class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:border-brand-500">
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">User</label>
+                <input id="db-mysql-user" type="text" autocomplete="off"
+                  class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:border-brand-500">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Password</label>
+                <input id="db-mysql-password" type="password" autocomplete="new-password" placeholder="(unchanged if left blank)"
+                  class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:border-brand-500">
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Database name</label>
+              <input id="db-mysql-database" type="text"
+                class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:border-brand-500">
+            </div>
+            <p class="text-xs text-slate-500">
+              Create the database and user yourself first, with <span class="font-mono">utf8mb4_bin</span>
+              collation — see "Switching to MySQL" in README.md. This only connects to an existing database,
+              it won't create one for you.
+            </p>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <button id="db-test-btn" type="button"
+            class="rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 transition-colors">
+            Test connection
+          </button>
+          <button id="db-build-schema-btn" type="button"
+            class="rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 transition-colors">
+            Build schema
+          </button>
+          <button id="db-save-btn" type="button"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save
+          </button>
+        </div>
+        <p id="db-status" class="text-xs text-slate-500"></p>
+      </section>
+
+      <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">RAG upload limits</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          Applies to every user's own document uploads (Settings > Knowledge). The per-file limit
+          also applies to shared/global uploads; the storage quota doesn't.
+        </p>
+        <div class="grid grid-cols-2 gap-3 rounded-lg bg-slate-900 border border-slate-800 px-4 py-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Max file size (MB)</label>
+            <input id="rag-limit-max-file" type="number" min="0.1" step="0.1"
+              class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Max per-user RAG space (MB)</label>
+            <input id="rag-limit-max-space" type="number" min="1" step="1"
+              class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="rag-limits-save-btn" type="button"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save limits
+          </button>
+          <span id="rag-limits-status" class="text-xs text-slate-500"></span>
+        </div>
+      </section>
+
+      <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Default model for new users</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          Whichever model is picked here is what a brand-new account is created with —
+          see the Users tab below.
+        </p>
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-2">
+          <select id="default-model-for-new-users"
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500"></select>
+          <p id="default-model-for-new-users-empty" class="hidden text-xs text-amber-400">
+            No models installed yet — install one above before adding new users.
+          </p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="default-model-for-new-users-save-btn" type="button"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save
+          </button>
+          <span id="default-model-for-new-users-status" class="text-xs text-slate-500"></span>
+        </div>
+      </section>
+
+      <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Default vision model</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          Any message with an image attached is answered by this model for that one reply only —
+          a conversation's own model is never changed by this.
+        </p>
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-2">
+          <select id="default-vision-model"
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500"></select>
+          <p id="default-vision-model-empty" class="hidden text-xs text-amber-400">
+            No vision-capable models installed yet — pull one (e.g. llava) above to enable image attachments.
+          </p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="default-vision-model-save-btn" type="button"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save
+          </button>
+          <span id="default-vision-model-status" class="text-xs text-slate-500"></span>
+        </div>
+      </section>
+
+      <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Default embedding model</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          Powers the Knowledge base (RAG) feature for every user — never used for chat. Switching this after
+          documents were already ingested with a different embedding model doesn't re-embed them; their existing
+          vectors stay as they are.
+        </p>
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-2">
+          <select id="default-embedding-model" title="Which installed embedding model powers the Knowledge base (RAG) feature for every user."
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500"></select>
+          <p id="default-embedding-model-empty" class="hidden text-xs text-amber-400">
+            No embedding models installed yet — pull one above to enable the Knowledge base (RAG) feature.
+          </p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="default-embedding-model-save-btn" type="button"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save
+          </button>
+          <span id="default-embedding-model-status" class="text-xs text-slate-500"></span>
+        </div>
+      </section>
+
+      <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Chat titles</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          How a brand-new chat's sidebar title is picked, for every user. "Simple" builds it
+          instantly from the first message itself, with no model call. "Smart" asks the model
+          to invent one instead — can read more naturally, at the cost of a second, slower
+          generation call after the reply.
+        </p>
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3">
+          <select id="title-mode"
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+            <option value="simple">Simple — instant, from the message text</option>
+            <option value="smart">Smart — ask the model to invent one</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="title-mode-save-btn" type="button"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save
+          </button>
+          <span id="title-mode-status" class="text-xs text-slate-500"></span>
+        </div>
+      </section>
+
+      <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Channel replies</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          How other members of a channel find out about a reply while they're sitting in
+          that chat. Either way, a reply now finishes and saves even if whoever sent it
+          navigates away mid-stream — this only affects who else finds out about it, and how.
+          "Cheap" has other members' tabs check back every few seconds — no extra server load
+          beyond that. "Real" pushes it to them live, token-by-token, but only reliably reaches
+          everyone when running as a single app instance (Settings &gt; System &gt; instance count).
+        </p>
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3">
+          <select id="channel-delivery-mode"
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+            <option value="cheap">Cheap — other members poll every few seconds</option>
+            <option value="real">Real — pushed to other members live</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="channel-delivery-mode-save-btn" type="button"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save
+          </button>
+          <span id="channel-delivery-mode-status" class="text-xs text-slate-500"></span>
+        </div>
+      </section>
+
+      <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Reply timeout</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          How long the app waits for a model to finish generating a text-only reply — personal
+          chat or channel alike — before giving up and marking it failed. A backstop
+          against a hung or pathologically slow request tying up resources indefinitely.
+          Set to 0 for no timeout, if this server's hardware genuinely needs longer than
+          any reasonable limit for one reply. A reply with an image attached uses the
+          separate, more generous timeout below instead.
+        </p>
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3">
+          <input type="number" id="reply-timeout" min="0" max="3600" step="1"
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500" />
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="reply-timeout-save-btn" type="button"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save
+          </button>
+          <span id="reply-timeout-status" class="text-xs text-slate-500"></span>
+        </div>
+      </section>
+
+      <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Vision reply timeout</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          Same as Reply timeout above, but for a message with an image attached. Encoding
+          an image (before any reply text even starts streaming) is dramatically slower than
+          plain text on CPU-only hardware — confirmed to take several minutes on its own for
+          a single modest photo — so this needs real headroom of its own rather than sharing
+          the text timeout above. Set to 0 for no timeout.
+        </p>
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3">
+          <input type="number" id="vision-reply-timeout" min="0" max="3600" step="1"
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500" />
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="vision-reply-timeout-save-btn" type="button"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save
+          </button>
+          <span id="vision-reply-timeout-status" class="text-xs text-slate-500"></span>
+        </div>
+      </section>
+
+      <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Data retention</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          How long the Stats page's Telemetry and System views keep their history before it's
+          swept away — see those pages for what each actually tracks. Kept small by default so
+          neither table grows unbounded over a long uptime; raise either if you want a longer
+          look-back window.
+        </p>
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
+          <label class="block">
+            <span class="text-xs text-slate-400">Telemetry, in days</span>
+            <input type="number" id="retention-telemetry-days" min="1" max="365" step="1"
+              class="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500" />
+          </label>
+          <label class="block">
+            <span class="text-xs text-slate-400">System (CPU/RAM/disk history), in days</span>
+            <input type="number" id="retention-system-metrics-days" min="1" max="365" step="1"
+              class="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500" />
+          </label>
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="retention-save-btn" type="button"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save
+          </button>
+          <span id="retention-status" class="text-xs text-slate-500"></span>
+        </div>
+      </section>
+    </div>
+
+    <!-- External servers tab: admin-only. Ollama and ComfyUI each get an
+         identical-shape subsection — local (this app owns the process:
+         start/stop + a few important tunable parameters) or remote (up
+         to 12 external hosts, load-balanced). See
+         app/routers/ollama_admin.py / comfyui_admin.py. -->
+    <div id="tab-external-servers" class="hidden mx-auto max-w-2xl px-4 py-8 space-y-8">
+      <!-- Which engine (below) actually serves chat/embedding requests right now — see
+           app.services.engine_service. Each engine below is still independently configurable/startable
+           regardless of this choice; only this picker decides which one is live. -->
+      <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Active engine</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          Which engine below actually answers chat and embedding requests. Ollama and Matricxon can each be
+          configured and started independently of this choice — switching here doesn't stop or start either one,
+          it only changes where new requests go.
+        </p>
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 flex items-center gap-3">
+          <select id="active-engine-select" title="Which engine below actually answers chat and embedding requests right now. Switching here doesn't start or stop either engine — configure and start them independently below."
+            class="rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+            <option value="ollama">Ollama</option>
+            <option value="matricxon">Matricxon</option>
+          </select>
+          <button id="active-engine-save-btn" type="button"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save
+          </button>
+          <span id="active-engine-status" class="text-xs text-slate-500"></span>
+        </div>
+        <p id="active-engine-switch-note" class="hidden text-xs text-amber-400 bg-amber-950/40 border border-amber-900 rounded-lg px-3 py-2">
+          Ollama and Matricxon each keep their own separate model storage — nothing pulled under one is
+          automatically available under the other. A conversation whose model isn't installed on the engine
+          you're switching to will fall back to another installed model automatically, but you may still need to
+          pull models again below for anything you specifically want available here.
+        </p>
+      </section>
+
+      <section class="space-y-3" data-server="ollama">
+        <h2 class="text-sm font-semibold text-slate-200">Ollama</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          The LLM runtime chat replies are generated by. <span class="font-mono">Local</span> lets this
+          app start/stop Ollama itself on this machine; <span class="font-mono">Remote</span> points at
+          one or more external Ollama servers instead, load-balanced across whichever is least busy.
+        </p>
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Mode</label>
+            <select data-field="mode" title="Local: this app starts and stops Ollama itself on this machine. Remote: point at one or more Ollama servers already running elsewhere." class="server-mode-select w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+              <option value="local">Local — this app manages the process</option>
+              <option value="remote">Remote — external server(s)</option>
+            </select>
+          </div>
+
+          <div data-mode-section="local" class="space-y-3">
+            <p data-field="status-line" class="text-xs text-slate-400 font-mono"></p>
+
+            <!-- Visible regardless of install state (see applyServerVisibility's own comment on why) — an
+                 admin can see what's installed and reinstall a different version/repo later, not just the first
+                 time. Hidden only in manual-path-entry mode, where "Install"/"Reinstall" would silently replace
+                 a path the admin deliberately pointed elsewhere with this app's own managed install instead. -->
+            <div data-field="install-controls" class="space-y-3">
+              <div data-field="install-idle" class="space-y-2">
+                <div class="flex items-center gap-3">
+                  <button type="button" data-action="install"
+                    class="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-800 transition-colors">
+                    Install from GitHub
+                  </button>
+                  <span data-field="install-version-label" class="text-xs text-slate-500"></span>
+                </div>
+                <p data-field="install-os-note" class="hidden text-xs text-amber-400"></p>
+                <button type="button" data-action="toggle-install-source"
+                  class="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors">
+                  Use a different version or repo
+                </button>
+                <div data-field="install-source-panel" class="hidden space-y-2 rounded-md bg-slate-950 border border-slate-800 px-3 py-3">
+                  <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">GitHub repo</label>
+                    <input data-field="install_repo" type="text" placeholder="ollama/ollama" title="Which GitHub repo to install Ollama from. Leave blank to use the default pinned repo."
+                      class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Version / tag</label>
+                    <input data-field="install_version" type="text" placeholder="v0.33.3" list="ollama-version-options" title="Which release tag to install. Leave blank to use the default pinned version — start typing to pick from real tags fetched live from GitHub, or enter any tag/branch by hand."
+                      class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+                    <datalist id="ollama-version-options" data-field="install-version-datalist"></datalist>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <button type="button" data-action="save-install-source"
+                      class="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 transition-colors">
+                      Save
+                    </button>
+                    <button type="button" data-action="reset-install-source"
+                      class="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors">
+                      Reset to default
+                    </button>
+                    <span data-field="install-source-status" class="text-xs text-slate-500"></span>
+                  </div>
+                </div>
+              </div>
+              <div data-field="install-progress-panel" class="hidden space-y-2 rounded-md bg-slate-950 border border-slate-800 px-3 py-3">
+                <div class="flex items-center justify-between">
+                  <span data-field="install-step-label" class="text-xs font-medium text-slate-300"></span>
+                  <span data-field="install-percent" class="text-xs text-slate-500"></span>
+                </div>
+                <progress data-field="install-bar" class="w-full h-1.5 accent-brand-500" max="100"></progress>
+                <div data-field="install-log" class="max-h-32 overflow-y-auto text-[11px] font-mono text-slate-500 space-y-0.5"></div>
+              </div>
+            </div>
+
+            <div data-field="local-not-installed" class="space-y-3">
+              <button type="button" data-action="manual-path-entry"
+                class="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors">
+                Already have Ollama installed elsewhere? Enter its path manually instead.
+              </button>
+            </div>
+
+            <div data-field="local-installed" class="hidden space-y-3">
+              <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Ollama binary path (optional)</label>
+                <input data-field="binary_path" type="text" placeholder="auto-detected from PATH" title="Path to the ollama executable. Leave blank to auto-detect it from PATH or the usual install locations."
+                  class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Models directory (optional)</label>
+                <input data-field="models_path" type="text" placeholder="pAIring's own models/ folder" title="Where Ollama stores pulled models (OLLAMA_MODELS). Leave blank to use pAIring's own self-contained models/ folder, kept separate from any other Ollama install on this machine. Changing this does not move already-downloaded models — Ollama will show none at the new location until you re-pull or move the folder yourself."
+                  class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-slate-400 mb-1">Number of Threads</label>
+                  <input data-field="num_parallel" type="number" min="1" max="16" placeholder="auto" title="How many requests Ollama processes in parallel (OLLAMA_NUM_PARALLEL). Leave blank for Ollama's own default."
+                    class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-400 mb-1">Keep alive</label>
+                  <input data-field="keep_alive" type="text" placeholder="5m" title="How long Ollama keeps a model loaded in memory after its last use, e.g. &quot;5m&quot;, &quot;1h&quot;, or &quot;-1&quot; to keep it loaded forever. Leave blank for Ollama's own default."
+                    class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-400 mb-1">Max loaded models</label>
+                  <input data-field="max_loaded_models" type="number" min="0" placeholder="auto" title="Maximum number of models Ollama keeps loaded in memory at the same time. Leave blank for Ollama's own default."
+                    class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-400 mb-1">Context length</label>
+                  <input data-field="context_length" type="number" min="0" placeholder="auto" title="Maximum context window (in tokens) Ollama allocates per loaded model. Leave blank for Ollama's own default."
+                    class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+                </div>
+              </div>
+              <button type="button" data-action="manual-path-entry-back"
+                class="hidden text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors">
+                ← Back to installing from GitHub instead
+              </button>
+            </div>
+          </div>
+
+          <div data-mode-section="remote" class="hidden space-y-2">
+            <p class="text-xs text-slate-500">Up to 120 hosts — load-balanced across whichever is least busy.</p>
+            <div data-field="remote-hosts-list" class="space-y-1.5"></div>
+            <button type="button" data-action="add-host"
+              class="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 transition-colors">
+              + Add host
+            </button>
+          </div>
+        </div>
+        <div data-field="actions-bar" class="hidden flex items-center gap-3">
+          <button type="button" data-action="start"
+            class="rounded-lg bg-[rgb(var(--solid-emerald))] px-4 py-2 text-sm font-medium text-white hover:bg-[rgb(var(--solid-emerald-hover))] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            Start
+          </button>
+          <button type="button" data-action="stop"
+            class="rounded-lg bg-[rgb(var(--solid-rose))] px-4 py-2 text-sm font-medium text-white hover:bg-[rgb(var(--solid-rose-hover))] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            Stop
+          </button>
+          <button type="button" data-action="save"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save
+          </button>
+          <span data-field="status" class="text-xs text-slate-500"></span>
+        </div>
+      </section>
+
+      <section class="space-y-3" data-server="matricxon">
+        <h2 class="text-sm font-semibold text-slate-200">Matricxon</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          A from-scratch, Ollama-API-compatible local runtime. <span class="font-mono">Local</span> lets this app
+          start/stop it via its own <span class="font-mono">scripts/start.sh</span> /
+          <span class="font-mono">scripts/stop.sh</span> — Matricxon has no standalone binary, just a project
+          checkout; <span class="font-mono">Remote</span> points at a Matricxon server running elsewhere. Not
+          every model in the Model tab is supported yet — see each model's own note there.
+        </p>
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Mode</label>
+            <select data-field="mode" title="Local: this app starts and stops Matricxon itself on this machine via its own scripts/start.sh and scripts/stop.sh. Remote: point at a Matricxon server already running elsewhere." class="server-mode-select w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+              <option value="local">Local — this app manages the process</option>
+              <option value="remote">Remote — external server(s)</option>
+            </select>
+          </div>
+
+          <div data-mode-section="local" class="space-y-3">
+            <p data-field="status-line" class="text-xs text-slate-400 font-mono"></p>
+
+            <div data-field="install-controls" class="space-y-3">
+              <div data-field="install-idle" class="space-y-2">
+                <div class="flex items-center gap-3">
+                  <button type="button" data-action="install"
+                    class="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-800 transition-colors">
+                    Install from GitHub
+                  </button>
+                  <span data-field="install-version-label" class="text-xs text-slate-500"></span>
+                </div>
+                <p data-field="install-os-note" class="hidden text-xs text-amber-400"></p>
+                <button type="button" data-action="toggle-install-source"
+                  class="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors">
+                  Use a different version or repo
+                </button>
+                <div data-field="install-source-panel" class="hidden space-y-2 rounded-md bg-slate-950 border border-slate-800 px-3 py-3">
+                  <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">GitHub repo</label>
+                    <input data-field="install_repo" type="text" placeholder="nesmind/matricxon" title="Which GitHub repo to install Matricxon from. Leave blank to use the default pinned repo."
+                      class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Version / tag</label>
+                    <input data-field="install_version" type="text" placeholder="v0.1" list="matricxon-version-options" title="Which release tag to install. Leave blank to use the default pinned version — start typing to pick from real tags fetched live from GitHub, or enter any tag/branch by hand."
+                      class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+                    <datalist id="matricxon-version-options" data-field="install-version-datalist"></datalist>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <button type="button" data-action="save-install-source"
+                      class="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 transition-colors">
+                      Save
+                    </button>
+                    <button type="button" data-action="reset-install-source"
+                      class="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors">
+                      Reset to default
+                    </button>
+                    <span data-field="install-source-status" class="text-xs text-slate-500"></span>
+                  </div>
+                </div>
+              </div>
+              <div data-field="install-progress-panel" class="hidden space-y-2 rounded-md bg-slate-950 border border-slate-800 px-3 py-3">
+                <div class="flex items-center justify-between">
+                  <span data-field="install-step-label" class="text-xs font-medium text-slate-300"></span>
+                  <span data-field="install-percent" class="text-xs text-slate-500"></span>
+                </div>
+                <progress data-field="install-bar" class="w-full h-1.5 accent-brand-500" max="100"></progress>
+                <div data-field="install-log" class="max-h-32 overflow-y-auto text-[11px] font-mono text-slate-500 space-y-0.5"></div>
+              </div>
+            </div>
+
+            <div data-field="local-not-installed" class="space-y-3">
+              <button type="button" data-action="manual-path-entry"
+                class="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors">
+                Already have Matricxon installed elsewhere? Enter its path manually instead.
+              </button>
+            </div>
+
+            <div data-field="local-installed" class="hidden space-y-3">
+              <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Project directory (optional)</label>
+                <input data-field="project_dir" type="text" placeholder="auto-detected sibling checkout" title="Path to your Matricxon project checkout — the folder containing scripts/start.sh. Leave blank to auto-detect the sibling ../matricxon checkout next to this app."
+                  class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Models directory (optional)</label>
+                <input data-field="models_path" type="text" placeholder="<project directory>/data/models" title="Where Matricxon stores installed models (MATRICXON_MODELS_DIR) — also where pAIring writes a model it downloads directly in local mode. Leave blank to use Matricxon's own default inside the project directory above. Changing this does not move already-downloaded models."
+                  class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-slate-400 mb-1">Max loaded models</label>
+                  <input data-field="max_loaded_models" type="number" min="0" placeholder="auto" title="Maximum number of models Matricxon keeps loaded in memory at the same time. Leave blank for Matricxon's own default."
+                    class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-400 mb-1">Memory safety margin (optional)</label>
+                  <input data-field="memory_safety_margin" type="number" min="1.1" max="1.8" step="0.1" placeholder="1.5" title="How much headroom Matricxon requires beyond a model's exact memory footprint before allowing it to load (e.g. 1.5 = needs 1.5x the model's size free). Lower values allow loading larger models but risk swapping/OOM; must be between 1.1 and 1.8. Leave blank for Matricxon's own default (1.5)."
+                    class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-400 mb-1">Log level</label>
+                  <select data-field="log_level" title="0: warnings/errors only (Matricxon's own default). 1: coarse per-request pipeline milestones (model load, prompt build, each generated token, generation summary). 2: also adds a per-decoder-layer trace line for every forward pass — very verbose."
+                    class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+                    <option value="0">0 — warnings/errors only</option>
+                    <option value="1">1 — pipeline milestones</option>
+                    <option value="2">2 — per-layer trace (verbose)</option>
+                  </select>
+                </div>
+                <div class="flex items-center gap-2 pt-1">
+                  <input data-field="enable_quantized_native_compute" type="checkbox" id="matricxon-quantized-native-compute"
+                    title="Runs quantized weights natively during generation instead of dequantizing them to bf16/float32 once at load time — lower memory use, at the cost of slower decode (roughly 1.9-4x per Matricxon's own measurements). Off by default, same as Matricxon's own MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE."
+                    class="rounded border-slate-700 bg-slate-950 text-brand-600 focus:ring-brand-500">
+                  <label for="matricxon-quantized-native-compute" class="text-xs font-medium text-slate-400">Enable quantized native compute</label>
+                </div>
+              </div>
+              <button type="button" data-action="manual-path-entry-back"
+                class="hidden text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors">
+                ← Back to installing from GitHub instead
+              </button>
+            </div>
+          </div>
+
+          <div data-mode-section="remote" class="hidden space-y-2">
+            <p class="text-xs text-slate-500">Up to 120 hosts — load-balanced across whichever is least busy.</p>
+            <div data-field="remote-hosts-list" class="space-y-1.5"></div>
+            <button type="button" data-action="add-host"
+              class="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 transition-colors">
+              + Add host
+            </button>
+          </div>
+        </div>
+        <div data-field="actions-bar" class="hidden flex items-center gap-3">
+          <button type="button" data-action="start"
+            class="rounded-lg bg-[rgb(var(--solid-emerald))] px-4 py-2 text-sm font-medium text-white hover:bg-[rgb(var(--solid-emerald-hover))] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            Start
+          </button>
+          <button type="button" data-action="stop"
+            class="rounded-lg bg-[rgb(var(--solid-rose))] px-4 py-2 text-sm font-medium text-white hover:bg-[rgb(var(--solid-rose-hover))] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            Stop
+          </button>
+          <button type="button" data-action="save"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save
+          </button>
+          <span data-field="status" class="text-xs text-slate-500"></span>
+        </div>
+      </section>
+
+      <section class="space-y-3" data-server="comfyui">
+        <h2 class="text-sm font-semibold text-slate-200">ComfyUI</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          The image-generation backend (see the Images page). <span class="font-mono">Local</span> lets this
+          app install (from GitHub) and start/stop ComfyUI on this machine, or point at one you already have
+          installed; <span class="font-mono">Remote</span> points at one or more external ComfyUI servers instead.
+        </p>
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Mode</label>
+            <select data-field="mode" title="Local: this app installs and starts/stops ComfyUI itself on this machine. Remote: point at one or more ComfyUI servers already running elsewhere." class="server-mode-select w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+              <option value="local">Local — this app manages the process</option>
+              <option value="remote">Remote — external server(s)</option>
+            </select>
+          </div>
+
+          <div data-mode-section="local" class="space-y-3">
+            <p data-field="status-line" class="text-xs text-slate-400 font-mono"></p>
+
+            <div data-field="install-controls" class="space-y-3">
+              <div data-field="install-idle" class="space-y-2">
+                <div class="flex items-center gap-3">
+                  <button type="button" data-action="install"
+                    class="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-800 transition-colors">
+                    Install from GitHub
+                  </button>
+                  <span data-field="install-version-label" class="text-xs text-slate-500"></span>
+                </div>
+                <p data-field="install-os-note" class="hidden text-xs text-amber-400"></p>
+                <button type="button" data-action="toggle-install-source"
+                  class="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors">
+                  Use a different version or repo
+                </button>
+                <div data-field="install-source-panel" class="hidden space-y-2 rounded-md bg-slate-950 border border-slate-800 px-3 py-3">
+                  <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">GitHub repo</label>
+                    <input data-field="install_repo" type="text" placeholder="comfyanonymous/ComfyUI" title="Which GitHub repo to install ComfyUI from. Leave blank to use the default pinned repo."
+                      class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Version / tag</label>
+                    <input data-field="install_version" type="text" placeholder="v0.35.1" list="comfyui-version-options" title="Which release tag to install. Leave blank to use the default pinned version — start typing to pick from real tags fetched live from GitHub, or enter any tag/branch by hand."
+                      class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+                    <datalist id="comfyui-version-options" data-field="install-version-datalist"></datalist>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <button type="button" data-action="save-install-source"
+                      class="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 transition-colors">
+                      Save
+                    </button>
+                    <button type="button" data-action="reset-install-source"
+                      class="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors">
+                      Reset to default
+                    </button>
+                    <span data-field="install-source-status" class="text-xs text-slate-500"></span>
+                  </div>
+                </div>
+              </div>
+              <div data-field="install-progress-panel" class="hidden space-y-2 rounded-md bg-slate-950 border border-slate-800 px-3 py-3">
+                <div class="flex items-center justify-between">
+                  <span data-field="install-step-label" class="text-xs font-medium text-slate-300"></span>
+                  <span data-field="install-percent" class="text-xs text-slate-500"></span>
+                </div>
+                <progress data-field="install-bar" class="w-full h-1.5 accent-brand-500" max="100"></progress>
+                <div data-field="install-log" class="max-h-32 overflow-y-auto text-[11px] font-mono text-slate-500 space-y-0.5"></div>
+              </div>
+            </div>
+
+            <div data-field="local-not-installed" class="space-y-3">
+              <button type="button" data-action="manual-path-entry"
+                class="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors">
+                Already have ComfyUI installed elsewhere? Enter its paths manually instead.
+              </button>
+            </div>
+
+            <div data-field="local-installed" class="hidden space-y-3">
+              <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Python executable path</label>
+                <input data-field="python_path" type="text" placeholder="/opt/ComfyUI/venv/bin/python" title="Path to the Python interpreter inside ComfyUI's own virtual environment — used to launch it."
+                  class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">main.py path</label>
+                <input data-field="main_py_path" type="text" placeholder="/opt/ComfyUI/main.py" title="Path to ComfyUI's own main.py entry point, inside its installed checkout."
+                  class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Extra launch args (optional)</label>
+                <input data-field="extra_args" type="text" placeholder="--listen 0.0.0.0 --port 8188" title="Additional command-line arguments passed to ComfyUI when it's launched, e.g. --listen 0.0.0.0 --port 8188. Leave blank for none."
+                  class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+              </div>
+              <button type="button" data-action="manual-path-entry-back"
+                class="hidden text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors">
+                ← Back to installing from GitHub instead
+              </button>
+            </div>
+          </div>
+
+          <div data-mode-section="remote" class="hidden space-y-2">
+            <p class="text-xs text-slate-500">Up to 120 hosts — load-balanced across whichever is least busy.</p>
+            <div data-field="remote-hosts-list" class="space-y-1.5"></div>
+            <button type="button" data-action="add-host"
+              class="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 transition-colors">
+              + Add host
+            </button>
+          </div>
+        </div>
+        <div data-field="actions-bar" class="hidden flex items-center gap-3">
+          <button type="button" data-action="start"
+            class="rounded-lg bg-[rgb(var(--solid-emerald))] px-4 py-2 text-sm font-medium text-white hover:bg-[rgb(var(--solid-emerald-hover))] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            Start
+          </button>
+          <button type="button" data-action="stop"
+            class="rounded-lg bg-[rgb(var(--solid-rose))] px-4 py-2 text-sm font-medium text-white hover:bg-[rgb(var(--solid-rose-hover))] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            Stop
+          </button>
+          <button type="button" data-action="save"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save
+          </button>
+          <span data-field="status" class="text-xs text-slate-500"></span>
+        </div>
+      </section>
+    </div>
+
+    <!-- Users tab: admin-only account management (moved out of System
+         into its own tab since it's a distinct concern). -->
+    <div id="tab-users" class="hidden mx-auto max-w-2xl px-4 py-8 space-y-3">
+      <div class="flex items-center justify-between">
+        <h2 class="text-sm font-semibold text-slate-200">Users</h2>
+        <button id="add-user-btn" type="button"
+          class="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-800
+                 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent">
+          + Add user
+        </button>
+      </div>
+      <p id="add-user-no-models-hint" class="hidden text-xs text-amber-400">
+        No models installed yet — install one on the Model tab before adding a new user.
+      </p>
+
+      <div id="add-user-form" class="hidden space-y-2 rounded-lg bg-slate-900 border border-slate-800 px-4 py-3">
+        <div class="grid grid-cols-2 gap-2">
+          <input id="new-user-username" type="text" placeholder="Username" autocomplete="off"
+            class="rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+          <input id="new-user-password" type="password" placeholder="Password" autocomplete="new-password"
+            class="rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+          <input id="new-user-first-name" type="text" placeholder="First name (optional)" autocomplete="off"
+            class="rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+          <input id="new-user-last-name" type="text" placeholder="Last name (optional)" autocomplete="off"
+            class="rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+          <select id="new-user-role"
+            class="rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+            <option value="user">User</option>
+            <option value="channel_manager">Channel manager</option>
+            <option value="admin">Admin</option>
+          </select>
+          <select id="new-user-status"
+            class="rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+            <option value="active">Active</option>
+            <option value="disabled">Disabled</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2 pt-1">
+          <button id="create-user-btn" type="button"
+            class="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-500 transition-colors">
+            Create
+          </button>
+          <button id="cancel-add-user-btn" type="button"
+            class="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 transition-colors">
+            Cancel
+          </button>
+          <span id="add-user-status" class="text-xs text-slate-500"></span>
+        </div>
+      </div>
+
+      <div id="system-user-list" class="rounded-lg bg-slate-900 border border-slate-800 divide-y divide-slate-800 text-sm"></div>
+      <div id="system-user-pagination" class="hidden flex items-center justify-between text-xs text-slate-500">
+        <button id="system-user-prev-btn" type="button"
+          class="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent">
+          Prev
+        </button>
+        <span id="system-user-page-info"></span>
+        <button id="system-user-next-btn" type="button"
+          class="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent">
+          Next
+        </button>
+      </div>
+    </div>
+
+    <!-- Channels tab: admin-only. A channel is a shared group chat — its
+         member/manager picker is built entirely in JS (see settings.js:
+         buildChannelForm) since it needs to stay usable with a large
+         (1000+) user list, which a plain hardcoded <select> doesn't. -->
+    <div id="tab-channels" class="hidden mx-auto max-w-2xl px-4 py-8 space-y-3">
+      <div class="flex items-center justify-between">
+        <h2 class="text-sm font-semibold text-slate-200">Channels</h2>
+        <button id="add-channel-btn" type="button"
+          class="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-800 transition-colors">
+          + Add channel
+        </button>
+      </div>
+      <p class="text-xs text-slate-500 -mt-2">
+        Every member can read and send messages in a channel; only admins and that channel's
+        managers can change its model, persona, rules, or skill.
+      </p>
+
+      <div id="add-channel-form" class="hidden space-y-3 rounded-lg bg-slate-900 border border-slate-800 px-4 py-3"></div>
+
+      <div id="channel-list" class="rounded-lg bg-slate-900 border border-slate-800 divide-y divide-slate-800 text-sm"></div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<script src="/static/js/app.js?v={{ static_version }}"></script>
+<script src="/static/js/theme.js?v={{ static_version }}"></script>
+<script src="/static/js/settings.js?v={{ static_version }}"></script>
+{% endblock %}

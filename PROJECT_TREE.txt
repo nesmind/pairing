@@ -1,0 +1,68 @@
+pAIring — project tree
+Generated: 2026-09-08T17:08:24Z
+Regenerate with:
+  find . -not -path '*/.venv/*' -not -path '*/.git/*' -not -path '*/__pycache__/*' \
+         -not -path './data/*' -not -path './models/*' -not -path './knowledge/*' \
+         -not -name '*.pyc' | sort
+
+.
+./app
+./app/auth.py
+./app/config.py
+./app/database.py
+./app/hardware.py
+./app/__init__.py
+./app/main.py
+./app/model_catalog.py
+./app/models.py
+./app/notes.py
+./app/ollama_client.py
+./app/__pycache__
+./app/rag.py
+./app/routers
+./app/routers/auth.py
+./app/routers/chat.py
+./app/routers/conversations.py
+./app/routers/documents.py
+./app/routers/__init__.py
+./app/routers/notes.py
+./app/routers/__pycache__
+./app/routers/settings.py
+./app/schemas.py
+./app/static
+./app/static/css
+./app/static/css/style.css
+./app/static/js
+./app/static/js/app.js
+./app/static/js/chat.js
+./app/static/js/notes.js
+./app/static/js/settings.js
+./app/templates
+./app/templates/base.html
+./app/templates/chat.html
+./app/templates/login.html
+./app/templates/notes.html
+./app/templates/settings.html
+./.claude
+./.claude/settings.json
+./.claude/settings.local.json
+./data
+./docker-compose.yml
+./Dockerfile
+./.env
+./.env.example
+./.gitignore
+./knowledge
+./models
+./PROJECT_TREE.txt
+./README.md
+./requirements.txt
+./ROADMAP.md
+./run.py
+./scripts
+./scripts/install_on_fresh_server.sh
+./scripts/pull_all_models.py
+./scripts/start.sh
+./scripts/status.sh
+./scripts/stop.sh
+./.venv

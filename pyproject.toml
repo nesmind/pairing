@@ -1,0 +1,32 @@
+[project]
+name = "pairing"
+version = "0.1.0"
+requires-python = ">=3.11"
+license = "AGPL-3.0-or-later"
+# Dependencies live in requirements.txt/requirements-dev.txt (installed
+# via plain pip — see README.md's "Setup"), not here: this file is only
+# project metadata plus the tool config (ruff/pytest) below.
+
+[tool.ruff]
+target-version = "py311"
+# 120, not ruff's 88 default: this codebase favors long, prose-style
+# comments/docstrings explaining *why* over terse code, and 88 would
+# force reflowing nearly every comment in the project for no functional
+# benefit. 120 comfortably fits the codebase's actual longest lines.
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+# B008: flake8-bugbear flags `Depends(...)`/`File(...)` as a mutable
+# call in an argument default — but that's the standard, intended way
+# to declare a FastAPI dependency, not a bug. Every real FastAPI
+# codebase ignores this rule for exactly that reason.
+ignore = ["B008"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = "test_*.py"

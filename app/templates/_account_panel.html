@@ -1,0 +1,101 @@
+<!-- Slide-in "edit my profile" panel — opened by clicking the small round
+     #account-panel-badge in the header (see chat.html/notes.html/
+     image_generation.html/stats.html, each of which includes this
+     partial; not on settings.html itself, which already has the full
+     Account tab inline). First/Last name + picture (see
+     app/routers/account.py) plus the same app-wide UI theme picker as
+     Settings' own Appearance section (see app/services/theme_service.py) —
+     password change stays Settings-page-only, linked to from the bottom
+     of this panel instead of duplicated. See app/static/js/account_panel.js
+     for the behavior. -->
+<div id="account-panel-backdrop" class="hidden fixed inset-0 z-50 bg-black/60"></div>
+<div id="account-panel"
+  class="fixed inset-y-0 right-0 z-50 flex w-full max-w-sm translate-x-full transform flex-col border-l border-slate-800 bg-slate-900 shadow-xl transition-transform duration-200 ease-out">
+  <div class="flex items-center justify-between border-b border-slate-800 px-4 py-3">
+    <h2 class="text-sm font-semibold text-slate-200">Your profile</h2>
+    <button id="account-panel-close" type="button" class="text-slate-500 hover:text-slate-300 transition-colors"
+      aria-label="Close">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+
+  <div class="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+    <div class="flex items-center gap-4">
+      <div id="account-panel-avatar-preview"
+        class="h-16 w-16 shrink-0 rounded-full bg-slate-800 flex items-center justify-center text-lg font-medium text-slate-300 overflow-hidden">
+      </div>
+      <div class="space-y-1.5">
+        <div class="flex items-center gap-2">
+          <label
+            class="cursor-pointer rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 transition-colors">
+            Upload picture
+            <input id="account-panel-avatar-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp"
+              class="hidden">
+          </label>
+          <button id="account-panel-avatar-remove-btn" type="button"
+            class="hidden text-xs text-slate-500 hover:text-red-400 transition-colors">
+            Remove
+          </button>
+        </div>
+        <span id="account-panel-avatar-status" class="text-xs text-slate-500"></span>
+      </div>
+    </div>
+
+    <div class="space-y-3 rounded-lg bg-slate-950 border border-slate-800 px-3 py-3">
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1">First name</label>
+        <input id="account-panel-first-name" type="text" autocomplete="given-name" dir="auto"
+          class="w-full rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1">Last name</label>
+        <input id="account-panel-last-name" type="text" autocomplete="family-name" dir="auto"
+          class="w-full rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+      </div>
+    </div>
+
+    <div class="space-y-3 rounded-lg bg-slate-950 border border-slate-800 px-3 py-3">
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-2">Appearance</label>
+        <div class="text-[11px] uppercase tracking-wide text-slate-500 mb-1.5">Dark</div>
+        <div id="account-panel-theme-dark-swatches" class="grid grid-cols-3 gap-2 mb-3">
+          {% for t in ui_themes if t.mode == "dark" %}
+          <button type="button" data-theme-id="{{ t.id }}" data-theme-swatch
+            class="ui-theme-swatch flex flex-col items-center gap-1 rounded-md border border-slate-700 px-2 py-2 hover:border-brand-500 transition-colors {{ "ring-2 ring-brand-500" if t.id == theme else "" }}">
+            <span class="flex h-6 w-6 rounded-full border border-white/10" style="background: {{ t.swatch_bg }}">
+              <span class="m-auto h-2.5 w-2.5 rounded-full" style="background: {{ t.swatch_accent }}"></span>
+            </span>
+            <span class="text-[11px] text-slate-300">{{ t.label }}</span>
+          </button>
+          {% endfor %}
+        </div>
+        <div class="text-[11px] uppercase tracking-wide text-slate-500 mb-1.5">Light</div>
+        <div id="account-panel-theme-light-swatches" class="grid grid-cols-3 gap-2">
+          {% for t in ui_themes if t.mode == "light" %}
+          <button type="button" data-theme-id="{{ t.id }}" data-theme-swatch
+            class="ui-theme-swatch flex flex-col items-center gap-1 rounded-md border border-slate-700 px-2 py-2 hover:border-brand-500 transition-colors {{ "ring-2 ring-brand-500" if t.id == theme else "" }}">
+            <span class="flex h-6 w-6 rounded-full border border-black/10" style="background: {{ t.swatch_bg }}">
+              <span class="m-auto h-2.5 w-2.5 rounded-full" style="background: {{ t.swatch_accent }}"></span>
+            </span>
+            <span class="text-[11px] text-slate-300">{{ t.label }}</span>
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <button id="account-panel-save-btn" type="button"
+        class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+        Save
+      </button>
+      <span id="account-panel-status" class="text-xs text-slate-500"></span>
+    </div>
+
+    <p class="text-xs text-slate-500 pt-2 border-t border-slate-800">
+      Want to change your password?
+      <a id="account-panel-settings-link" href="/settings" class="text-brand-500 hover:text-brand-400">Go to Settings</a>.
+    </p>
+  </div>
+</div>

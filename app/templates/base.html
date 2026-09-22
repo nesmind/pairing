@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full" data-theme="{{ theme | default(default_ui_theme) }}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}{{ app_name }}{% endblock %}</title>
+  <!-- Favicon: the same logo mark used in the chat header, inlined as a
+       data URI so there's no separate image asset to ship. -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230954cc'/%3E%3Cpath d='M9 11h14M12.5 11v8.5c0 1-1 1-1 1M19.5 11v6c0 2 1.2 2.4 2.6 3.1.5.25.5.95-.1 1.05' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+
+
+  <!-- Tailwind's browser build (the same script cdn.tailwindcss.com
+       serves), vendored locally so the app has no third-party network
+       dependency at all — see "Vendored frontend libraries" in
+       README.md. Still compiles utility classes client-side via a
+       MutationObserver, so this stays a Node-build-step-free deployment. -->
+  <script src="/static/vendor/tailwindcss/tailwind.js"></script>
+  <script>
+    // Every family here is remapped to a CSS custom property (see app/static/css/themes.css) instead of a fixed
+    // hex scale — Tailwind's JIT generates each utility class's CSS rule once, referencing whatever the active
+    // [data-theme="..."] block's vars currently resolve to, so swapping the <html data-theme> attribute is a
+    // plain browser repaint, not a re-scan. `<alpha-value>` is what lets opacity modifiers like bg-slate-900/50
+    // keep working with this scheme.
+    function themedColorScale(name) {
+      const scale = {};
+      for (const shade of [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950]) {
+        scale[shade] = `rgb(var(--color-${name}-${shade}) / <alpha-value>)`;
+      }
+      return scale;
+    }
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            slate: themedColorScale('slate'),
+            brand: themedColorScale('brand'),
+            amber: themedColorScale('amber'),
+            red: themedColorScale('red'),
+            rose: themedColorScale('rose'),
+            emerald: themedColorScale('emerald'),
+          },
+        },
+      },
+    };
+  </script>
+
+  <!-- marked.js: renders the model's markdown replies as formatted HTML. -->
+  <script src="/static/vendor/marked/marked.min.js"></script>
+  <!-- DOMPurify: sanitizes marked's HTML output before it hits innerHTML —
+       marked itself performs no sanitization, so raw HTML/event handlers in
+       message content would otherwise execute as-is. -->
+  <script src="/static/vendor/dompurify/purify.min.js"></script>
+  <!-- highlight.js: syntax-highlights fenced code blocks inside replies, with a single fixed color scheme (see
+       app.theme_config.HLJS_THEME) — not a per-user setting, unlike the app-wide UI theme below. -->
+  <link rel="stylesheet" href="/static/vendor/highlightjs/styles/{{ hljs_theme }}.min.css">
+  <script src="/static/vendor/highlightjs/highlight.min.js"></script>
+
+  <!-- Preloaded unconditionally on every page (not just when a Nunito-using theme is active) so the very first
+       live preview of "Sunshine"/"Bubblegum" in Settings never shows a flash-of-fallback-font — by the time a
+       user picks one, the browser has already fetched it. -->
+  <link rel="preload" as="font" type="font/woff2" href="/static/vendor/fonts/nunito/Nunito-Variable-latin.woff2" crossorigin>
+  <link rel="preload" as="font" type="font/woff2" href="/static/vendor/fonts/nunito/Nunito-Variable-latin-ext.woff2" crossorigin>
+  <link rel="stylesheet" href="/static/css/themes.css?v={{ static_version }}">
+  <link rel="stylesheet" href="/static/css/style.css?v={{ static_version }}">
+  {% block head %}{% endblock %}
+</head>
+<body class="h-full bg-slate-950 text-slate-100 antialiased" data-app-name="{{ app_name }}" data-is-admin="{{ 'true' if is_admin else 'false' }}" data-user-id="{{ user_id or '' }}" data-username="{{ username or '' }}" data-first-name="{{ first_name or '' }}" data-last-name="{{ last_name or '' }}" data-avatar-url="{{ avatar_url or '' }}">
+  {% block body %}{% endblock %}
+</body>
+</html>

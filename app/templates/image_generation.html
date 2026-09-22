@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Images — {{ app_name }}{% endblock %}
+{% block body %}
+<div class="flex h-full flex-col">
+  <header class="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
+    <div class="flex items-center gap-3">
+      <a href="/" class="rounded-lg p-1.5 hover:bg-slate-800 transition-colors" title="Back to chat">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+      </a>
+      <h1 class="text-sm font-semibold">Image generation</h1>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs text-slate-500">{{ username }}</span>
+      <form method="post" action="/logout" class="flex items-center">
+        <button type="submit" class="text-xs text-slate-500 hover:text-slate-300 transition-colors">Log out</button>
+      </form>
+      <!-- Opens the slide-in account panel — see
+           app/static/js/account_panel.js and app/templates/_account_panel.html. -->
+      <button id="account-panel-badge" type="button"
+        class="h-7 w-7 shrink-0 rounded-full overflow-hidden bg-slate-800 text-xs font-medium text-slate-300 hover:opacity-80 transition-opacity"
+        title="{{ username }}"></button>
+    </div>
+  </header>
+
+  <div class="flex-1 overflow-y-auto">
+    <div class="mx-auto max-w-3xl px-4 py-8 space-y-6">
+      <div id="comfyui-unavailable" class="hidden text-xs text-amber-400 bg-amber-950/40 border border-amber-900 rounded-lg px-3 py-2">
+        System is not configured for images yet, ask your admin.
+      </div>
+
+      <section class="space-y-3 rounded-lg bg-slate-900 border border-slate-800 px-4 py-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Prompt</label>
+          <textarea id="gen-prompt" rows="3" dir="auto" placeholder="A cinematic photo of…"
+            class="w-full resize-y rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500"></textarea>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Negative prompt (optional)</label>
+          <textarea id="gen-negative-prompt" rows="2" dir="auto" placeholder="blurry, low quality…"
+            class="w-full resize-y rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500"></textarea>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Checkpoint</label>
+          <select id="gen-checkpoint"
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500"></select>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Width</label>
+            <input id="gen-width" type="number" value="512" min="64" max="2048" step="64"
+              class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Height</label>
+            <input id="gen-height" type="number" value="512" min="64" max="2048" step="64"
+              class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Steps</label>
+            <input id="gen-steps" type="number" value="20" min="1" max="150"
+              class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">CFG</label>
+            <input id="gen-cfg" type="number" value="7" min="0" max="30" step="0.5"
+              class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Seed</label>
+            <input id="gen-seed" type="number" value="-1" placeholder="-1 = random"
+              class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+          </div>
+        </div>
+        <div class="flex items-center gap-3 pt-1">
+          <button id="gen-generate-btn" type="button"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            Generate
+          </button>
+          <span id="gen-status" class="text-xs text-slate-500"></span>
+        </div>
+      </section>
+
+      <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Your generations</h2>
+        <div id="gen-gallery" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+        <p id="gen-gallery-empty" class="hidden text-xs text-slate-500">No generations yet.</p>
+      </section>
+    </div>
+  </div>
+</div>
+
+{% include "_account_panel.html" %}
+
+<script src="/static/js/app.js?v={{ static_version }}"></script>
+<script src="/static/js/theme.js?v={{ static_version }}"></script>
+<script src="/static/js/account_panel.js?v={{ static_version }}"></script>
+<script src="/static/js/image_generation.js?v={{ static_version }}"></script>
+{% endblock %}

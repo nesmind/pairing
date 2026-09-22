@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Notes — {{ app_name }}{% endblock %}
+{% block body %}
+<div class="flex h-full flex-col">
+  <header class="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
+    <div class="flex items-center gap-3">
+      <a href="/" class="rounded-lg p-1.5 hover:bg-slate-800 transition-colors" title="Back to chat">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+      </a>
+      <h1 class="text-sm font-semibold">Notes</h1>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs text-slate-500">{{ username }}</span>
+      <form method="post" action="/logout" class="flex items-center">
+        <button type="submit" class="text-xs text-slate-500 hover:text-slate-300 transition-colors">Log out</button>
+      </form>
+      <!-- Opens the slide-in account panel — see
+           app/static/js/account_panel.js and app/templates/_account_panel.html. -->
+      <button id="account-panel-badge" type="button"
+        class="h-7 w-7 shrink-0 rounded-full overflow-hidden bg-slate-800 text-xs font-medium text-slate-300 hover:opacity-80 transition-opacity"
+        title="{{ username }}"></button>
+    </div>
+  </header>
+
+  <div class="flex-1 overflow-y-auto">
+    <div class="mx-auto max-w-2xl px-4 py-8 space-y-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-sm font-semibold text-slate-200">Your notes</h2>
+          <p class="text-xs text-slate-500 mt-0.5">
+            Pin a note to a chat as its persona, rules, or a skill, and that note's content
+            shapes how the model behaves in that conversation.
+          </p>
+        </div>
+        <button id="add-note-btn" type="button"
+          class="shrink-0 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-800 transition-colors">
+          + New note
+        </button>
+      </div>
+
+      <input id="notes-search" type="text" placeholder="Search notes…" dir="auto"
+        class="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm focus:outline-none focus:border-brand-500">
+
+      <div id="new-note-form" class="hidden space-y-2 rounded-lg bg-slate-900 border border-slate-800 px-4 py-3">
+        <input id="new-note-title" type="text" placeholder="Title" dir="auto"
+          class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+        <textarea id="new-note-content" rows="4" dir="auto" placeholder="Note content…"
+          class="w-full resize-y rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500"></textarea>
+
+        <div class="rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 space-y-1">
+          <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Pin to chats</p>
+          <div id="new-note-pin-picker" class="space-y-0.5 max-h-40 overflow-y-auto"></div>
+        </div>
+
+        <div class="flex items-center gap-2 pt-1">
+          <button id="create-note-btn" type="button"
+            class="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-500 transition-colors">
+            Create
+          </button>
+          <button id="cancel-add-note-btn" type="button"
+            class="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 transition-colors">
+            Cancel
+          </button>
+          <span id="add-note-status" class="text-xs text-slate-500"></span>
+        </div>
+      </div>
+
+      <div id="notes-list" class="space-y-2"></div>
+      <p id="notes-empty" class="hidden text-xs text-slate-500">No notes yet — create one above.</p>
+      <div id="notes-pagination" class="hidden flex items-center justify-between text-xs text-slate-500">
+        <button id="notes-prev-btn" type="button"
+          class="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent">
+          Prev
+        </button>
+        <span id="notes-page-info"></span>
+        <button id="notes-next-btn" type="button"
+          class="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent">
+          Next
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% include "_account_panel.html" %}
+
+<script src="/static/js/app.js?v={{ static_version }}"></script>
+<script src="/static/js/theme.js?v={{ static_version }}"></script>
+<script src="/static/js/account_panel.js?v={{ static_version }}"></script>
+<script src="/static/js/notes.js?v={{ static_version }}"></script>
+{% endblock %}
