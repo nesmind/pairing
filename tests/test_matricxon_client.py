@@ -9,16 +9,6 @@ import pytest
 from app.services import matricxon_client, matricxon_pool
 
 
-@pytest.fixture(autouse=True)
-def _reset_capabilities_cache():
-    """get_capabilities' own module-level cache (see its own docstring) must never leak between tests — a
-    plain global would otherwise let one test's fake response satisfy a later test's own real call, silently
-    hiding whatever that later test meant to check."""
-    matricxon_client._capabilities_cache = None
-    yield
-    matricxon_client._capabilities_cache = None
-
-
 class _FakeResponse:
     def __init__(self, json_body: dict):
         self._json_body = json_body
@@ -123,38 +113,23 @@ async def test_get_capabilities_raises_matricxon_error_on_http_failure(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_get_capabilities_reuses_the_cached_result_within_the_ttl(monkeypatch):
-    """The real point of this cache (confirmed live, 2026-09-21): repeated catalog builds close together in
-    time were each making their own fresh GET /api/health round trip — a second call within the TTL must reuse
-    the first's result instead of hitting Matricxon again."""
+async def test_get_capabilities_never_reuses_a_previous_result(monkeypatch):
+    """Real bug found live, 2026-09-22: this used to cache its result for 30s on the theory that Matricxon's
+    own supported-architecture list only changes on a restart — but it can also change while Matricxon keeps
+    running (granite/granitemoe/nemotron_h all landed live, in the same running process), and a stale cached
+    "not supported" verdict had no way to refresh short of restarting pAIring itself. Every call must hit
+    Matricxon fresh, even two calls back to back."""
     calls: list[str] = []
+    responses = iter([{"supported_architectures": ["mistral3"]}, {"supported_architectures": ["mistral3", "granite"]}])
     monkeypatch.setattr(matricxon_pool, "pick_host", lambda: "http://pool-picked:8420")
-    monkeypatch.setattr(
-        httpx, "AsyncClient", lambda **_kw: _FakeAsyncClient(calls, {"supported_architectures": ["mistral3"]})
-    )
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kw: _FakeAsyncClient(calls, next(responses)))
 
     first = await matricxon_client.get_capabilities()
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kw: _FakeAsyncClient(calls, next(responses)))
     second = await matricxon_client.get_capabilities()
 
-    assert first == second == {"supported_architectures": ["mistral3"]}
-    assert calls == ["http://pool-picked:8420/api/health"]  # only one real call, not two
-
-
-@pytest.mark.asyncio
-async def test_get_capabilities_refetches_once_the_cache_expires(monkeypatch):
-    calls: list[str] = []
-    monkeypatch.setattr(matricxon_pool, "pick_host", lambda: "http://pool-picked:8420")
-    monkeypatch.setattr(
-        httpx, "AsyncClient", lambda **_kw: _FakeAsyncClient(calls, {"supported_architectures": ["mistral3"]})
-    )
-
-    fake_now = [1000.0]
-    monkeypatch.setattr(matricxon_client.time, "monotonic", lambda: fake_now[0])
-
-    await matricxon_client.get_capabilities()
-    fake_now[0] += matricxon_client._CAPABILITIES_CACHE_TTL_SECONDS + 1
-    await matricxon_client.get_capabilities()
-
+    assert first == {"supported_architectures": ["mistral3"]}
+    assert second == {"supported_architectures": ["mistral3", "granite"]}  # a real, live-updated answer
     assert calls == ["http://pool-picked:8420/api/health", "http://pool-picked:8420/api/health"]
 
 

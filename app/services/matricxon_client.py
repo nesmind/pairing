@@ -25,7 +25,6 @@ needed."""
 
 import json
 import logging
-import time
 from collections.abc import AsyncGenerator
 
 import httpx
@@ -38,11 +37,6 @@ logger = logging.getLogger("llama_chat")
 
 _REQUEST_TIMEOUT = httpx.Timeout(120.0, connect=5.0)
 _CHAT_TIMEOUT = httpx.Timeout(None, connect=5.0)
-
-# get_capabilities' own short-lived cache (see that function's own docstring) — plain module-level tuple, same
-# "one shared value, no per-request state" pattern app.services.github_releases already uses for its own cache.
-_CAPABILITIES_CACHE_TTL_SECONDS = 30.0
-_capabilities_cache: tuple[float, dict] | None = None
 
 
 class MatricxonError(Exception):
@@ -82,15 +76,16 @@ async def get_capabilities() -> dict:
     "whichever engine is active", so unlike every other function in this file it's never routed through
     app.services.inference_client's active-engine dispatch.
 
-    Cached for _CAPABILITIES_CACHE_TTL_SECONDS: unlike list_models above (see its own docstring for why that
-    one stays uncached), what Matricxon can run at all only changes on a Matricxon upgrade+restart — rare and
-    already slow, never raced by a few seconds of staleness. Real report: repeated catalog builds close
-    together in time were each making their own fresh GET /api/health round trip for no reason."""
-    global _capabilities_cache
-    if _capabilities_cache is not None:
-        cached_at, cached_capabilities = _capabilities_cache
-        if time.monotonic() - cached_at < _CAPABILITIES_CACHE_TTL_SECONDS:
-            return cached_capabilities
+    Deliberately uncached — never fetch this once and reuse it across requests. This used to be cached for
+    30s on the (reasonable-sounding) theory that "what Matricxon can run at all only changes on a Matricxon
+    upgrade+restart", but that's exactly the case that broke live, 2026-09-22: Matricxon's own architecture
+    registry can gain a new entry (granite/granitemoe/nemotron_h all landed in a single session) without
+    pAIring's own process ever restarting, and a stale cached answer kept showing "not supported" for
+    something that had genuinely just become supported, with no way to force a refresh short of restarting
+    pAIring itself. /api/health is cheap on Matricxon's own side (HealthRequestHandler.handle just returns two
+    in-memory Python lists — no file I/O, no model access, see ../matricxon/app/routers/health_router.py), so
+    the redundancy this cache used to avoid (three separate catalog builders each asking within the same page
+    load) isn't worth trading away real-time accuracy for."""
     host = matricxon_pool.pick_host()
     async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
         try:
@@ -98,9 +93,7 @@ async def get_capabilities() -> dict:
             resp.raise_for_status()
         except httpx.HTTPError as exc:
             raise MatricxonError(f"Could not reach Matricxon at {host}: {exc}") from exc
-    capabilities = resp.json()
-    _capabilities_cache = (time.monotonic(), capabilities)
-    return capabilities
+    return resp.json()
 
 
 async def embed(text: str, model: str) -> list[float]:

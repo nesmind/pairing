@@ -113,22 +113,6 @@
       "note": "Not LLaVA-family, but the smallest practical local vision model available through Ollama — included alongside the two LLaVA entries as the lightest possible option for weak/CPU-only hardware. Sourced from moondream's own official Hugging Face repo — confirmed live end-to-end (real pull, then `ollama show`): moondream/moondream2-gguf, arch \"phi2\", 1.42B params, 2048 ctx, its main text-model file paired automatically by Ollama's hf.co/ pull with the repo's own -mmproj-f16.gguf projector — `ollama show` afterward listed Capabilities: completion, vision, confirming the pairing isn't just present in the repo but actually recognized by Ollama."
     },
     {
-      "family": "MiniMax M3",
-      "vendor": "MiniMax AI",
-      "tag": "hf.co/unsloth/MiniMax-M3-GGUF:UD-IQ1_M",
-      "parameter_size": "428B (23B active, MoE)",
-      "context_length": 1048576,
-      "download_gb": 128,
-      "min_ram_gb": 133,
-      "locally_runnable": true,
-      "architecture": "minimax",
-      "quantizations": null,
-      "vision": false,
-      "unavailable_reason": null,
-      "embedding_dim": null,
-      "note": "MiniMax M3 (428B total / 23B active, MoE) is a genuine local option, unlike Kimi K2 — Ollama can pull a real GGUF quantization of it straight from Hugging Face via the hf.co/ tag syntax, so this doesn't need Kimi's special-cased locally_runnable: False treatment. It's real weights running locally through Ollama the same way llama3/gemma4 do; it just needs enormous hardware (the smallest practical quant is still ~128GB) — the existing hardware gate handles that honestly on its own. MiniMax's own real general.architecture string was never verified live — this machine can't run a 128GB model to check, and it's moot either way: it's definitely not one of Matricxon's supported names, so any placeholder that fails to match is equally correct. \"UD-IQ1_M\" (Unsloth Dynamic, importance-matrix quantized) is a different quant family entirely from the K-quants — not just an unimplemented one, an architecturally different scheme with no llama.cpp \"base type\", so it's recorded as unrecognized (quantizations: null) rather than guessed at."
-    },
-    {
       "family": "Ministral 3",
       "vendor": "Mistral AI",
       "tag": "hf.co/mistralai/Ministral-3-3B-Instruct-2512-GGUF:Ministral-3-3B-Instruct-2512-Q4_K_M",

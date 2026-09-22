@@ -858,6 +858,21 @@ async function initModelTab() {
     modelsAvailable = true;
   } catch (err) {
     modelsAvailable = false;
+    // Real bug found live, 2026-09-22: this always showed the same "System is not configured for models yet,
+    // ask your admin." text, whether the real cause was a genuinely fresh install or (far more often, in
+    // practice) a transient failure actually reaching the active engine (Matricxon in particular — see
+    // MatricxonSupportChecker's own docstring on how slow it can be to answer while mid-generation). Naming
+    // the engine explicitly reads as a much clearer, more actionable signal than err.message alone — confirmed
+    // live, 2026-09-22: whatever layer actually times out a slow Matricxon request doesn't always forward GET
+    // /api/settings/model-catalog's own clean 503 detail (see app/routers/settings.py's get_model_catalog),
+    // so err.message can just be the bare, uninformative HTTP reason phrase ("Service Unavailable") instead —
+    // naming currentActiveEngine directly isn't at the mercy of that. err.message is still appended when
+    // present, since it's occasionally more specific than this alone (e.g. a real "connection refused").
+    const engineLabel = { ollama: "Ollama", matricxon: "Matricxon" }[currentActiveEngine] || "the active engine";
+    const detail = err.message ? ` (${err.message})` : "";
+    document.getElementById("model-unavailable-reason").textContent =
+      `Couldn't reach ${engineLabel} to load the model list${detail} — it may be unreachable, still starting up, ` +
+      "or slow to respond right now. Try refreshing in a moment.";
   }
   loadingEl.classList.add("hidden");
   document.getElementById("model-unavailable").classList.toggle("hidden", modelsAvailable);
