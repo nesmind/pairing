@@ -21,8 +21,9 @@ from app import hardware
 from app.model_catalog import CATALOG
 from app.models import SYSTEM_OWNER_ID, AppSetting, User
 from app.schemas import CatalogEntry, ModelCatalogResponse
-from app.services import engine_service, settings_service
+from app.services import settings_service
 from app.services.default_model_settings import DefaultModelSettings
+from app.services.extended_model_catalog_enrichment import HuggingFaceModelProbe
 from app.services.inference_client import list_models
 from app.services.installed_projector_catalog import InstalledProjectorCatalog
 from app.services.matricxon_support_checker import MatricxonSupportChecker
@@ -306,10 +307,6 @@ class ChatModelCatalogBuilder:
     ) -> CatalogEntry:
         details = installed_model.get("details", {})
         size_gb = (installed_model.get("size") or 0) / 1_000_000_000
-        # Reaching this line means it's already running successfully on whichever engine is active. If that's
-        # Matricxon, compatibility is proven, not guessed; if it's Ollama, this says nothing about Matricxon
-        # either way, so it's marked unverified rather than silently claiming it would also work there.
-        engine_proven_on_matricxon = engine_service.current_engine() == "matricxon"
         ollama_ram_gb = round(size_gb * OLLAMA_RAM_ESTIMATE_MULTIPLIER, 1) if size_gb else 0
         # Prefer ExtendedModelCatalog's own real, HF-sourced family/parameter_size (see _extended_catalog_
         # entries' own docstring) over Matricxon's raw per-tag report, which is frequently just the literal
@@ -326,6 +323,25 @@ class ChatModelCatalogBuilder:
             or self._quant_from_tag(name)
             or "?"
         )
+        # Real bug found live, 2026-09-22: this used to assume "installed while Matricxon is the active
+        # engine" meant "proven to run there" — false. Matricxon's own /api/tags lists anything with a valid
+        # sidecar file (written at pull time, by either its own puller or app.services.matricxon_direct_puller)
+        # regardless of whether it's ever actually been loaded — real architecture support is only checked at
+        # load time, the first time something tries to chat with it. A model could show up here looking fine,
+        # then fail with a genuine "unsupported architecture" error from Matricxon on the very first message.
+        # checker.verdict_for is the one real check every other catalog entry (curated, extended, embedding)
+        # already goes through — the single source of truth this now shares too, instead of a second,
+        # independent guess that could (and did) disagree with it. Architecture prefers ExtendedModelCatalog's
+        # own real GGUF-probed value when this tag is registered, else whichever engine reported it installed —
+        # both Ollama's and Matricxon's own /api/tags report the real GGUF general.architecture string as
+        # details.family regardless of which engine is currently active, so this gives a meaningful verdict
+        # even for an Ollama-installed model, not the unconditional "not verified" the old code gave every
+        # install that wasn't currently running on Matricxon.
+        architecture = (extended_entry or {}).get("architecture") or self._clean_engine_reported(details.get("family"))
+        quantizations = (extended_entry or {}).get(
+            "quantizations"
+        ) or HuggingFaceModelProbe.guess_quantizations_from_filename(name)
+        verdict = checker.verdict_for(architecture, quantizations)
         return CatalogEntry(
             family=family,
             vendor=self._vendor_from_tag(name),
@@ -345,11 +361,7 @@ class ChatModelCatalogBuilder:
             # hand-curated guess like the CATALOG branch above.
             vision="vision" in installed_model.get("capabilities", []),
             text_capable="completion" in installed_model.get("capabilities", []),
-            matricxon_supported=engine_proven_on_matricxon,
-            matricxon_unsupported_reason=(
-                None
-                if engine_proven_on_matricxon
-                else "Not verified against Matricxon — installed through Ollama, architecture unknown here."
-            ),
+            matricxon_supported=verdict.supported,
+            matricxon_unsupported_reason=verdict.reason,
             is_auto_discovered=extended_entry is None,
         )

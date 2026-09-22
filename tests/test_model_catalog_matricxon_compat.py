@@ -207,10 +207,16 @@ async def test_build_model_catalog_treats_an_unreachable_matricxon_as_unsupporte
 
 
 @pytest.mark.asyncio
-async def test_build_model_catalog_installed_extra_model_is_unverified_when_ollama_is_active(db, user, monkeypatch):
-    """A model installed outside the curated CATALOG (e.g. pulled manually) is proven to work on whichever
-    engine actually served list_models() — with Ollama active, that says nothing about Matricxon."""
-    engine_service._cached_engine = "ollama"
+async def test_build_model_catalog_auto_discovered_entry_is_honestly_unverified_with_no_real_architecture(
+    db, user, monkeypatch
+):
+    """A model installed outside the curated CATALOG (e.g. pulled manually) with no real architecture data
+    anywhere (no ExtendedModelCatalog registration, no engine-reported details.family) must not be blindly
+    assumed supported just because Matricxon happens to be the active engine right now — real bug found live,
+    2026-09-22: the old code did exactly that, since Matricxon's own /api/tags lists anything with a valid
+    sidecar file regardless of whether it's ever actually been loaded, so "installed while Matricxon is
+    active" never actually proved anything about real architecture support."""
+    engine_service._cached_engine = "matricxon"
     monkeypatch.setattr(
         svc,
         "list_models",
@@ -222,23 +228,69 @@ async def test_build_model_catalog_installed_extra_model_is_unverified_when_olla
     by_tag = {e.tag: e for e in response.entries}
     assert by_tag["custom:latest"].matricxon_supported is False
     assert by_tag["custom:latest"].matricxon_unsupported_reason
+    # Not in app/model_catalog.py's hand-curated list — see CatalogEntry.is_auto_discovered's own docstring.
+    assert by_tag["custom:latest"].is_auto_discovered is True
 
 
 @pytest.mark.asyncio
-async def test_build_model_catalog_installed_extra_model_is_proven_when_matricxon_is_active(db, user, monkeypatch):
+async def test_build_model_catalog_auto_discovered_entry_gets_a_real_verdict_when_matricxon_is_active(
+    db, user, monkeypatch
+):
+    """The fix for the bug above: checker.verdict_for is the one real check every other catalog entry
+    (curated, extended, embedding) already goes through — an auto-discovered entry now shares it too, using
+    whichever engine reported this model installed as the architecture source (both Ollama's and Matricxon's
+    own /api/tags report the real GGUF general.architecture string as details.family)."""
     engine_service._cached_engine = "matricxon"
     monkeypatch.setattr(
         svc,
         "list_models",
-        lambda: _async_return([{"name": "custom:latest", "capabilities": ["completion"]}]),
+        lambda: _async_return(
+            [
+                {
+                    "name": "hf.co/org/repo:model-Q4_K_M",
+                    "capabilities": ["completion"],
+                    "details": {"family": "mistral3"},
+                }
+            ]
+        ),
     )
 
     response = await ChatModelCatalogBuilder(db, user).build()
 
-    by_tag = {e.tag: e for e in response.entries}
-    assert by_tag["custom:latest"].matricxon_supported is True
-    # Not in app/model_catalog.py's hand-curated list — see CatalogEntry.is_auto_discovered's own docstring.
-    assert by_tag["custom:latest"].is_auto_discovered is True
+    entry = {e.tag: e for e in response.entries}["hf.co/org/repo:model-Q4_K_M"]
+    assert entry.matricxon_supported is True
+    assert entry.matricxon_unsupported_reason is None
+
+
+@pytest.mark.asyncio
+async def test_build_model_catalog_auto_discovered_entry_is_unverified_when_ollama_is_active_even_with_real_data(
+    db, user, monkeypatch
+):
+    """MatricxonSupportChecker.load() deliberately never asks Matricxon anything while Ollama is active (a real,
+    intentional perf cost this codebase already avoids for every other entry type too — see its own docstring)
+    — so even a real, known-supported architecture correctly reads as "not verified" here, the same honest
+    "we never actually asked" reason every other catalog entry already gives in this situation, not a
+    Matricxon-reachability lie in either direction."""
+    engine_service._cached_engine = "ollama"
+    monkeypatch.setattr(
+        svc,
+        "list_models",
+        lambda: _async_return(
+            [
+                {
+                    "name": "hf.co/org/repo:model-Q4_K_M",
+                    "capabilities": ["completion"],
+                    "details": {"family": "mistral3"},
+                }
+            ]
+        ),
+    )
+
+    response = await ChatModelCatalogBuilder(db, user).build()
+
+    entry = {e.tag: e for e in response.entries}["hf.co/org/repo:model-Q4_K_M"]
+    assert entry.matricxon_supported is False
+    assert "Could not reach Matricxon" in entry.matricxon_unsupported_reason
 
 
 @pytest.mark.asyncio

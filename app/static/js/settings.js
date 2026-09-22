@@ -2023,6 +2023,7 @@ async function loadServerSection(server) {
     binaryPathInput.placeholder = autoDetected.path || "not found — install or enter a path";
     const modelsPathInput = section.querySelector('[data-field="models_path"]');
     modelsPathInput.value = config.models_path ?? "";
+    modelsPathInput.dataset.loadedValue = config.models_path ?? ""; // see the save handler's own confirm check
     modelsPathInput.placeholder = autoDetected.models_path;
     section.querySelector('[data-field="num_parallel"]').value = config.num_parallel ?? "";
     section.querySelector('[data-field="keep_alive"]').value = config.keep_alive ?? "";
@@ -2037,6 +2038,7 @@ async function loadServerSection(server) {
     projectDirInput.placeholder = autoDetected.path || "not found — enter a path";
     const modelsPathInput = section.querySelector('[data-field="models_path"]');
     modelsPathInput.value = config.models_path ?? "";
+    modelsPathInput.dataset.loadedValue = config.models_path ?? ""; // see the save handler's own confirm check
     modelsPathInput.placeholder = autoDetected.models_path || "<project directory>/data/models";
     section.querySelector('[data-field="max_loaded_models"]').value = config.max_loaded_models ?? "";
     section.querySelector('[data-field="memory_safety_margin"]').value = config.memory_safety_margin ?? "";
@@ -2270,6 +2272,20 @@ for (const server of EXTERNAL_SERVERS) {
   section.querySelector('[data-action="save"]').addEventListener("click", async () => {
     const statusEl = section.querySelector('[data-field="status"]');
     const body = collectServerConfig(server, section);
+    // Real bug found live, 2026-09-22: clearing this field back to blank silently drops the override —
+    // Matricxon/Ollama then falls back to its own default models directory on its very next restart, however
+    // that restart happens, and every model that was only ever visible at the custom path "vanishes" with no
+    // warning at save time at all. A destructive-enough change (same spirit as the duplicate-install confirm
+    // in pullModel) to ask about explicitly, same as the "this restarts the engine" confirm just below.
+    const modelsPathInput = section.querySelector('[data-field="models_path"]');
+    if (modelsPathInput?.dataset.loadedValue && !body.models_path) {
+      const confirmed = confirm(
+        `Clearing the models directory override means ${server === "ollama" ? "Ollama" : "Matricxon"} will fall ` +
+          `back to its own default location on its next restart — models currently at "${modelsPathInput.dataset.loadedValue}" ` +
+          "will stop showing up as installed (they aren't deleted, just no longer where it's looking). Continue?",
+      );
+      if (!confirmed) return;
+    }
     statusEl.textContent = "Saving…";
     try {
       // Ollama's (and Matricxon's — see app.services.matricxon_process.apply_local_config) local-mode parameters
