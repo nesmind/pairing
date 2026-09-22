@@ -46,9 +46,14 @@ class CatalogEntry(BaseModel):
     unavailable_reason: str | None = None
     # Whether this model can see an image attachment (see
     # app.services.chat_attachment_service and the "Default vision
-    # model" picker in Settings) — for a curated app/model_catalog.py
-    # entry, hand-annotated there; for an already-installed model not in
-    # that list, read live from Ollama's own "vision" capability tag.
+    # model" picker in Settings). For a not-yet-installed curated
+    # app/model_catalog.py entry, hand-annotated there as a pre-install
+    # estimate only; once a tag is actually installed (curated or not),
+    # read live from the active engine's own "vision" capability tag
+    # instead — confirmed live, 2026-09-22: the curated flag reflects
+    # Ollama's own auto-pairing behavior for a hf.co/ pull and can
+    # disagree with what's actually installed under a different engine
+    # (e.g. Matricxon, which doesn't auto-pair a projector the same way).
     vision: bool = False
     # Whether this model can also hold an ordinary text conversation —
     # true for every entry this catalog can currently produce (see

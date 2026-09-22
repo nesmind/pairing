@@ -263,8 +263,19 @@ class ChatModelCatalogBuilder:
 
     def _catalog_entry(self, entry, installed_by_tag: dict, hidden_tags: set[str], capacity_gb: float, checker):
         tag = entry.tag
-        installed = tag is not None and tag in installed_by_tag
-        verdict = checker.verdict_for(entry.architecture, entry.quantizations)
+        installed_model = installed_by_tag.get(tag) if tag else None
+        installed = installed_model is not None
+        # Once a tag is actually installed, the active engine's own live report is the only source of truth for
+        # architecture — not a merge/fallback with the curated static guess. A curated entry's architecture is
+        # only ever a pre-install estimate (see this method's own vision comment below for the exact same
+        # principle already applied there); trusting it once the engine disagrees, or even as a silent fallback
+        # when the engine reports nothing, would let a stale/wrong static value outrank what's actually running.
+        architecture = (
+            self._clean_engine_reported(installed_model.get("details", {}).get("family"))
+            if installed_model is not None
+            else entry.architecture
+        )
+        verdict = checker.verdict_for(architecture, entry.quantizations)
         # Ollama's own RAM figure from download_gb (it exposes no better number); Matricxon's real figure below
         # only once this exact tag is confirmed installed (an un-pulled tag's can't be computed without its
         # real GGUF file to read tensor shapes from).
@@ -289,7 +300,16 @@ class ChatModelCatalogBuilder:
             hardware_ok=installed or (entry.locally_runnable and capacity_gb >= entry.min_ram_gb),
             unavailable_reason=entry.unavailable_reason,
             hidden=tag in hidden_tags,
-            vision=entry.vision,
+            # The curated flag is only ever a pre-install promise (e.g. moondream's is true because Ollama
+            # auto-pairs its mmproj projector on a hf.co/ pull — confirmed live, 2026-09-22) — Matricxon doesn't
+            # do that same auto-pairing, so trusting it post-install could show a "+vision" badge here while
+            # installed_vision_models() (the same live-capability check _auto_discovered_entry uses below)
+            # correctly reports the model as not vision-capable. Once a tag is actually installed, the engine's
+            # own reported capabilities are the real source of truth; the static flag is only a fallback for a
+            # tag nothing has confirmed live yet.
+            vision=(
+                "vision" in installed_model.get("capabilities", []) if installed_model is not None else entry.vision
+            ),
             # Every CATALOG entry is a normal chat model by definition (this whole list is curated as one) —
             # see CatalogEntry.text_capable's own docstring for why this is never actually False here today.
             text_capable=True,

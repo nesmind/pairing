@@ -14,7 +14,7 @@ from app.schemas import EmbeddingCatalogEntry, EmbeddingModelCatalogResponse
 from app.services.default_model_settings import DefaultModelSettings
 from app.services.inference_client import list_models
 from app.services.matricxon_support_checker import MatricxonSupportChecker
-from app.services.model_catalog_service import OLLAMA_RAM_ESTIMATE_MULTIPLIER
+from app.services.model_catalog_service import OLLAMA_RAM_ESTIMATE_MULTIPLIER, ChatModelCatalogBuilder
 
 
 class EmbeddingModelCatalogService:
@@ -32,8 +32,19 @@ class EmbeddingModelCatalogService:
 
         entries = []
         for entry in CATALOG.embedding_models:
-            installed = entry.tag in installed_by_tag
-            verdict = checker.verdict_for(entry.architecture, entry.quantizations)
+            installed_model = installed_by_tag.get(entry.tag)
+            installed = installed_model is not None
+            # Once installed, the active engine's own live report is the only source of truth for architecture —
+            # not a merge/fallback with the curated static guess. Same principle as
+            # ChatModelCatalogBuilder._catalog_entry's identical fix (see that method's own comment): a curated
+            # entry's architecture is only ever a pre-install estimate, and trusting it once the engine disagrees
+            # (or reports nothing) would let a stale/wrong static value outrank what's actually running.
+            architecture = (
+                ChatModelCatalogBuilder._clean_engine_reported(installed_model.get("details", {}).get("family"))
+                if installed_model is not None
+                else entry.architecture
+            )
+            verdict = checker.verdict_for(architecture, entry.quantizations)
             min_ram_gb_ollama = (
                 round(entry.download_gb * OLLAMA_RAM_ESTIMATE_MULTIPLIER, 1) if entry.download_gb else entry.min_ram_gb
             )
