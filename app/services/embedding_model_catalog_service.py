@@ -28,7 +28,7 @@ class EmbeddingModelCatalogService:
         installed_models = await list_models()
         installed_by_tag = {m["name"]: m for m in installed_models if "embedding" in m.get("capabilities", [])}
         capacity_gb = hardware.available_capacity_gb()
-        checker = await MatricxonSupportChecker.load()
+        checker = await MatricxonSupportChecker.load(installed_models)
 
         entries = []
         for entry in CATALOG.embedding_models:

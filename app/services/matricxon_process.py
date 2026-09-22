@@ -22,6 +22,7 @@ import httpx
 
 from app.config import BASE_DIR, IS_PRIMARY
 from app.schemas import MatricxonServerConfig, MatricxonServerStatus
+from app.services import env_file
 from app.services.matricxon_pool import LOCAL_MATRICXON_HOST
 
 logger = logging.getLogger("llama_chat")
@@ -121,6 +122,37 @@ def _build_env(config: MatricxonServerConfig, proxy_url: str | None = None) -> d
         env["http_proxy"] = proxy_url
         env["https_proxy"] = proxy_url
     return env
+
+
+def write_env_file(config: MatricxonServerConfig) -> None:
+    """Persists `config`'s local-mode fields into Matricxon's own .env file (its Settings class already loads
+    one — see ../matricxon/app/config.py's `env_file=".env"` — so this works via pydantic-settings' own native
+    support, no code change needed on that side) — not just into *this* process's env when this app itself
+    happens to be the one launching it (see _build_env, used only in that one case). Confirmed live,
+    2026-09-22: after a laptop restart, Matricxon came back up started some other way (its own scripts/start.sh
+    run directly, a systemd unit, ...) and silently fell back to its own default, now-empty models directory —
+    this closes that gap at the source, so the config takes effect no matter what actually starts the process,
+    the same way it always would if this app were the one starting it. Called on every config save (see
+    app/routers/matricxon_admin.py's _save_and_broadcast), not just at start time, so it's already in place
+    before Matricxon next comes up however that happens. A no-op if the project directory can't currently be
+    resolved — saving a config for an install that isn't finished/found yet must not fail outright over this."""
+    project_dir = resolve_project_dir(config.project_dir)
+    if project_dir is None:
+        return
+    env_file.write_env_values(
+        {
+            "MATRICXON_MODELS_DIR": config.models_path,
+            "MATRICXON_MAX_LOADED_MODELS": (
+                str(config.max_loaded_models) if config.max_loaded_models is not None else None
+            ),
+            "MATRICXON_MEMORY_SAFETY_MARGIN": (
+                str(config.memory_safety_margin) if config.memory_safety_margin is not None else None
+            ),
+            "MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE": "true" if config.enable_quantized_native_compute else "false",
+            "MATRICXON_LOG_LEVEL": str(config.log_level),
+        },
+        path=project_dir / ".env",
+    )
 
 
 def _run_script(project_dir: Path, script: str, env: dict[str, str]) -> subprocess.CompletedProcess:

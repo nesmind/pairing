@@ -156,3 +156,26 @@ async def test_load_degrades_cleanly_when_matricxon_is_unreachable(monkeypatch):
     verdict = checker.verdict_for("mistral3", ["Q4_K"])
     assert verdict.supported is False
     assert "Could not reach Matricxon" in verdict.reason
+
+
+@pytest.mark.asyncio
+async def test_load_skips_its_own_list_models_call_when_given_an_already_fetched_list(monkeypatch):
+    """Real bug found live, 2026-09-22: every catalog builder (ChatModelCatalogBuilder,
+    EmbeddingModelCatalogService, ExtendedModelCatalog.build) already fetches list_models() for its own
+    separate reasons before ever reaching here — load() used to always fetch it *again* on top of that, doubling
+    Matricxon's own /api/tags traffic on every single catalog page load for no reason (and, since that endpoint
+    can be slow to answer while Matricxon is mid-generation, doubling the chance of the whole page load timing
+    out). Passing the caller's own list must skip the redundant fetch entirely."""
+    engine_service._cached_engine = "matricxon"
+    monkeypatch.setattr(matricxon_client, "get_capabilities", lambda: _async_return(_CAPS))
+
+    async def _fail_if_called():
+        raise AssertionError("list_models must not be called again when installed_models is already given")
+
+    monkeypatch.setattr(matricxon_client, "list_models", _fail_if_called)
+
+    checker = await MatricxonSupportChecker.load(
+        [{"name": "some-tag", "capabilities": ["completion"], "estimated_ram_gb": 3.8}]
+    )
+
+    assert checker.estimated_ram_gb("some-tag") == 3.8

@@ -79,6 +79,7 @@ let currentExtendedCatalog = null; // cached GET /api/settings/model-catalog/ext
 let currentEmbeddingCatalog = null; // cached GET /api/settings/embedding-model-catalog response
 let selectedModelTag = null; // the default model for new chats (Model tab), or the target being edited's own model (Behavior tab's num_ctx narrowing only — see loadTarget)
 let modelsAvailable = true; // false when the model catalog itself failed to load (see initModelTab)
+let modelTabLoading = false; // guards against two overlapping initModelTab() runs — see its own docstring
 // Which engine (see app.services.engine_service) is currently active — read from /health (public, no admin
 // gate) rather than GET /api/settings/engine (admin-only), since the Model tab's own catalog/badges are visible
 // to every user, not just admins. Used only to decide whether the "Not supported" badge below is relevant right
@@ -711,17 +712,35 @@ function renderHfRepoFiles(repo) {
     label.innerHTML = `${escapeHtml(`${file.filename} (${formatSize(file.download_gb)})`)}${recommendedBadge}${projectorBadge}`;
     fileRow.appendChild(label);
 
+    const addBtnGroup = document.createElement("span");
+    addBtnGroup.className = "shrink-0 flex items-center gap-2";
+
+    // A wrapping <span> with its own innerHTML set to the full <svg>...</svg> markup — not
+    // document.createElement("svg") (that creates a plain HTMLUnknownElement, wrong namespace, and
+    // silently never renders as an actual SVG at all — confirmed live, 2026-09-22). Assigning innerHTML
+    // goes through the real HTML parser instead, which does correctly switch into the SVG namespace for
+    // foreign content, the same way the Model tab's own static-HTML spinner already renders correctly.
+    const addSpinner = document.createElement("span");
+    addSpinner.className = "hidden";
+    addSpinner.innerHTML =
+      '<svg class="h-4 w-4 animate-spin text-slate-400" viewBox="0 0 24 24" fill="none">' +
+      '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
+      '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>' +
+      "</svg>";
+
     const addBtn = document.createElement("button");
     addBtn.type = "button";
     addBtn.className =
-      "shrink-0 rounded-md bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-500 transition-colors";
+      "rounded-md bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-500 transition-colors disabled:opacity-60";
     addBtn.textContent = "Add";
     addBtn.addEventListener("click", async () => {
       addBtn.disabled = true;
+      addSpinner.classList.remove("hidden");
       // Shown right below the file list itself (hf-repo-files-status), not hf-search-status up near the
       // search box — confirmed live: adding a file (this GGUF-header probe can take a few real seconds, see
       // app.services.gguf_probe's own docstring) left "Adding…" sitting somewhere an admin who'd already
-      // scrolled down to click this exact button couldn't see at all.
+      // scrolled down to click this exact button couldn't see at all. The spinner right beside the button
+      // itself (see addSpinner above) is the same idea for whoever's eyes are still right there on it.
       hfRepoFilesStatusEl.textContent = "Adding…";
       hfRepoFilesStatusEl.classList.remove("text-red-400");
       try {
@@ -738,15 +757,22 @@ function renderHfRepoFiles(repo) {
         hideHfRepoFiles();
         hfSearchResultsEl.classList.add("hidden");
         hfSearchStatusEl.textContent = message;
-        await loadExtendedCatalog();
-        renderExtendedModelCatalog();
+        // refreshCatalogs() (not just loadExtendedCatalog/renderExtendedModelCatalog) — real bug found live,
+        // 2026-09-22: when already_installed is true, this tag can now show up in the *main* catalog too (see
+        // ChatModelCatalogBuilder.build's own is_auto_discovered handling), but the old code only ever
+        // refreshed the extended one. It correctly vanished from "Browse more models" (ExtendedModelCatalog.
+        // build excludes installed tags) but never appeared in the upper list until a full page reload.
+        await refreshCatalogs();
       } catch (err) {
         hfRepoFilesStatusEl.textContent = err.message;
         hfRepoFilesStatusEl.classList.add("text-red-400");
         addBtn.disabled = false;
+        addSpinner.classList.add("hidden");
       }
     });
-    fileRow.appendChild(addBtn);
+    addBtnGroup.appendChild(addSpinner);
+    addBtnGroup.appendChild(addBtn);
+    fileRow.appendChild(addBtnGroup);
     hfRepoFilesEl.appendChild(fileRow);
   }
 
@@ -806,8 +832,24 @@ if (hfSearchBtn) {
 
 /** Loads the Model tab's own default-model picker — independent of Behavior's target-picker (the model here
  * only ever means "the default for new chats", see saveModelSelection's own docstring), so this runs once at
- * page load and again each time the Model tab is re-activated (see loadTabData), not tied to loadTarget at all. */
+ * page load and again each time the Model tab is re-activated (see loadTabData), not tied to loadTarget at all.
+ * Guarded against overlapping with itself (see modelTabLoading) — real bug found live, 2026-09-22: on a page
+ * load where "Model" was the tab a reload restored, this ran twice concurrently (once unconditionally from the
+ * boot sequence, once again from restoreTabAfterReload's own loadTabData call for the restored tab) — two
+ * independent runs each racing to show/hide the same spinner left it in whichever state the *first* one to
+ * finish set, sometimes stuck visible even after the page had genuinely finished loading. */
 async function initModelTab() {
+  if (modelTabLoading) return;
+  modelTabLoading = true;
+  // Shown again on every call (not just the page's very first load) — this tab, and this fetch, re-run each
+  // time the Model tab is re-activated (see this function's own docstring), and the previous run already hid
+  // it before returning. Matricxon's own /api/tags can take a few real seconds to answer (see
+  // MatricxonSupportChecker.load's own docstring on why every catalog builder now reuses one fetch instead of
+  // each making their own) — without this, that whole window showed an empty, seemingly-broken section.
+  const loadingEl = document.getElementById("model-loading");
+  loadingEl.classList.remove("hidden");
+  document.getElementById("model-unavailable").classList.add("hidden");
+  document.getElementById("model-field-normal").classList.add("hidden");
   try {
     currentActiveEngine = (await api("/health")).active_engine;
     await loadCatalog();
@@ -817,8 +859,10 @@ async function initModelTab() {
   } catch (err) {
     modelsAvailable = false;
   }
+  loadingEl.classList.add("hidden");
   document.getElementById("model-unavailable").classList.toggle("hidden", modelsAvailable);
   document.getElementById("model-field-normal").classList.toggle("hidden", !modelsAvailable);
+  modelTabLoading = false;
 }
 
 // ---- RAG availability + knowledge base (private documents) ---------------

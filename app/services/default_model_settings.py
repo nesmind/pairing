@@ -22,9 +22,6 @@ _EMBEDDING_KEY = "default_embedding_model"
 
 
 class DefaultModelSettings:
-    # Public (unlike the other two keys above) since app.services.engine_switch_service.clear_stale_default_models
-    # needs to identify this exact AppSetting row alongside settings_service.DEFAULT_MODEL_KEY, to clear it out
-    # when its configured tag stops being installed after an engine switch.
     FOR_NEW_USERS_KEY = "default_model_for_new_users"
 
     def __init__(self, db: AsyncSession) -> None:

@@ -11,10 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import KNOWLEDGE_DIR
 from app.models import AppSetting, ChannelMember, Conversation, Document, Note, User
 from app.schemas import UserCreate, UserUpdate
+from app.services import engine_service
 from app.services.auth_service import hash_password
 from app.services.model_catalog_service import get_default_model_for_new_users, installed_chat_models
 from app.services.note_service import seed_default_notes
-from app.services.settings_service import DEFAULT_MODEL_KEY
+from app.services.settings_service import default_model_key
 
 
 async def active_admin_count(db: AsyncSession, exclude_username: str | None = None) -> int:
@@ -61,7 +62,8 @@ async def create_user(db: AsyncSession, body: UserCreate) -> User:
     await db.flush()  # assigns user.id so the rows below can reference it
 
     default_model = await get_default_model_for_new_users(db, installed)
-    db.add(AppSetting(owner_id=user.id, key=DEFAULT_MODEL_KEY, value={"model": default_model}))
+    key = default_model_key(engine_service.current_engine())
+    db.add(AppSetting(owner_id=user.id, key=key, value={"model": default_model}))
     await seed_default_notes(db, user)
 
     await db.commit()

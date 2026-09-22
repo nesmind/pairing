@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import User
 from app.schemas import ActiveEngineConfig, OkResponse
-from app.services import engine_service, engine_switch_service, server_pool_broadcast
+from app.services import engine_service, server_pool_broadcast
 from app.services.auth_service import require_admin
 
 logger = logging.getLogger("llama_chat")
@@ -30,13 +30,11 @@ async def get_active_engine(db: AsyncSession = Depends(get_db), _admin: User = D
 async def set_active_engine(
     body: ActiveEngineConfig, db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)
 ):
-    previous_engine = await engine_service.get_active_engine(db)
+    # Each engine's own default model lives under its own AppSetting key (see
+    # settings_service.default_model_key) — switching here never needs to touch it, unlike the old shared-key
+    # design (confirmed live, 2026-09-22: that one had to explicitly wipe the stored default on every switch,
+    # since a single value could otherwise point at a tag the *other* engine doesn't have).
     await engine_service.set_active_engine(db, body.active_engine)
-    if body.active_engine != previous_engine:
-        # Only when the engine actually changed — a no-op save (re-picking the same engine) must never touch
-        # anyone's already-valid default model. See engine_switch_service's own docstring for why this can't
-        # live inside engine_service.set_active_engine itself (a circular import).
-        await engine_switch_service.clear_stale_default_models(db)
     failures = await server_pool_broadcast.broadcast_refresh("/api/settings/engine/internal-refresh")
     if failures:
         logger.warning("Some instances did not pick up the new active engine: %s", "; ".join(failures))

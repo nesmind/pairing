@@ -46,12 +46,15 @@ router = APIRouter(prefix="/api/settings/matricxon", tags=["matricxon"])
 
 
 async def _save_and_broadcast(db: AsyncSession, body: MatricxonServerConfig) -> None:
-    """Persists `body` and, only if Matricxon is currently the active engine (see app.services.engine_service),
+    """Persists `body`, writes it into Matricxon's own .env file (see matricxon_process.write_env_file — so the
+    config takes effect no matter what actually starts the Matricxon process, not just this app's own
+    supervisor), and, only if Matricxon is currently the active engine (see app.services.engine_service),
     refreshes this instance's own live matricxon_pool and best-effort propagates the same refresh to every other
-    local instance. Saving the *inactive* engine's config is still persisted — it just has no live effect until
-    an admin switches to it (see app/routers/engine_admin.py) — mirroring ollama_admin.py's own
+    local instance. Saving the *inactive* engine's config still does both of the above — it just has no live
+    pool effect until an admin switches to it (see app/routers/engine_admin.py) — mirroring ollama_admin.py's own
     _save_and_broadcast, unconditional there only because Ollama has no sibling engine to defer to."""
     await settings_service.set_matricxon_server_config(db, body)
+    matricxon_process.write_env_file(body)
     if await engine_service.get_active_engine(db) == "matricxon":
         matricxon_pool.refresh_from_config(body)
         failures = await server_pool_broadcast.broadcast_refresh("/api/settings/matricxon/internal-refresh")

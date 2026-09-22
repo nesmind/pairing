@@ -8,11 +8,7 @@ from fastapi import HTTPException
 from app.models import SYSTEM_OWNER_ID, AppSetting
 from app.routers import engine_admin
 from app.schemas import ActiveEngineConfig
-from app.services import engine_service, engine_switch_service, server_pool_broadcast, settings_service
-
-
-async def _async_return(value):
-    return value
+from app.services import engine_service, server_pool_broadcast, settings_service
 
 
 class _FakeClient:
@@ -44,7 +40,6 @@ async def test_set_active_engine_persists_and_updates_the_cache(db, monkeypatch)
         return []
 
     monkeypatch.setattr(server_pool_broadcast, "broadcast_refresh", fake_broadcast)
-    monkeypatch.setattr(engine_switch_service, "list_models", lambda: _async_return([]))
 
     result = await engine_admin.set_active_engine(ActiveEngineConfig(active_engine="ollama"), db=db, _admin=None)
 
@@ -54,46 +49,28 @@ async def test_set_active_engine_persists_and_updates_the_cache(db, monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_set_active_engine_clears_a_stale_default_when_the_engine_actually_changes(db, monkeypatch):
-    """The real bug this covers: switching engines used to leave the previous engine's default model tag
-    behind, pointed at something the newly active engine may never have heard of (see
-    engine_switch_service.clear_stale_default_models's own docstring)."""
+async def test_set_active_engine_preserves_each_engines_own_default_independently(db, monkeypatch):
+    """The real bug this now guards against staying fixed: switching engines used to wipe the stored default
+    model outright (see settings_service.default_model_key's own docstring on why a single shared key needed
+    that). Per-engine keys mean a switch must never touch either engine's own stored default at all — each
+    stays exactly as set, in both directions."""
 
     async def fake_broadcast(_path):
         return []
 
     monkeypatch.setattr(server_pool_broadcast, "broadcast_refresh", fake_broadcast)
-    monkeypatch.setattr(engine_switch_service, "list_models", lambda: _async_return([]))
-    await settings_service.set_default_model(db, SYSTEM_OWNER_ID, "stale-tag")
+    engine_service._cached_engine = "ollama"
+    await settings_service.set_default_model(db, SYSTEM_OWNER_ID, "ollama-tag")
+    engine_service._cached_engine = "matricxon"
+    await settings_service.set_default_model(db, SYSTEM_OWNER_ID, "matricxon-tag")
 
     await engine_admin.set_active_engine(ActiveEngineConfig(active_engine="ollama"), db=db, _admin=None)
+    await engine_admin.set_active_engine(ActiveEngineConfig(active_engine="matricxon"), db=db, _admin=None)
 
-    assert await db.get(AppSetting, (SYSTEM_OWNER_ID, settings_service.DEFAULT_MODEL_KEY)) is None
-
-
-@pytest.mark.asyncio
-async def test_set_active_engine_leaves_defaults_alone_on_a_no_op_save(db, monkeypatch):
-    """Re-picking the already-active engine (e.g. just pressing Save again) must never touch an already-valid
-    default — only an actual change in which engine is active should trigger the stale-default sweep."""
-
-    async def fake_broadcast(_path):
-        return []
-
-    monkeypatch.setattr(server_pool_broadcast, "broadcast_refresh", fake_broadcast)
-
-    def fail_if_called():
-        raise AssertionError("clear_stale_default_models must not run on a no-op engine save")
-
-    monkeypatch.setattr(engine_switch_service, "list_models", fail_if_called)
-    await settings_service.set_default_model(db, SYSTEM_OWNER_ID, "still-there-tag")
-
-    await engine_admin.set_active_engine(
-        ActiveEngineConfig(active_engine=engine_service.DEFAULT_ENGINE), db=db, _admin=None
-    )
-
-    row = await db.get(AppSetting, (SYSTEM_OWNER_ID, settings_service.DEFAULT_MODEL_KEY))
-    assert row is not None
-    assert row.value["model"] == "still-there-tag"
+    ollama_row = await db.get(AppSetting, (SYSTEM_OWNER_ID, settings_service.default_model_key("ollama")))
+    matricxon_row = await db.get(AppSetting, (SYSTEM_OWNER_ID, settings_service.default_model_key("matricxon")))
+    assert ollama_row.value["model"] == "ollama-tag"
+    assert matricxon_row.value["model"] == "matricxon-tag"
 
 
 @pytest.mark.asyncio

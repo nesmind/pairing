@@ -10,7 +10,7 @@ import pytest
 
 from app.models import SYSTEM_OWNER_ID, AppSetting
 from app.schemas import ComfyUIProcessConfig, OllamaServerConfig
-from app.services import settings_service
+from app.services import engine_service, settings_service
 
 
 @pytest.mark.asyncio
@@ -132,3 +132,67 @@ async def test_set_comfyui_config_normalizes_remote_with_no_hosts_to_local(db):
     config = await settings_service.get_comfyui_config(db)
 
     assert config.mode == "local"
+
+
+# ---- default model (per-engine) --------------------------------------------
+# Real bug found live, 2026-09-22: a single shared "default_model" key meant switching the active engine had
+# to explicitly wipe it (see the now-removed app.services.engine_switch_service), losing the admin's actual
+# preference outright rather than just no longer being able to display it. default_model_key scopes the
+# stored value per engine instead, so neither switching nor a restart ever loses it.
+
+
+@pytest.fixture(autouse=True)
+def _reset_engine_cache():
+    engine_service._cached_engine = engine_service.DEFAULT_ENGINE
+    yield
+    engine_service._cached_engine = engine_service.DEFAULT_ENGINE
+
+
+def test_default_model_key_is_scoped_per_engine():
+    assert settings_service.default_model_key("ollama") != settings_service.default_model_key("matricxon")
+
+
+@pytest.mark.asyncio
+async def test_get_default_model_falls_back_to_the_config_constant_when_nothing_set(db, user):
+    from app.config import DEFAULT_MODEL
+
+    assert await settings_service.get_default_model(db, user) == DEFAULT_MODEL
+
+
+@pytest.mark.asyncio
+async def test_set_default_model_then_get_round_trips(db, user):
+    await settings_service.set_default_model(db, user.id, "my-tag")
+    assert await settings_service.get_default_model(db, user) == "my-tag"
+
+
+@pytest.mark.asyncio
+async def test_default_model_survives_an_engine_switch_and_back(db, user):
+    """The exact scenario reported live: set a default while Ollama is active, switch to Matricxon, switch
+    back — the Ollama-scoped default must still be there, untouched, the whole time."""
+    engine_service._cached_engine = "ollama"
+    await settings_service.set_default_model(db, user.id, "ollama-tag")
+
+    engine_service._cached_engine = "matricxon"
+    assert await settings_service.get_default_model(db, user) != "ollama-tag"
+
+    engine_service._cached_engine = "ollama"
+    assert await settings_service.get_default_model(db, user) == "ollama-tag"
+
+
+@pytest.mark.asyncio
+async def test_each_engine_keeps_its_own_independent_default(db, user):
+    engine_service._cached_engine = "ollama"
+    await settings_service.set_default_model(db, user.id, "ollama-tag")
+    engine_service._cached_engine = "matricxon"
+    await settings_service.set_default_model(db, user.id, "matricxon-tag")
+
+    engine_service._cached_engine = "ollama"
+    assert await settings_service.get_default_model(db, user) == "ollama-tag"
+    engine_service._cached_engine = "matricxon"
+    assert await settings_service.get_default_model(db, user) == "matricxon-tag"
+
+
+@pytest.mark.asyncio
+async def test_get_default_model_falls_back_to_the_system_wide_row_for_this_engine(db, user):
+    await settings_service.set_default_model(db, SYSTEM_OWNER_ID, "system-tag")
+    assert await settings_service.get_default_model(db, user) == "system-tag"

@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import DEFAULT_GENERATION_PARAMS, DEFAULT_MODEL
 from app.models import SYSTEM_OWNER_ID, AppSetting, User
 from app.schemas import ComfyUIProcessConfig, MatricxonServerConfig, OllamaServerConfig, RagLimits
+from app.services import engine_service
 
 DEFAULTS_KEY = "default_generation_params"
 DEFAULT_MODEL_KEY = "default_model"
@@ -48,26 +49,39 @@ _VALID_PROXY_MODES = {"proxy", "local"}
 DEFAULT_PROXY_MODE = "local"
 
 
+def default_model_key(engine: str) -> str:
+    """The AppSetting key for one engine's own remembered default model — scoped per engine, not a single
+    shared value, so switching between Ollama and Matricxon (see app.services.engine_service) never wipes or
+    cross-contaminates the other's pick. Confirmed live, 2026-09-22: with a single shared key, an admin's
+    default model vanished after every engine switch — the old app.services.engine_switch_service explicitly
+    wiped it so it could never point at a tag the *other* engine doesn't have. Per-engine keys remove that
+    failure mode entirely: each engine's own stored default only ever needs to stay valid within its own
+    installed set, so there's nothing left to go stale from a switch."""
+    return f"{DEFAULT_MODEL_KEY}:{engine}"
+
+
 async def get_default_model(db: AsyncSession, user: User) -> str:
-    """Returns `user`'s own default model — what a brand-new conversation
-    of theirs uses if they didn't specify one (see
-    app.services.conversation_service.create_conversation). Same
-    fallback chain as get_default_params: the user's own choice, then a
-    system-wide row, then app.config.DEFAULT_MODEL."""
-    row = await db.get(AppSetting, (user.id, DEFAULT_MODEL_KEY))
+    """Returns `user`'s own default model for whichever engine is currently active (see
+    app.services.engine_service.current_engine) — what a brand-new conversation of theirs uses if they didn't
+    specify one (see app.services.conversation_service.create_conversation). Same fallback chain as
+    get_default_params: the user's own choice for this engine, then a system-wide row for it, then
+    app.config.DEFAULT_MODEL."""
+    key = default_model_key(engine_service.current_engine())
+    row = await db.get(AppSetting, (user.id, key))
     if row:
         return row.value["model"]
-    system_row = await db.get(AppSetting, (SYSTEM_OWNER_ID, DEFAULT_MODEL_KEY))
+    system_row = await db.get(AppSetting, (SYSTEM_OWNER_ID, key))
     if system_row:
         return system_row.value["model"]
     return DEFAULT_MODEL
 
 
 async def set_default_model(db: AsyncSession, owner_id: str, model: str) -> None:
-    row = await db.get(AppSetting, (owner_id, DEFAULT_MODEL_KEY))
+    key = default_model_key(engine_service.current_engine())
+    row = await db.get(AppSetting, (owner_id, key))
     value = {"model": model}
     if row is None:
-        db.add(AppSetting(owner_id=owner_id, key=DEFAULT_MODEL_KEY, value=value))
+        db.add(AppSetting(owner_id=owner_id, key=key, value=value))
     else:
         row.value = value
     await db.commit()

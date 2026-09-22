@@ -359,3 +359,70 @@ def test_stop_primitive_is_a_noop_when_not_running(tmp_path, monkeypatch):
 
     monkeypatch.setattr(matricxon_process, "_run_script", fail_if_called)
     matricxon_process._stop(checkout)
+
+
+def test_write_env_file_writes_every_local_mode_field(tmp_path):
+    checkout = _make_checkout(tmp_path)
+    config = _config(
+        project_dir=str(checkout),
+        models_path="/mnt/big-disk/matricxon-models",
+        max_loaded_models=3,
+        memory_safety_margin=1.2,
+        enable_quantized_native_compute=True,
+        log_level=2,
+    )
+
+    matricxon_process.write_env_file(config)
+
+    env_text = (checkout / ".env").read_text()
+    assert "MATRICXON_MODELS_DIR=/mnt/big-disk/matricxon-models" in env_text
+    assert "MATRICXON_MAX_LOADED_MODELS=3" in env_text
+    assert "MATRICXON_MEMORY_SAFETY_MARGIN=1.2" in env_text
+    assert "MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE=true" in env_text
+    assert "MATRICXON_LOG_LEVEL=2" in env_text
+
+
+def test_write_env_file_omits_unset_optional_fields(tmp_path):
+    checkout = _make_checkout(tmp_path)
+
+    matricxon_process.write_env_file(_config(project_dir=str(checkout)))
+
+    env_text = (checkout / ".env").read_text()
+    assert "MATRICXON_MODELS_DIR" not in env_text
+    assert "MATRICXON_MAX_LOADED_MODELS" not in env_text
+    assert "MATRICXON_MEMORY_SAFETY_MARGIN" not in env_text
+    # These two are never Optional (see MatricxonServerConfig) — always written, real defaults.
+    assert "MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE=false" in env_text
+    assert "MATRICXON_LOG_LEVEL=0" in env_text
+
+
+def test_write_env_file_removes_a_previously_set_field_once_cleared(tmp_path):
+    """Confirmed important: clearing models_path back to "use Matricxon's own default" must remove the
+    line entirely, not write MATRICXON_MODELS_DIR= (empty) — an empty override is still an override,
+    and would keep pointing Matricxon at an empty path instead of falling back to its own default."""
+    checkout = _make_checkout(tmp_path)
+    matricxon_process.write_env_file(_config(project_dir=str(checkout), models_path="/custom/path"))
+    assert "MATRICXON_MODELS_DIR=/custom/path" in (checkout / ".env").read_text()
+
+    matricxon_process.write_env_file(_config(project_dir=str(checkout), models_path=None))
+
+    assert "MATRICXON_MODELS_DIR" not in (checkout / ".env").read_text()
+
+
+def test_write_env_file_preserves_unrelated_lines(tmp_path):
+    """An admin-set env var this app's own config form doesn't expose (e.g. MATRICXON_DEVICE — see
+    MatricxonServerConfig's own docstring on why keep_alive_seconds/device were dropped from the form
+    but still work if set directly) must survive a save untouched."""
+    checkout = _make_checkout(tmp_path)
+    (checkout / ".env").write_text("MATRICXON_DEVICE=cpu\n")
+
+    matricxon_process.write_env_file(_config(project_dir=str(checkout), max_loaded_models=2))
+
+    env_text = (checkout / ".env").read_text()
+    assert "MATRICXON_DEVICE=cpu" in env_text
+    assert "MATRICXON_MAX_LOADED_MODELS=2" in env_text
+
+
+def test_write_env_file_is_a_noop_when_the_project_dir_cannot_be_resolved(tmp_path, monkeypatch):
+    monkeypatch.setattr(matricxon_process, "_DEFAULT_PROJECT_DIR", tmp_path / "nowhere")
+    matricxon_process.write_env_file(_config())  # must not raise

@@ -14,6 +14,7 @@ this class existed — consolidated here since all three were duplicating the ex
 sequence.
 """
 
+import asyncio
 from dataclasses import dataclass
 
 from app.services import engine_service, matricxon_client
@@ -35,14 +36,28 @@ class MatricxonSupportChecker:
         self._installed_info = installed_info or {}
 
     @classmethod
-    async def load(cls) -> "MatricxonSupportChecker":
+    async def load(cls, installed_models: list[dict] | None = None) -> "MatricxonSupportChecker":
         """Skips both real Matricxon calls entirely (an "unreachable" checker, capabilities=None) unless
         Matricxon is the currently active engine — asking about it regardless used to mean every catalog load
         made a real network round trip to a server nobody was actually using, worth nothing while Ollama serves
-        every request (confirmed a real, unwanted cost, not just theoretical)."""
+        every request (confirmed a real, unwanted cost, not just theoretical).
+
+        `installed_models` — pass the caller's own already-fetched list_models() result (every one of the three
+        catalog builders — ChatModelCatalogBuilder, EmbeddingModelCatalogService, ExtendedModelCatalog.build —
+        already calls it for their own separate reasons before reaching here) to skip a second, fully redundant
+        GET /api/tags round trip: when Matricxon is active, that call is *literally* matricxon_client.list_models
+        under the hood (see app.services.inference_client.list_models's own active-engine dispatch), same data,
+        same host. Confirmed live, 2026-09-22: a single Settings > Model page load was making this same call
+        twice per catalog builder — up to six /api/tags requests to Matricxon for three pieces of data — real,
+        unnecessary latency, and since Matricxon's own /api/tags can be slow to answer while it's mid-generation,
+        real extra risk of the whole page load timing out. The two real calls that remain (this and
+        capabilities) run concurrently rather than one after another, for the same reason."""
         if engine_service.current_engine() != "matricxon":
             return cls(None, None)
-        return cls(await cls._capabilities_or_none(), await cls._installed_info_or_none())
+        if installed_models is not None:
+            return cls(await cls._capabilities_or_none(), cls._installed_info_from(installed_models))
+        capabilities, installed_info = await asyncio.gather(cls._capabilities_or_none(), cls._installed_info_or_none())
+        return cls(capabilities, installed_info)
 
     @staticmethod
     async def _capabilities_or_none() -> dict | None:
@@ -55,21 +70,28 @@ class MatricxonSupportChecker:
             return None
 
     @staticmethod
-    async def _installed_info_or_none() -> dict[str, dict] | None:
-        """{tag: {"capabilities": [...], "estimated_ram_gb": float}} for every model Matricxon itself currently
-        has installed (GET /api/tags on Matricxon specifically, not app.services.inference_client's
-        active-engine-dispatched list_models). Feeds Matricxon's own real per-tag RAM estimate (estimated_ram_gb
+    def _installed_info_from(installed: list[dict]) -> dict[str, dict]:
+        """{tag: {"capabilities": [...], "estimated_ram_gb": float}} — the shape both call sites below need,
+        built from a models list either already in hand (load's own `installed_models` param) or freshly
+        fetched (_installed_info_or_none). Feeds Matricxon's own real per-tag RAM estimate (estimated_ram_gb
         below) — its always-dequantize-to-bf16 real requirement runs meaningfully higher than this app's own
         static, Ollama-shaped min_ram_gb estimate (confirmed: a real Ministral-3B file needs ~7.5GB on
         Matricxon, not the ~3GB that estimate implies)."""
-        try:
-            installed = await matricxon_client.list_models()
-        except MatricxonError:
-            return None
         return {
             m["name"]: {"capabilities": m.get("capabilities", []), "estimated_ram_gb": m.get("estimated_ram_gb")}
             for m in installed
         }
+
+    @staticmethod
+    async def _installed_info_or_none() -> dict[str, dict] | None:
+        """GET /api/tags on Matricxon specifically (not app.services.inference_client's active-engine-dispatched
+        list_models) — only ever called when the caller didn't already have a models list in hand (see load's
+        own `installed_models` param, which every real caller today does provide)."""
+        try:
+            installed = await matricxon_client.list_models()
+        except MatricxonError:
+            return None
+        return MatricxonSupportChecker._installed_info_from(installed)
 
     def estimated_ram_gb(self, tag: str) -> float | None:
         """Matricxon's own real per-tag RAM estimate — None if this tag isn't confirmed installed there (an

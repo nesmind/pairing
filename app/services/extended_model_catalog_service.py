@@ -150,7 +150,7 @@ class ExtendedModelCatalog:
 
         is_admin = user.role == "admin"
         hidden_tags = await HiddenModelTags(self._db).get()
-        checker = await MatricxonSupportChecker.load()
+        checker = await MatricxonSupportChecker.load(installed_models)
         capacity_gb = hardware.available_capacity_gb()
 
         result = []
