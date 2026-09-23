@@ -133,6 +133,9 @@ class ExtendedModelCatalog:
             "parameter_size": parameter_size,
             "download_gb": matched["download_gb"],
             "is_projector": is_projector,
+            # Same "repo also ships an mmproj sidecar" signal the HF file picker's own +Vision badge uses (see
+            # HuggingFaceCatalogSearch.repo_files) — Ollama auto-pairs it on pull, Matricxon pulls it alongside.
+            "vision": not is_projector and any(f.get("is_projector", False) for f in repo["files"]),
             "architecture": architecture,
             "quantizations": probed["quantizations"],
             "note": None,
@@ -181,7 +184,7 @@ class ExtendedModelCatalog:
                     hardware_ok=capacity_gb >= min_ram_gb,
                     unavailable_reason=entry.get("note"),
                     hidden=tag in hidden_tags,
-                    vision=False,
+                    vision=entry.get("vision", False),
                     text_capable=True,
                     removable=is_admin,
                     matricxon_supported=verdict.supported,

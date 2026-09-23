@@ -10,6 +10,8 @@ project_dir — Matricxon has no standalone binary to point at (see
 ../matricxon/scripts/start.sh, a thin `uvicorn` launcher over a Python
 venv, not a self-contained executable)."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.common import MAX_REMOTE_HOSTS, ServerMode
@@ -54,6 +56,15 @@ class MatricxonServerConfig(BaseModel):
     # field's own docstring for what it trades off (real quantized-native compute, never materializing a full
     # dequantized weight, at the cost of slower decode).
     enable_quantized_native_compute: bool = False
+    # Local-mode only — passed as MATRICXON_GEMV_BACKEND. Mirrors matricxon's own Settings.gemv_backend: which
+    # kernels run those quantized weights — "numba" (matricxon's default) or "native", its own C integer kernels
+    # (compiled with the machine's gcc on first start, falling back to numba if that fails). Only has an effect
+    # with enable_quantized_native_compute on.
+    gemv_backend: Literal["numba", "native"] = "numba"
+    # Local-mode only — passed as MATRICXON_TORCH_THREADS: CPU threads for both PyTorch and the native C kernels
+    # (matricxon's own Settings.torch_threads). None means "every core" (matricxon's own default). Fewer threads
+    # also means less heat - this project's own laptop runs at 2 for exactly that reason.
+    torch_threads: int | None = Field(default=None, ge=1, le=256)
     # Local-mode only — passed as MATRICXON_LOG_LEVEL. Mirrors matricxon's own Settings.log_level (same file):
     # 0 = warnings/errors only, 1 = coarse per-request pipeline milestones, 2 = adds a per-decoder-layer trace.
     log_level: int = Field(default=0, ge=0, le=2)

@@ -37,6 +37,7 @@ from app.schemas.document import (
     UploadJobStatus,
     UploadResult,
 )
+from app.schemas.engine_support import EngineSupportResponse
 from app.schemas.health import HealthStatus
 from app.schemas.http_proxy_config import HttpProxyConfig
 from app.schemas.image_generation import CheckpointList, ImageGenerationJobOut, ImageGenerationRequest
@@ -175,6 +176,7 @@ __all__ = [
     "DeleteModelResponse",
     "EmbeddingCatalogEntry",
     "EmbeddingModelCatalogResponse",
+    "EngineSupportResponse",
     "ExtendedModelCatalogResponse",
     "HfFileOption",
     "HfRepoFilesRequest",

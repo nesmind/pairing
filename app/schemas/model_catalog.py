@@ -232,6 +232,8 @@ class HfFileOption(BaseModel):
     # implying it's whatever this response's own family/parameter_size (below) describes, which almost never
     # applies to it.
     is_projector: bool = False
+    # A chat-model file whose repo also ships an mmproj sidecar — see HuggingFaceCatalogSearch.repo_files.
+    vision: bool = False
 
 
 class HfRepoFilesRequest(BaseModel):

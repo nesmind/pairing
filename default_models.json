@@ -97,22 +97,6 @@
       "note": "Vision-capable — Vicuna-7B fine-tuned with a CLIP ViT-L vision encoder. The standard, most widely-used size for this family; noticeably lighter than gemma4:12b for image-attachment replies. Sourced from Hugging Face — confirmed live: second-state/Llava-v1.6-Vicuna-7B-GGUF, arch \"llama\", 6.74B params, 4096 ctx, with a Q4_K_M main file plus its own -mmproj-model-f16.gguf projector in the same repo. Ollama's hf.co/ pull syntax was confirmed (via a real pull + `ollama show`, not just repo inspection) to auto-detect and pull a same-repo \"mmproj\"-named file alongside the tagged one and keep vision working. \"Q4_K_M\" is llama.cpp's own mix label, not a real GGML type by itself — the underlying [Q4_K, Q6_K] pair is recorded in quantizations instead."
     },
     {
-      "family": "Moondream",
-      "vendor": "vikhyat",
-      "tag": "hf.co/moondream/moondream2-gguf:moondream2-text-model-f16",
-      "parameter_size": "1.8B",
-      "context_length": 2048,
-      "download_gb": 1.7,
-      "min_ram_gb": 3,
-      "locally_runnable": true,
-      "architecture": "phi2",
-      "quantizations": ["F16"],
-      "vision": true,
-      "unavailable_reason": null,
-      "embedding_dim": null,
-      "note": "Not LLaVA-family, but the smallest practical local vision model available through Ollama — included alongside the two LLaVA entries as the lightest possible option for weak/CPU-only hardware. Sourced from moondream's own official Hugging Face repo — confirmed live end-to-end (real pull, then `ollama show`): moondream/moondream2-gguf, arch \"phi2\", 1.42B params, 2048 ctx, its main text-model file paired automatically by Ollama's hf.co/ pull with the repo's own -mmproj-f16.gguf projector — `ollama show` afterward listed Capabilities: completion, vision, confirming the pairing isn't just present in the repo but actually recognized by Ollama."
-    },
-    {
       "family": "Ministral 3",
       "vendor": "Mistral AI",
       "tag": "hf.co/mistralai/Ministral-3-3B-Instruct-2512-GGUF:Ministral-3-3B-Instruct-2512-Q4_K_M",

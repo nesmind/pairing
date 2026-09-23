@@ -1136,7 +1136,7 @@
                   </div>
                   <div>
                     <label class="block text-xs font-medium text-slate-400 mb-1">Version / tag</label>
-                    <input data-field="install_version" type="text" placeholder="v0.1" list="matricxon-version-options" title="Which release tag to install. Leave blank to use the default pinned version — start typing to pick from real tags fetched live from GitHub, or enter any tag/branch by hand."
+                    <input data-field="install_version" type="text" placeholder="v1.2" list="matricxon-version-options" title="Which release tag to install. Leave blank to use the default pinned version — start typing to pick from real tags fetched live from GitHub, or enter any tag/branch by hand."
                       class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
                     <datalist id="matricxon-version-options" data-field="install-version-datalist"></datalist>
                   </div>
@@ -1192,6 +1192,26 @@
                   <input data-field="memory_safety_margin" type="number" min="1.1" max="1.8" step="0.1" placeholder="1.5" title="How much headroom Matricxon requires beyond a model's exact memory footprint before allowing it to load (e.g. 1.5 = needs 1.5x the model's size free). Lower values allow loading larger models but risk swapping/OOM; must be between 1.1 and 1.8. Leave blank for Matricxon's own default (1.5)."
                     class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
                 </div>
+                <!-- One combined control: the kernels choice only means anything with quantized native compute on,
+                     so it sits right beside that checkbox and is disabled while it's off (see settings.js:
+                     syncMatricxonKernelSelect). -->
+                <div class="col-span-2">
+                  <label class="block text-xs font-medium text-slate-400 mb-1">Quantized native compute</label>
+                  <div class="flex items-center gap-3 rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5">
+                    <label for="matricxon-quantized-native-compute" class="flex shrink-0 items-center gap-2 text-sm text-slate-300 cursor-pointer" title="Keeps quantized weights packed during generation instead of dequantizing them to bf16/float32 once at load time — much lower memory use. With the Numba kernels decode is slower (roughly 1.9-4x); with the native C kernels below it runs about as fast as the dequantized path. Off by default, same as Matricxon's own MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE.">
+                      <input data-field="enable_quantized_native_compute" type="checkbox" id="matricxon-quantized-native-compute"
+                        class="rounded border-slate-700 bg-slate-950 text-brand-600 focus:ring-brand-500">
+                      Enabled
+                    </label>
+                    <span class="h-5 w-px shrink-0 bg-slate-700"></span>
+                    <span class="shrink-0 text-xs text-slate-500">Kernels</span>
+                    <select data-field="gemv_backend" title="Which kernels run the packed weights (only with quantized native compute on). Native: Matricxon's own C integer kernels, compiled with this machine's gcc on first start — about 5-10x faster than Numba per layer. Falls back to Numba automatically if there's no C compiler."
+                      class="min-w-0 flex-1 bg-transparent text-sm text-slate-100 focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed">
+                      <option value="numba">Numba (default)</option>
+                      <option value="native">Native C (faster, needs gcc)</option>
+                    </select>
+                  </div>
+                </div>
                 <div>
                   <label class="block text-xs font-medium text-slate-400 mb-1">Log level</label>
                   <select data-field="log_level" title="0: warnings/errors only (Matricxon's own default). 1: coarse per-request pipeline milestones (model load, prompt build, each generated token, generation summary). 2: also adds a per-decoder-layer trace line for every forward pass — very verbose."
@@ -1201,11 +1221,10 @@
                     <option value="2">2 — per-layer trace (verbose)</option>
                   </select>
                 </div>
-                <div class="flex items-center gap-2 pt-1">
-                  <input data-field="enable_quantized_native_compute" type="checkbox" id="matricxon-quantized-native-compute"
-                    title="Runs quantized weights natively during generation instead of dequantizing them to bf16/float32 once at load time — lower memory use, at the cost of slower decode (roughly 1.9-4x per Matricxon's own measurements). Off by default, same as Matricxon's own MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE."
-                    class="rounded border-slate-700 bg-slate-950 text-brand-600 focus:ring-brand-500">
-                  <label for="matricxon-quantized-native-compute" class="text-xs font-medium text-slate-400">Enable quantized native compute</label>
+                <div>
+                  <label class="block text-xs font-medium text-slate-400 mb-1">CPU threads (optional)</label>
+                  <input data-field="torch_threads" type="number" min="1" max="256" placeholder="all cores" title="How many CPU threads Matricxon uses for generation — both PyTorch and the native C kernels (MATRICXON_TORCH_THREADS). Fewer threads run cooler and leave the machine more responsive, at some cost in speed. Leave blank to use every core (Matricxon's own default)."
+                    class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
                 </div>
               </div>
               <button type="button" data-action="manual-path-entry-back"

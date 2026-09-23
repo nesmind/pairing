@@ -95,6 +95,15 @@ class HuggingFaceCatalogSearch:
             repo = resp.json()
 
         gguf_meta = repo.get("gguf") or {}
+        gguf_siblings = [
+            s
+            for s in repo.get("siblings", [])
+            if HuggingFaceCatalogSearch._is_single_file_gguf(s["rfilename"]) and s.get("size")
+        ]
+        # A same-repo mmproj sidecar means every non-projector file here is a vision model — Ollama auto-pairs
+        # that sidecar on a hf.co/ pull and Matricxon pulls it alongside (see model_catalog_service's own
+        # comment on the curated `vision` flag), so the file picker can badge them "+Vision" upfront.
+        has_projector = any(HuggingFaceCatalogSearch.is_projector_file(s["rfilename"]) for s in gguf_siblings)
         files = [
             {
                 "filename": s["rfilename"],
@@ -103,6 +112,7 @@ class HuggingFaceCatalogSearch:
                 # parameter_size below almost never describes this specific file when True — the file-picker UI
                 # flags it instead of silently attributing the main model's architecture to a projector sidecar.
                 "is_projector": HuggingFaceCatalogSearch.is_projector_file(s["rfilename"]),
+                "vision": has_projector and not HuggingFaceCatalogSearch.is_projector_file(s["rfilename"]),
                 # Real git-LFS sha256 and exact byte size (download_gb above is rounded, too imprecise to
                 # compare a completed download against) — both already present on every real GGUF sibling
                 # (always LFS-tracked by their size alone), known upfront from this same call, no extra
@@ -114,8 +124,7 @@ class HuggingFaceCatalogSearch:
                 "sha256": s.get("lfs", {}).get("sha256"),
                 "size_bytes": s["size"],
             }
-            for s in repo.get("siblings", [])
-            if HuggingFaceCatalogSearch._is_single_file_gguf(s["rfilename"]) and s.get("size")
+            for s in gguf_siblings
         ]
         return {
             "repo_id": repo_id,

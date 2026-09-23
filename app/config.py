@@ -176,7 +176,7 @@ OLLAMA_PINNED_VERSION = "v0.33.3"
 COMFYUI_GITHUB_REPO = "comfyanonymous/ComfyUI"
 COMFYUI_PINNED_VERSION = "v0.35.1"
 MATRICXON_GITHUB_REPO = "nesmind/matricxon"
-MATRICXON_PINNED_VERSION = "v0.1"
+MATRICXON_PINNED_VERSION = "v1.2"
 
 # Where a locally auto-installed Ollama/ComfyUI ends up — kept separate from BASE_DIR's own app code so this app's
 # own git status/deploys never see these as project files.

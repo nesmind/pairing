@@ -97,12 +97,20 @@ def test_build_env_omits_unset_fields():
     assert "MATRICXON_MAX_LOADED_MODELS" not in env
     assert "MATRICXON_MEMORY_SAFETY_MARGIN" not in env
     assert "MATRICXON_MODELS_DIR" not in env
+    assert "MATRICXON_TORCH_THREADS" not in env
 
 
 def test_build_env_includes_every_configured_field():
-    env = matricxon_process._build_env(_config(max_loaded_models=3, memory_safety_margin=1.2))
+    env = matricxon_process._build_env(_config(max_loaded_models=3, memory_safety_margin=1.2, torch_threads=2))
     assert env["MATRICXON_MAX_LOADED_MODELS"] == "3"
     assert env["MATRICXON_MEMORY_SAFETY_MARGIN"] == "1.2"
+    assert env["MATRICXON_TORCH_THREADS"] == "2"
+
+
+@pytest.mark.parametrize("value", [0, 257])
+def test_torch_threads_rejects_out_of_range_values(value):
+    with pytest.raises(ValidationError):
+        MatricxonServerConfig(torch_threads=value)
 
 
 def test_build_env_honors_a_models_path_override():
@@ -147,13 +155,24 @@ def test_build_env_defaults_quantized_native_compute_and_log_level_off():
     ../matricxon/app/config.py's Settings.enable_quantized_native_compute/log_level)."""
     env = matricxon_process._build_env(_config())
     assert env["MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE"] == "false"
+    assert env["MATRICXON_GEMV_BACKEND"] == "numba"
     assert env["MATRICXON_LOG_LEVEL"] == "0"
 
 
 def test_build_env_passes_through_quantized_native_compute_and_log_level():
-    env = matricxon_process._build_env(_config(enable_quantized_native_compute=True, log_level=2))
+    env = matricxon_process._build_env(
+        _config(enable_quantized_native_compute=True, gemv_backend="native", log_level=2)
+    )
     assert env["MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE"] == "true"
+    assert env["MATRICXON_GEMV_BACKEND"] == "native"
     assert env["MATRICXON_LOG_LEVEL"] == "2"
+
+
+def test_gemv_backend_rejects_unknown_values():
+    """Only matricxon's own two Settings.gemv_backend values - rejected at Save time, same reasoning as
+    memory_safety_margin above."""
+    with pytest.raises(ValidationError):
+        MatricxonServerConfig(gemv_backend="cuda")
 
 
 @pytest.mark.parametrize("value", [-1, 3])
@@ -369,6 +388,8 @@ def test_write_env_file_writes_every_local_mode_field(tmp_path):
         max_loaded_models=3,
         memory_safety_margin=1.2,
         enable_quantized_native_compute=True,
+        gemv_backend="native",
+        torch_threads=2,
         log_level=2,
     )
 
@@ -379,6 +400,8 @@ def test_write_env_file_writes_every_local_mode_field(tmp_path):
     assert "MATRICXON_MAX_LOADED_MODELS=3" in env_text
     assert "MATRICXON_MEMORY_SAFETY_MARGIN=1.2" in env_text
     assert "MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE=true" in env_text
+    assert "MATRICXON_GEMV_BACKEND=native" in env_text
+    assert "MATRICXON_TORCH_THREADS=2" in env_text
     assert "MATRICXON_LOG_LEVEL=2" in env_text
 
 
@@ -391,6 +414,7 @@ def test_write_env_file_omits_unset_optional_fields(tmp_path):
     assert "MATRICXON_MODELS_DIR" not in env_text
     assert "MATRICXON_MAX_LOADED_MODELS" not in env_text
     assert "MATRICXON_MEMORY_SAFETY_MARGIN" not in env_text
+    assert "MATRICXON_TORCH_THREADS" not in env_text
     # These two are never Optional (see MatricxonServerConfig) — always written, real defaults.
     assert "MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE=false" in env_text
     assert "MATRICXON_LOG_LEVEL=0" in env_text

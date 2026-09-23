@@ -90,6 +90,7 @@ async def test_add_verifies_and_stores_a_new_entry(db, monkeypatch):
         "parameter_size": "14.0B",
         "download_gb": 9.0,
         "is_projector": False,
+        "vision": False,
         # None: the (stubbed) GGUF header probe "failed", same as a real network hiccup — quantizations is
         # still real, pure, filename-only guessing (see
         # extended_model_catalog_enrichment.HuggingFaceModelProbe.guess_quantizations_from_filename) —
@@ -124,6 +125,26 @@ async def test_add_labels_a_projector_file_with_the_repo_name_instead_of_inherit
     assert entry["parameter_size"] is None
     assert entry["download_gb"] == 0.9
     assert entry["is_projector"] is True
+    assert entry["vision"] is False
+
+
+@pytest.mark.asyncio
+async def test_add_flags_a_model_file_whose_repo_ships_a_projector_as_vision(db, user, monkeypatch):
+    repo = {
+        **_REPO,
+        "files": [
+            {"filename": "model-q4_k_m.gguf", "download_gb": 2.5, "is_projector": False},
+            {"filename": "mmproj-f16.gguf", "download_gb": 0.9, "is_projector": True},
+        ],
+    }
+    monkeypatch.setattr(svc, "list_models", lambda: _async_return([]))
+    _stub_repo_files(monkeypatch, repo)
+    catalog = ExtendedModelCatalog(db)
+
+    entry = await catalog.add(repo["repo_id"], "model-q4_k_m.gguf", proxy_url=None)
+
+    assert entry["vision"] is True
+    assert (await catalog.build(user))[0].vision is True
 
 
 @pytest.mark.asyncio

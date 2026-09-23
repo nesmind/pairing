@@ -108,18 +108,24 @@ function renderTelemetry(summary) {
  * even after an admin switches the dropdown to look at the *other* engine's history — that note always reflects
  * what's really serving live traffic, independent of which engine this dashboard happens to be showing. */
 async function applyDefaultTelemetryEngineOnce() {
+  const selectEl = document.getElementById("telemetry-source-select");
   let activeEngine;
   try {
     ({ active_engine: activeEngine } = await api("/health"));
   } catch (_err) {
-    return; // Leave the "ollama" fallback in place — a /health hiccup here shouldn't block the dashboard itself.
+    // Leave the "ollama" fallback in place — a /health hiccup here shouldn't block the dashboard itself.
+    selectEl.classList.remove("invisible");
+    return;
   }
   const noteEl = document.getElementById("telemetry-active-engine-note");
   noteEl.textContent = `Currently on: ${activeEngine === "matricxon" ? "Matricxon" : "Ollama"}`;
-  if (telemetryDefaultEngineApplied) return;
-  telemetryDefaultEngineApplied = true;
-  currentTelemetrySource = activeEngine;
-  document.getElementById("telemetry-source-select").value = activeEngine;
+  if (!telemetryDefaultEngineApplied) {
+    telemetryDefaultEngineApplied = true;
+    currentTelemetrySource = activeEngine;
+    selectEl.value = activeEngine;
+  }
+  // Only revealed once it shows the real active engine — see stats.html's own comment on its `invisible` class.
+  selectEl.classList.remove("invisible");
 }
 
 async function loadTelemetry() {

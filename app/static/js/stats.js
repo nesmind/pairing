@@ -19,7 +19,7 @@
  * idle background tab doesn't keep polling the server for nothing.
  */
 
-const STATS_VIEWS = ["overview", "workflow", "telemetry", "system"];
+const STATS_VIEWS = ["overview", "workflow", "telemetry", "system", "architectures"];
 
 // Refresh interval per view, matching each one's own natural data cadence: System mirrors its own poller's 15s
 // sample interval (see app.services.system_metrics_poller), Telemetry/Overview use a slower 30s — new
@@ -28,6 +28,8 @@ const STATS_VIEW_REFRESH = {
   overview: { fn: loadStatsOverviewSummary, intervalMs: 30000 },
   telemetry: { fn: loadTelemetry, intervalMs: 30000 },
   system: { fn: loadSystemMetrics, intervalMs: 15000 },
+  // Changes only when Matricxon itself gains support for something — a slow poll is plenty.
+  architectures: { fn: loadEngineSupport, intervalMs: 60000 },
 };
 
 let _activeStatsView = "overview";

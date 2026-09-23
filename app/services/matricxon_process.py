@@ -112,7 +112,10 @@ def _build_env(config: MatricxonServerConfig, proxy_url: str | None = None) -> d
         env["MATRICXON_MAX_LOADED_MODELS"] = str(config.max_loaded_models)
     if config.memory_safety_margin is not None:
         env["MATRICXON_MEMORY_SAFETY_MARGIN"] = str(config.memory_safety_margin)
+    if config.torch_threads is not None:
+        env["MATRICXON_TORCH_THREADS"] = str(config.torch_threads)
     env["MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE"] = "true" if config.enable_quantized_native_compute else "false"
+    env["MATRICXON_GEMV_BACKEND"] = config.gemv_backend
     env["MATRICXON_LOG_LEVEL"] = str(config.log_level)
     # Matricxon's own model-pull downloader (a plain httpx client) honors these the same standard way Ollama's Go
     # binary does — see ollama_process._build_env.
@@ -149,6 +152,8 @@ def write_env_file(config: MatricxonServerConfig) -> None:
                 str(config.memory_safety_margin) if config.memory_safety_margin is not None else None
             ),
             "MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE": "true" if config.enable_quantized_native_compute else "false",
+            "MATRICXON_GEMV_BACKEND": config.gemv_backend,
+            "MATRICXON_TORCH_THREADS": str(config.torch_threads) if config.torch_threads is not None else None,
             "MATRICXON_LOG_LEVEL": str(config.log_level),
         },
         path=project_dir / ".env",

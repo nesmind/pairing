@@ -707,9 +707,13 @@ function renderHfRepoFiles(repo) {
     const projectorBadge = file.is_projector
       ? ` <span class="inline-flex items-center rounded-full bg-amber-500/15 border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-medium text-amber-400 align-middle">Vision projector — not a chat model on its own</span>`
       : "";
+    // Same "+Vision" pill renderModelRow shows — this repo also ships an mmproj sidecar that gets paired with it.
+    const visionBadge = file.vision
+      ? ` <span class="inline-flex items-center rounded-full bg-[rgb(var(--color-brand-500)/0.15)] border border-[rgb(var(--color-brand-500)/0.4)] px-1.5 py-0.5 text-[10px] font-medium text-brand-500 align-middle">+Vision</span>`
+      : "";
     const label = document.createElement("span");
     label.className = "truncate text-xs text-slate-300";
-    label.innerHTML = `${escapeHtml(`${file.filename} (${formatSize(file.download_gb)})`)}${recommendedBadge}${projectorBadge}`;
+    label.innerHTML = `${escapeHtml(`${file.filename} (${formatSize(file.download_gb)})`)}${recommendedBadge}${visionBadge}${projectorBadge}`;
     fileRow.appendChild(label);
 
     const addBtnGroup = document.createElement("span");
@@ -1993,6 +1997,8 @@ function collectServerConfig(server, section) {
       memory_safety_margin: floatFieldOrNull(section, "memory_safety_margin"),
       log_level: parseInt(section.querySelector('[data-field="log_level"]').value, 10),
       enable_quantized_native_compute: section.querySelector('[data-field="enable_quantized_native_compute"]').checked,
+      gemv_backend: section.querySelector('[data-field="gemv_backend"]').value,
+      torch_threads: intFieldOrNull(section, "torch_threads"),
     };
   }
   return {
@@ -2060,6 +2066,9 @@ async function loadServerSection(server) {
     section.querySelector('[data-field="log_level"]').value = String(config.log_level ?? 0);
     section.querySelector('[data-field="enable_quantized_native_compute"]').checked =
       config.enable_quantized_native_compute ?? false;
+    section.querySelector('[data-field="gemv_backend"]').value = config.gemv_backend ?? "numba";
+    section.querySelector('[data-field="torch_threads"]').value = config.torch_threads ?? "";
+    syncMatricxonKernelSelect(section);
   } else {
     section.querySelector('[data-field="python_path"]').value = config.python_path ?? "";
     section.querySelector('[data-field="main_py_path"]').value = config.main_py_path ?? "";
@@ -3710,3 +3719,17 @@ if (addChannelBtn) {
     loadTabData(savedTab);
   }
 })();
+
+// Matricxon's "Kernels" choice only applies with quantized native compute on (see settings.html's combined
+// "Quantized native compute" row) — disabled, not hidden, while it's off so the saved choice stays visible.
+function syncMatricxonKernelSelect(section) {
+  const checkbox = section.querySelector('[data-field="enable_quantized_native_compute"]');
+  const select = section.querySelector('[data-field="gemv_backend"]');
+  if (checkbox && select) select.disabled = !checkbox.checked;
+}
+
+document.addEventListener("change", (event) => {
+  if (event.target.matches('[data-field="enable_quantized_native_compute"]')) {
+    syncMatricxonKernelSelect(event.target.closest("[data-server]") || document);
+  }
+});

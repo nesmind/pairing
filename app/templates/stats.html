@@ -51,6 +51,12 @@
           class="stats-nav-btn w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors">
           System
         </button>
+        <!-- Matricxon-only (Ollama has no API listing what it can load) — revealed by engine_support.js once
+             /health confirms Matricxon is the active engine. -->
+        <button type="button" data-view="architectures" id="stats-nav-architectures"
+          class="stats-nav-btn hidden w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors">
+          Supported architectures
+        </button>
       </nav>
     </aside>
 
@@ -102,9 +108,10 @@
             <span id="telemetry-active-engine-note" class="text-xs text-slate-500"></span>
             <!-- Which engine's history this dashboard shows — defaults to whichever engine is actually active
                  (see loadTelemetry's own docstring) the first time this view is opened, then stays exactly
-                 where an admin leaves it across refreshes/re-visits within the same page load. -->
+                 where an admin leaves it across refreshes/re-visits within the same page load. Starts `invisible`
+                 (space kept, no layout jump) so it never flashes "Ollama" before the real active engine is known. -->
             <select id="telemetry-source-select"
-              class="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-brand-500">
+              class="invisible rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-brand-500">
               <option value="ollama">Ollama</option>
               <option value="matricxon">Matricxon</option>
             </select>
@@ -207,6 +214,18 @@
         <p id="system-error" class="hidden text-sm text-red-400"></p>
       </div>
 
+      <div id="stats-view-architectures" class="hidden flex-1 overflow-y-auto p-6 space-y-8">
+        <div>
+          <h2 class="text-lg font-semibold text-slate-100 mb-1">Supported architectures</h2>
+          <p class="text-xs text-slate-500">
+            Every model architecture and quantization (dequant) type the active engine can load, read live from
+            Matricxon's own registries.
+          </p>
+        </div>
+        <div id="engine-support-content" class="space-y-8"></div>
+        <p id="engine-support-error" class="hidden text-sm text-red-400"></p>
+      </div>
+
     </main>
   </div>
 </div>
@@ -224,5 +243,6 @@
 <script src="/static/js/telemetry.js?v={{ static_version }}"></script>
 <script src="/static/js/system_charts.js?v={{ static_version }}"></script>
 <script src="/static/js/system_metrics.js?v={{ static_version }}"></script>
+<script src="/static/js/engine_support.js?v={{ static_version }}"></script>
 <script src="/static/js/stats.js?v={{ static_version }}"></script>
 {% endblock %}

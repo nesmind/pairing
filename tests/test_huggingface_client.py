@@ -120,6 +120,7 @@ async def test_repo_files_maps_real_repo_response_fields(monkeypatch):
             "filename": "qwen2.5-14b-instruct-q4_k_m.gguf",
             "download_gb": 9.5,
             "is_projector": False,
+            "vision": False,
             "sha256": None,
             "size_bytes": 9_500_000_000,
         }
@@ -238,6 +239,9 @@ async def test_repo_files_flags_a_projector_file_alongside_the_main_model(monkey
     by_filename = {f["filename"]: f for f in repo["files"]}
     assert by_filename["moondream2-text-model-f16.gguf"]["is_projector"] is False
     assert by_filename["moondream2-mmproj-f16-20250414.gguf"]["is_projector"] is True
+    # The same-repo mmproj makes its sibling text model a vision model; the projector itself is not one.
+    assert by_filename["moondream2-text-model-f16.gguf"]["vision"] is True
+    assert by_filename["moondream2-mmproj-f16-20250414.gguf"]["vision"] is False
 
 
 @pytest.mark.parametrize(
