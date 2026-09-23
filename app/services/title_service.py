@@ -96,7 +96,7 @@ _LATIN_LETTER_RE = re.compile(r"[A-Za-z]")
 # more) reasoning about a one-line title and never reach any actual
 # title text at all. chat_stream (which chat_once below calls into)
 # already strips a model's raw reasoning out unconditionally for any
-# model Ollama reports as thinking-capable (see
+# model the ML engine reports as thinking-capable (see
 # app/services/ollama_client.py's _strip_inline_thinking — confirmed
 # necessary for real against dicta-il/dictalm-3.0-1.7b-thinking), but
 # that doesn't help if reasoning simply doesn't *finish* within this

@@ -9,7 +9,7 @@ from app.schemas.settings import HardwareSummary
 
 
 class CatalogEntry(BaseModel):
-    """One model Settings can offer — either already pulled into Ollama,
+    """One model Settings can offer — either already pulled into the ML engine,
     pullable-and-compatible, or blocked by hardware. See
     app/model_catalog.py for where these come from and
     app/services/settings_service.py for how `installed`/`hardware_ok`
@@ -75,7 +75,7 @@ class CatalogEntry(BaseModel):
     # — true only for a not-yet-installed entry from the admin-managed extended catalog (see
     # app.services.extended_model_catalog_service.ExtendedModelCatalog.build); always False for a hand-curated
     # app/model_catalog.py default (there's nothing stored to delete) and for an installed model (that gets
-    # "Uninstall" instead — removing it from a *list* while it's still actually pulled into Ollama would just be
+    # "Uninstall" instead — removing it from a *list* while it's still actually pulled into the ML engine would just be
     # confusing, and re-adding it later would need a redundant Hugging Face re-verification for no reason).
     removable: bool = False
     # Whether this model's architecture+quantization is actually implemented by the Matricxon engine (see

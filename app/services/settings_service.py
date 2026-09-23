@@ -8,7 +8,7 @@ specifically govern how a reply is generated (title mode, channel
 delivery mode, reply timeout) — split out purely to keep this file
 under CLAUDE.md's file-size rule. See app/services/theme_service.py for
 the app-wide UI theme (a separate file — see that file's own docstring
-for why), app/services/model_catalog_service.py for the Ollama model
+for why), app/services/model_catalog_service.py for the model
 catalog itself, and app/services/user_service.py for account management
 — this file is only the "simple key/value setting" half of the Settings
 page.

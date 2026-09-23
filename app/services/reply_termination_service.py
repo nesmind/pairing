@@ -63,7 +63,7 @@ async def _persist_cancelled_reply(message_id: str, model: str, full_reply: str,
         if message is not None:
             # If message is None, the conversation (and this row with it) was
             # deleted outright — there's nothing left to write, but Matricxon/
-            # Ollama still needs the stop signal below regardless.
+            # The ML engine still needs the stop signal below regardless.
             await mark_error(
                 db, message, full_reply, conversation_id, "Cancelled: left the chat before this reply finished."
             )

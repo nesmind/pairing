@@ -1,5 +1,5 @@
 """
-Endpoints backing the Settings page: which Ollama models are installed,
+Endpoints backing the Settings page: which models the ML engine has installed,
 whether RAG is usable, and the per-user default generation params/model
 that new conversations start from. See
 app/services/model_catalog_service.py and app/services/settings_service.py
@@ -96,7 +96,7 @@ async def hide_model(
 
 @router.post("/pull-model")
 async def pull_model(body: PullModelRequest, db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)):
-    """Downloads a model into Ollama, streaming progress over SSE (same wire format as the chat stream in
+    """Downloads a model into the ML engine, streaming progress over SSE (same wire format as the chat stream in
     app/routers/chat.py). Admin-only: pulling is a system-wide, potentially huge (many-GB) download that affects
     every user, not a per-conversation preference. Refuses anything not in either catalog (the default one in
     app/model_catalog.py, or the admin-managed extended one in
@@ -152,8 +152,8 @@ async def pull_model(body: PullModelRequest, db: AsyncSession = Depends(get_db),
 
 @router.post("/delete-model", response_model=DeleteModelResponse)
 async def delete_model_endpoint(body: PullModelRequest, _admin: User = Depends(require_admin)):
-    """Removes a pulled model from Ollama, freeing its disk space. Admin-only for the same reason pulling is: it's
-    a system-wide action affecting every user, not a per-conversation preference. Deleting a model someone's
+    """Removes a pulled model from the ML engine, freeing its disk space. Admin-only for the same reason pulling is:
+    it's a system-wide action affecting every user, not a per-conversation preference. Deleting a model someone's
     conversation is still set to isn't blocked here — that conversation just gets a normal "model not found" chat
     error (handled gracefully in app/services/chat_service.py) until its user picks a different one, same as if it
     had never been installed."""
@@ -255,7 +255,7 @@ async def change_password(
 @router.get("/system-info", response_model=SystemInfo)
 def system_info(_admin: User = Depends(require_admin)):
     """Admin-only snapshot for the Settings page's System tab: this
-    machine's hardware and the app's own version. (Which Ollama/ComfyUI
+    machine's hardware and the app's own version. (Which ML engine/ComfyUI
     host the app is talking to now lives on the External servers tab
     instead — see app/routers/ollama_admin.py/comfyui_admin.py — since
     that's admin-configurable now, not a fixed environment fact. The

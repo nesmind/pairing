@@ -3,7 +3,7 @@ CRUD endpoints for chat sessions ("conversations") and their message
 history. The chat UI calls these to list past chats in the sidebar, load
 a chat's messages when it's clicked, rename/re-configure it, or delete it.
 Sending a *new* message lives in app/routers/chat.py instead, since that
-path also talks to Ollama and streams a response.
+path also talks to the ML engine and streams a response.
 
 Every endpoint here requires a logged-in user (Depends(get_current_user))
 and every query is scoped to that user's own conversations — one user

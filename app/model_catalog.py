@@ -1,6 +1,6 @@
 """
 A curated list of chat models this app knows how to offer in Settings,
-beyond whatever the user has already pulled into Ollama manually. Each
+beyond whatever the user has already pulled into the ML engine manually. Each
 entry is a *potential* model — app/routers/settings.py cross-references
 this against what's actually installed (`ollama list`) and against this
 machine's hardware (app/hardware.py) to decide, per entry, whether to
@@ -19,7 +19,7 @@ Sizes/requirements in that file come from each model's public spec sheet at the 
 ROADMAP.md for how to keep this current as new sizes/models are released.
 
 `min_ram_gb` is deliberately generous (roughly 1.25x the on-disk weight
-size) to leave headroom for the context-window KV cache and Ollama's own
+size) to leave headroom for the context-window KV cache and the ML engine's own
 runtime overhead — better to under-promise than to gate a model in as
 "fits" and have it OOM or swap itself into uselessness.
 
@@ -93,11 +93,11 @@ class CuratedCatalog:
         return self._embedding_models
 
     def find(self, tag: str) -> CuratedModel | None:
-        """Looks up a chat-model catalog entry by its exact Ollama tag."""
+        """Looks up a chat-model catalog entry by its exact model tag."""
         return next((entry for entry in self._chat_models if entry.tag == tag), None)
 
     def find_embedding(self, tag: str) -> CuratedModel | None:
-        """Looks up an embedding-catalog entry by its exact Ollama tag — mirrors find() above, kept separate
+        """Looks up an embedding-catalog entry by its exact model tag — mirrors find() above, kept separate
         since embedding_models is a deliberately distinct collection (see its own docstring)."""
         return next((entry for entry in self._embedding_models if entry.tag == tag), None)
 

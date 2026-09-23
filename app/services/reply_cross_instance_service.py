@@ -10,7 +10,7 @@ instance than the one running a reply's own generation task is
 completely invisible to that task's in-process checks — it would either
 hang forever waiting for an event nothing will ever publish to it, or
 blindly overwrite the deletion once it finishes, or (watch_for_deletion
-below) just keep burning CPU/GPU on an Ollama request nobody's waiting
+below) just keep burning CPU/GPU on an ML engine request nobody's waiting
 on anymore. All three fall back to the one thing every instance actually
 shares: the database.
 """
@@ -83,7 +83,7 @@ async def watch_for_deletion(message_id: str, task: asyncio.Task, poll_interval:
     only ever runs once a chunk has actually arrived, so during a slow
     cold model load (no chunks yet — can genuinely take tens of seconds)
     nothing else notices a delete_message call at all, cross-instance or
-    not — the underlying Ollama request just keeps burning CPU/GPU with
+    not — the underlying ML engine request just keeps burning CPU/GPU with
     nobody watching it. Exits harmlessly once `task` finishes on its
     own, whichever comes first."""
     while not task.done():

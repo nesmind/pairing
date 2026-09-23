@@ -37,7 +37,7 @@ class Conversation(Base):
     # app/services/chat_service.py: maybe_generate_title). Falls back to
     # "New chat" until the first exchange completes.
     title = Column(String(255), default="New chat")
-    # Which Ollama model this conversation talks to. Stored per-
+    # Which model this conversation talks to. Stored per-
     # conversation (not just globally) so old chats keep using the model
     # they were started with even if the user's default changes later.
     model = Column(String(255), nullable=True)
@@ -87,8 +87,8 @@ class Message(Base):
 
     id = Column(String(ID_LEN), primary_key=True, default=new_id)
     conversation_id = Column(String(ID_LEN), ForeignKey("conversations.id"), nullable=False)
-    # "user", "assistant", or "system" — mirrors Ollama's chat message
-    # roles directly so history can be forwarded to Ollama unmodified.
+    # "user", "assistant", or "system" — mirrors the ML engine's chat message
+    # roles directly so history can be forwarded to the ML engine unmodified.
     role = Column(String(20), nullable=False)
     content = Column(Text, nullable=False)
     # Filenames of the documents whose chunks were injected into context

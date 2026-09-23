@@ -1,5 +1,5 @@
 """
-Propagates a live Ollama/ComfyUI server-config change (mode switch or
+Propagates a live ML engine/ComfyUI server-config change (mode switch or
 remote host list edit) to every other local instance — the same real gap
 app.services.instance_db_broadcast.py already fixed for a database
 switch, for the same reason: app.services.ollama_pool.refresh_from_config/

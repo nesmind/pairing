@@ -106,7 +106,7 @@ async def _persist_spans(spans: Sequence[ReadableSpan]) -> None:
 
 class DBSpanExporter(SpanExporter):
     """Registered on a BatchSpanProcessor (never SimpleSpanProcessor —
-    that would call export() synchronously inline on the Ollama call's
+    that would call export() synchronously inline on the ML engine call's
     own hot path, exactly the coupling this file exists to avoid)."""
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:

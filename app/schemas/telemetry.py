@@ -1,5 +1,5 @@
 """Response shapes for GET /api/telemetry/ollama/summary — the
-Telemetry page's Ollama dashboard (see app/services/telemetry_service.py
+Telemetry page's ML engine dashboard (see app/services/telemetry_service.py
 for the aggregation queries and app/static/js/telemetry.js for how
 these render)."""
 

@@ -55,7 +55,7 @@ async def ingest_document_stream(
     """Chunks `text` and embeds every chunk, and only *then* writes
     anything to the database — either replacing `existing`'s chunks or
     creating a brand-new Document. Doing all the (slow, failure-prone)
-    embedding calls before any write means a mid-way Ollama failure
+    embedding calls before any write means a mid-way ML engine failure
     leaves the database exactly as it was, so the file is naturally
     retried on the next sync rather than getting stuck in a half-
     ingested state.

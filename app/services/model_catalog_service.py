@@ -1,5 +1,5 @@
 """
-Everything about which Ollama models exist and which ones a given user is allowed to see/pick: the curated
+Everything about which models exist and which ones a given user is allowed to see/pick: the curated
 catalog (app/model_catalog.py) cross-referenced with what's actually installed, the admin-configurable
 hidden-tags list, and the admin-configured default for brand-new accounts.
 
@@ -140,7 +140,7 @@ class HiddenModelTags:
 
 class ChatModelCatalogBuilder:
     """Every model Settings' Model tab can offer: the curated list in app/model_catalog.py, plus anything
-    chat-capable already pulled into Ollama that isn't in that list (e.g. pulled manually on the terminal) or
+    chat-capable already pulled into the ML engine that isn't in that list (e.g. pulled manually on the terminal) or
     is an installed vision-projector sidecar with no "completion" capability of its own (see
     InstalledProjectorCatalog), so the picker never hides something the user already has. Each entry says
     whether it's installed and whether this machine's hardware (app/hardware.py) can actually run it —

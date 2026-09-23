@@ -110,7 +110,7 @@ class InstanceProxyMiddleware:
         left at all. Confirmed live: without this, abandoning a chat
         stream after a few chunks left the *upstream* instance's own
         generation running to completion regardless — several minutes
-        of Ollama's single-request slot held hostage by a reply nobody
+        of the ML engine's single-request slot held hostage by a reply nobody
         was still reading, exactly the failure chat_service.
         build_reply_stream's own cancellation-propagation contract is
         supposed to prevent. Cancelling the forwarding task here closes

@@ -58,7 +58,7 @@ async def prune_once() -> None:
         await db.commit()
     if deleted_events or deleted_ollama_snapshots or deleted_metric_snapshots or deleted_gpu_snapshots:
         logger.info(
-            "Pruned %d old telemetry event(s), %d old Ollama model snapshot(s), %d old system metric snapshot(s), "
+            "Pruned %d old telemetry event(s), %d old ML engine model snapshot(s), %d old system metric snapshot(s), "
             "%d old GPU metric snapshot(s).",
             deleted_events,
             deleted_ollama_snapshots,

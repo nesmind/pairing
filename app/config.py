@@ -1,10 +1,10 @@
 """
 Central configuration for the whole app.
 
-Every setting the app needs to know about a specific server (where Ollama lives, which port to listen on, where to
-put its database file, ...) is read here from environment variables, with a sensible default for local development.
-Nothing else in the codebase should read `os.environ` directly — this keeps "things that change when you move to a
-new server" in exactly one place, which is what makes the project portable.
+Every setting the app needs to know about a specific server (where the ML engine lives, which port to listen on,
+where to put its database file, ...) is read here from environment variables, with a sensible default for local
+development. Nothing else in the codebase should read `os.environ` directly — this keeps "things that change when
+you move to a new server" in exactly one place, which is what makes the project portable.
 
 To change a value on a real deployment, copy `.env.example` to `.env` and
 edit it there instead of editing this file.
@@ -28,7 +28,7 @@ load_dotenv()
 # app works no matter what directory it's *launched* from.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Which model Ollama should use by default when a conversation doesn't specify one (e.g. a brand-new chat, or the
+# Which model the ML engine should use by default when a conversation doesn't specify one (e.g. a brand-new chat, or the
 # starter admin account's very first message before any per-user/system default has been saved — see
 # app/services/settings_service.get_default_model). Falls back to the smallest entry in app/model_catalog.py so a
 # fresh install's first chat at least names a real, currently-offered model rather than a stale/removed one.
@@ -43,17 +43,17 @@ DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "hf.co/google/gemma-4-E2B-it-qat
 # compatible with each other.
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF:Q8_0")
 
-# This model's own trained context window (per its GGUF metadata) — left unspecified, Ollama's own default for an
-# embedding call can be larger than what a given model was actually trained with, which it then has to silently
+# This model's own trained context window (per its GGUF metadata) — left unspecified, the ML engine's own default for
+# an embedding call can be larger than what a given model was actually trained with, which it then has to silently
 # clamp back down at request time (logged as a "requested context size too large for model" warning). Passing this
 # explicitly avoids that mismatch/clamp path entirely, which in practice has been the difference between a clean
-# embedding and an internal server error for some inputs — see app/ollama_client.py:embed. RAG_CHUNK_SIZE below
-# (1000 characters) comfortably fits within this for ordinary text — a 1000-character English chunk tokenizes to
+# embedding and an internal server error for some inputs — see app/services/inference_client.py:embed. RAG_CHUNK_SIZE
+# below (1000 characters) comfortably fits within this for ordinary text — a 1000-character English chunk tokenizes to
 # roughly 150-250 tokens, well under the limit.
 EMBEDDING_NUM_CTX = int(os.environ.get("EMBEDDING_NUM_CTX", "512"))
 
 # --- Web server ----------------------------------------------------------
-# Host/port this FastAPI app itself listens on (not Ollama's).
+# Host/port this FastAPI app itself listens on (not the ML engine's).
 APP_HOST = os.environ.get("APP_HOST", "0.0.0.0")
 APP_PORT = int(os.environ.get("APP_PORT", "8000"))
 
@@ -156,7 +156,7 @@ MAX_AVATAR_MB = 2
 
 # --- Image generation (ComfyUI) -----------------------------------------
 # Where ComfyUI's own HTTP API listens once running (see app/services/comfyui_client.py) — a deployment fact,
-# like Ollama's own local address (see app/services/ollama_pool.LOCAL_OLLAMA_HOST), not admin-editable from the
+# like each ML engine's own local address (see its app/services/*_pool.py module), not admin-editable from the
 # UI. *How to launch* ComfyUI (venv python + main.py path) is a separate, admin-configurable AppSetting instead
 # (see settings_service.get_comfyui_config), settable from Settings live.
 COMFYUI_HOST = os.environ.get("COMFYUI_HOST", "http://localhost:8188")
@@ -169,16 +169,19 @@ IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 # --- Local-mode auto-install (Settings > External servers) ---------------
 # Real, tested tags — deliberately never "latest": a moving target would make behavior unpredictable across
 # restarts/reinstalls, and an untested new release could break silently. Bump these on purpose once a newer
-# version has actually been verified to work with this app — see app/services/ollama_installer.py /
-# comfyui_installer.py, the only readers.
+# version has actually been verified to work with this app — see the ML engine and ComfyUI installers in
+# app/services/, the only readers.
 OLLAMA_GITHUB_REPO = "ollama/ollama"
 OLLAMA_PINNED_VERSION = "v0.33.3"
 COMFYUI_GITHUB_REPO = "comfyanonymous/ComfyUI"
 COMFYUI_PINNED_VERSION = "v0.35.1"
 MATRICXON_GITHUB_REPO = "nesmind/matricxon"
-MATRICXON_PINNED_VERSION = "v1.2"
+# The one exception to "never latest" above: Matricxon is developed alongside this app, so an install/reinstall
+# defaults to the newest code on its main branch. A specific tag (e.g. "v1.2") or branch can still be chosen in
+# Settings > External servers > Matricxon's install source panel (MatricxonServerConfig.install_version).
+MATRICXON_DEFAULT_VERSION = "main"
 
-# Where a locally auto-installed Ollama/ComfyUI ends up — kept separate from BASE_DIR's own app code so this app's
+# Where a locally auto-installed ML engine/ComfyUI ends up — kept separate from BASE_DIR's own app code so this app's
 # own git status/deploys never see these as project files.
 EXTERNAL_DIR = Path(os.environ.get("EXTERNAL_DIR", BASE_DIR / "external"))
 EXTERNAL_DIR.mkdir(parents=True, exist_ok=True)
@@ -187,11 +190,11 @@ EXTERNAL_DIR.mkdir(parents=True, exist_ok=True)
 # These are the out-of-the-box values for the "adjustable LLM params" the
 # Settings page exposes. A brand-new conversation starts with these; the
 # user can override them per-conversation from the Settings page, and
-# those overrides are what actually gets sent to Ollama on every request
-# (see app/ollama_client.py and app/routers/settings.py).
+# those overrides are what actually gets sent to the ML engine on every request
+# (see app/services/inference_client.py and app/routers/settings.py).
 DEFAULT_GENERATION_PARAMS = {
     # Randomness of token choice. 0 = deterministic/greedy, higher = more
-    # creative/less predictable. Ollama's own default is 0.8.
+    # creative/less predictable. The ML engines' own default is 0.8.
     "temperature": 0.8,
     # Nucleus sampling: only consider tokens whose cumulative probability
     # is <= top_p. Lower values narrow the model to "safer" word choices.

@@ -45,7 +45,7 @@ async def search_hf_models(
 ):
     """Searches Hugging Face for GGUF-tagged repos matching `body.query` — the first step of "Add a model."
     Admin-only (same as the rest of this add flow), routed through the same admin-configured outbound proxy as
-    the Ollama/ComfyUI installers (Settings > System)."""
+    the ML engine/ComfyUI installers (Settings > System)."""
     proxy_config = await http_proxy_service.get_http_proxy_config(db)
     try:
         results = await HuggingFaceCatalogSearch.search(body.query, proxy_url=proxy_config.proxy_url())
@@ -105,7 +105,7 @@ async def remove_extended_model(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
-    """Removes a tag from the extended catalog only — never uninstalls it from Ollama if it happens to be
+    """Removes a tag from the extended catalog only — never uninstalls it from the ML engine if it happens to be
     installed, same "curation, not deletion" distinction app/routers/settings.py's hide-model endpoint draws."""
     catalog = ExtendedModelCatalog(db)
     await catalog.remove(body.tag)

@@ -6,9 +6,9 @@ CLAUDE.md's file-size rule, and because this path's whole point is
 running independently of whatever request triggered it.
 
 Mechanism: stream_reply creates the placeholder assistant Message, hands
-the Ollama call off to a detached asyncio.Task (_run_generation), then
+the ML engine call off to a detached asyncio.Task (_run_generation), then
 becomes a pure relay on reply_broadcast_service's hub — it never itself
-awaits Ollama, so a disconnecting SSE request only cancels this
+awaits the ML engine, so a disconnecting SSE request only cancels this
 generator's `await queue.get()`, never the task directly. Whether the
 task then keeps running or is cancelled in turn differs by conversation
 type: `cancel_on_disconnect` (below) is False for a channel, True for a

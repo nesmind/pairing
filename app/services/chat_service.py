@@ -1,7 +1,7 @@
 """
 The core chat business logic: trims history to fit the model's context
 window, builds the system prompt from active notes + RAG context, calls
-Ollama, and persists both sides of the exchange. app/routers/chat.py
+the ML engine, and persists both sides of the exchange. app/routers/chat.py
 only wraps this generator's structured events into the SSE wire format
 and returns the StreamingResponse — see build_reply_stream below for the
 actual "what happens when you send a message" logic. Conversation-title
@@ -42,7 +42,7 @@ async def build_reply_stream(
     app/routers/chat.py to SSE-encode:
       {"user_message_id": str}                      — first event, always
       {"chunk": str}                                — while streaming
-      {"error": str}                                — Ollama failed mid-stream
+      {"error": str}                                — the ML engine failed mid-stream
       {"done": True, "title": str, "sources": [...]} — once persisted
     ("title" only ever appears for a personal chat — see below. If
     `ask_ai` is False, "done" is the very next event after

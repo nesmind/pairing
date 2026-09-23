@@ -1,7 +1,7 @@
 """
 Turns a knowledge-base file's raw bytes into plain text, then into
 overlapping chunks ready to embed. Pure text processing — no database,
-no Ollama — see app/services/document_ingest.py for what happens to a
+no ML engine — see app/services/document_ingest.py for what happens to a
 chunk once it exists.
 """
 

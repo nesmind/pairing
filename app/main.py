@@ -58,7 +58,7 @@ from app.theme_config import UI_THEMES
 logger = logging.getLogger("llama_chat")
 logging.basicConfig(level=logging.INFO)
 
-app = FastAPI(title=APP_NAME, description="On-prem, multi-user chat UI for local Ollama models")
+app = FastAPI(title=APP_NAME, description="On-prem, multi-user chat UI for models on a local ML engine")
 
 
 class InstanceIndexHeaderMiddleware:

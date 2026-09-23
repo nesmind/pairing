@@ -176,11 +176,11 @@ async def test_internal_refresh_rejects_a_non_loopback_caller(db, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_install_defaults_reflects_the_pinned_config(admin_user):
-    from app.config import MATRICXON_GITHUB_REPO, MATRICXON_PINNED_VERSION
+    from app.config import MATRICXON_DEFAULT_VERSION, MATRICXON_GITHUB_REPO
 
     result = await matricxon_admin.install_defaults(_admin=admin_user)
     assert result.repo == MATRICXON_GITHUB_REPO
-    assert result.version == MATRICXON_PINNED_VERSION
+    assert result.version == MATRICXON_DEFAULT_VERSION
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,6 @@
 """
 Every embedding model in app/model_catalog.py's CATALOG.embedding_models, cross-referenced with what's actually
-pulled into Ollama — the embedding-model analogue of app.services.model_catalog_service.ChatModelCatalogBuilder,
+pulled into the ML engine — the embedding-model analogue of app.services.model_catalog_service.ChatModelCatalogBuilder,
 kept in its own file (both for CLAUDE.md's file-size rule and because embedding_models is deliberately a
 disjoint list — see CuratedCatalog's own docstring) since it has no hidden-tags/per-user logic worth sharing.
 """

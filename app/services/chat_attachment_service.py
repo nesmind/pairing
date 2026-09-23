@@ -30,7 +30,7 @@ from app.services.document_extract import SUPPORTED_EXTENSIONS, extract_text
 from app.services.document_retrieval import build_attachment_system_prompt
 from app.services.document_upload import safe_filename
 
-# Classified as `type="image"` — sent to Ollama's default vision model as
+# Classified as `type="image"` — sent to the default vision model as
 # part of the request (see chat_service.py). Anything in
 # document_extract.SUPPORTED_EXTENSIONS instead becomes `"text"` — its
 # content is extracted and folded into the system prompt, using whatever
@@ -165,7 +165,7 @@ async def apply_image_attachment(
     one is a no-op here — already folded into the system prompt by
     fold_text_attachments_into_prompt above) and attaches its raw bytes,
     base64-encoded, to the *last* entry of `ollama_messages` (the user's
-    own turn chat_service just added) as Ollama's own per-message
+    own turn chat_service just added) as the ML engine's own per-message
     "images" field — ollama_client.chat_stream passes `messages` straight
     through, so nothing else needs to know this key exists. Returns the
     admin-configured default vision model to use for *this* reply only

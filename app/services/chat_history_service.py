@@ -9,9 +9,9 @@ import itertools
 
 from app.models import Message
 
-# Rough characters-per-token ratio for English text. Ollama doesn't expose
+# Rough characters-per-token ratio for English text. The ML engine doesn't expose
 # a cheap client-side tokenizer, so this estimate is used only to decide
-# how much history to keep on our side of the wire — Ollama still applies
+# how much history to keep on our side of the wire — the ML engine still applies
 # its own real token limit (num_ctx) server-side as the source of truth.
 _CHARS_PER_TOKEN = 4
 

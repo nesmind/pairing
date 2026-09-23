@@ -29,7 +29,7 @@ def get_system_ram_gb() -> float:
 def get_gpu_vram_gb() -> float:
     """Total VRAM across any NVIDIA GPU(s), in gigabytes, or 0.0 if none
     is present/detectable. Best-effort: this app runs chat models
-    through Ollama regardless of whether a GPU exists, so a missing or
+    through the ML engine regardless of whether a GPU exists, so a missing or
     unparseable `nvidia-smi` just means "assume no GPU acceleration"
     rather than an error.
     """
@@ -54,7 +54,7 @@ def get_gpu_vram_gb() -> float:
 
 def available_capacity_gb() -> float:
     """Total RAM plus any GPU VRAM — the pool of memory a model's
-    weights need to fit into (with Ollama's usual CPU/GPU offloading)."""
+    weights need to fit into (with the ML engine's usual CPU/GPU offloading)."""
     return get_system_ram_gb() + get_gpu_vram_gb()
 
 
@@ -80,19 +80,18 @@ def has_avx2() -> bool:
 
 
 def local_install_supported() -> bool:
-    """Whether this app's own Ollama/ComfyUI auto-installers (see
-    app.services.ollama_installer/comfyui_installer, both behind
-    Settings > External servers' "Install from GitHub" button) can run
-    on this machine at all. Both assume a Linux host — Ollama's pinned
-    release asset is a Linux-only build (ollama-linux-{arch}.tar.zst,
-    no macOS/Windows equivalent this app fetches), and this app's own
-    process-management/deployment assumptions throughout (scripts/
-    start.sh, scripts/install_on_fresh_server.sh's systemd unit) are
-    Linux-only too. Exact, not a guess: platform.system() reports the
-    real OS this process is running on. "Local" mode itself still works
-    fine on any OS if Ollama/ComfyUI is installed by hand elsewhere and
-    pointed at via "Enter its path manually" — only the auto-download
-    is gated by this."""
+    """Whether this app's own ML engine and ComfyUI auto-installers (the
+    app.services.*_installer modules, all behind Settings > External
+    servers' "Install from GitHub" button) can run on this machine at
+    all. They assume a Linux host — one ML engine's pinned release asset
+    is a Linux-only build (no macOS/Windows equivalent this app fetches),
+    and this app's own process-management/deployment assumptions
+    throughout (scripts/start.sh, scripts/install_on_fresh_server.sh's
+    systemd unit) are Linux-only too. Exact, not a guess:
+    platform.system() reports the real OS this process is running on.
+    "Local" mode itself still works fine on any OS if the ML engine or
+    ComfyUI is installed by hand elsewhere and pointed at via "Enter its
+    path manually" — only the auto-download is gated by this."""
     return platform.system() == "Linux"
 
 

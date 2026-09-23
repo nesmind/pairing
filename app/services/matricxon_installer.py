@@ -2,11 +2,12 @@
 Installs Matricxon from GitHub — the "local" mode auto-install behind Settings > External servers' Install
 button, the Matricxon-flavored twin of app.services.comfyui_installer (see that module's own docstring for the
 full reasoning behind each step; unchanged here except where Matricxon's own project shape differs). `git
-clone`s the pinned app.config.MATRICXON_PINNED_VERSION tag (never a moving branch — same predictability
-reasoning as Ollama/ComfyUI's own pinned installs), then builds a `.venv` (not ComfyUI's `venv` — Matricxon's
-own scripts/start.sh hardcodes `.venv/bin/uvicorn`, confirmed against that script directly) and `pip install`s
-its runtime requirements.txt (not requirements-dev.txt — the README's own dev Setup instructions install dev
-tooling too, but an admin running this as a service has no use for pytest/ruff).
+clone`s app.config.MATRICXON_DEFAULT_VERSION - Matricxon's main branch, i.e. its newest code, unlike
+Ollama/ComfyUI's pinned tags (see that constant's comment), unless the admin chose a specific tag/branch - then
+builds a `.venv` (not ComfyUI's `venv` — Matricxon's own scripts/start.sh hardcodes `.venv/bin/uvicorn`,
+confirmed against that script directly) and `pip install`s its runtime requirements.txt (not
+requirements-dev.txt — the README's own dev Setup instructions install dev tooling too, but an admin running this
+as a service has no use for pytest/ruff).
 
 Requires `git` and a working `python3 -m venv` on this machine, same as comfyui_installer.
 
@@ -43,7 +44,7 @@ import tempfile
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from app.config import EXTERNAL_DIR, MATRICXON_GITHUB_REPO, MATRICXON_PINNED_VERSION
+from app.config import EXTERNAL_DIR, MATRICXON_DEFAULT_VERSION, MATRICXON_GITHUB_REPO
 from app.hardware import local_install_supported
 from app.services import matricxon_process
 from app.services.pip_progress import PipProgressTracker
@@ -138,18 +139,18 @@ async def install_stream(
     in app/routers/matricxon_admin.py. Cleans up a partial clone on failure so a retry starts fresh.
 
     `repo`/`version` let the caller (MatricxonServerConfig.install_repo/install_version) pin a different
-    fork/tag than MATRICXON_GITHUB_REPO/MATRICXON_PINNED_VERSION's own default — None for either falls back to
+    fork/tag than MATRICXON_GITHUB_REPO/MATRICXON_DEFAULT_VERSION's own default — None for either falls back to
     that default. `proxy_url` routes the git clone and pip install through an admin-configured HTTP proxy, same
     as comfyui_installer."""
     repo = repo or MATRICXON_GITHUB_REPO
-    version = version or MATRICXON_PINNED_VERSION
+    version = version or MATRICXON_DEFAULT_VERSION
     proxied_env = _proxied_env(proxy_url)
 
     if not repo or not version:
         yield {
             "error": (
                 "No Matricxon repo/version configured — set app.config.MATRICXON_GITHUB_REPO/"
-                "MATRICXON_PINNED_VERSION, or pin a specific fork/tag below."
+                "MATRICXON_DEFAULT_VERSION, or pin a specific fork/tag below."
             )
         }
         return

@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import MATRICXON_GITHUB_REPO, MATRICXON_PINNED_VERSION
+from app.config import MATRICXON_DEFAULT_VERSION, MATRICXON_GITHUB_REPO
 from app.database import get_db
 from app.models import User
 from app.schemas import (
@@ -142,7 +142,7 @@ async def stop(db: AsyncSession = Depends(get_db), _admin: User = Depends(requir
 
 @router.get("/install-defaults", response_model=InstallDefaults)
 async def install_defaults(_admin: User = Depends(require_admin)):
-    return InstallDefaults(repo=MATRICXON_GITHUB_REPO, version=MATRICXON_PINNED_VERSION)
+    return InstallDefaults(repo=MATRICXON_GITHUB_REPO, version=MATRICXON_DEFAULT_VERSION)
 
 
 @router.get("/available-versions", response_model=AvailableVersions)

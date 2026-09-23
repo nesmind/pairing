@@ -3,7 +3,7 @@ Everything about a user's Notes (app/models/note.py: Note, NotePin):
 seeding/looking up each user's 3 protected default notes
 (persona/rules/skill), resolving which notes are active for a given
 conversation, turning that into part of the system prompt actually sent
-to Ollama, and the Notes page's pin-syncing/note CRUD support behind
+to the ML engine, and the Notes page's pin-syncing/note CRUD support behind
 app/routers/notes.py's endpoints. The chat page's narrower one-slot-at-
 a-time view (resolving/editing a single persona/rules/skill icon for one
 conversation) lives in app/services/note_slot_service.py instead —

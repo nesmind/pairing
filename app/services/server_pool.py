@@ -3,7 +3,7 @@ Generic "fewest in-flight requests, health-aware" host pool — the exact
 selection/cooldown/failover algorithm app/services/ollama_pool.py always
 used, extracted into a reusable class once app/services/comfyui_pool.py
 needed the identical logic for a second, unrelated backend. Neither
-Ollama nor ComfyUI specifics live here; both thin wrapper modules keep
+ML engine nor ComfyUI specifics live here; both thin wrapper modules keep
 their own public function names (pick_host/mark_failure/... ) so no
 existing call site anywhere else in the app needs to change its own
 call shape — only how each pool's host list gets populated does.
@@ -45,7 +45,7 @@ class _HostState:
 
 
 class HostPool:
-    """One independent pool — Ollama and ComfyUI each own their own
+    """One independent pool — each ML engine and ComfyUI own their own
     instance, never sharing state. `cooldown_seconds` is how long a host
     that just failed sits out of rotation before being considered again
     (see mark_failure)."""
@@ -171,7 +171,7 @@ class HostPool:
         """Pings every configured host directly and reports which are
         currently reachable — a fresh, independent probe every call,
         deliberately not reading or updating pick_host's own cooldown
-        state (see app/routers/health.py's use of this for Ollama, via
+        state (see app/routers/health.py's use of this for the ML engine, via
         app.services.ollama_pool.check_hosts, for why: a health poller
         needs this instance's *current* reality, not routing history
         that might be stale)."""

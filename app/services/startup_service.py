@@ -109,14 +109,14 @@ async def run_startup_tasks() -> None:
 
         await db.commit()
 
-        # Primes the live Ollama/ComfyUI host pools (Settings > External
+        # Primes the live ML engine/ComfyUI host pools (Settings > External
         # servers) from whatever's currently saved — unlike the
         # instance-count/proxy-mode priming right below, this runs on
         # *every* instance, not just the primary: each instance
         # independently routes its own chat/image-generation requests
         # through these pools (see app.services.ollama_pool/comfyui_pool),
         # so every one of them needs its own cache warm before the
-        # Ollama connectivity check right after this block runs.
+        # ML engine connectivity check right after this block runs.
         ollama_pool.refresh_from_config(await settings_service.get_ollama_server_config(db))
         comfyui_pool.refresh_from_config(await settings_service.get_comfyui_config(db))
         matricxon_pool.refresh_from_config(await settings_service.get_matricxon_server_config(db))
@@ -129,8 +129,8 @@ async def run_startup_tasks() -> None:
         # instruments its own outbound Ollama/Matricxon calls independently (see app.services.ollama_client/
         # matricxon_client), so each needs its own OpenTelemetry SDK wired up, one per engine (see
         # matricxon_telemetry's own docstring for why a separate TracerProvider, not a shared one). Must happen
-        # before the Ollama-reachability check below: that check `return`s early on a cold start without Ollama
-        # reachable yet, which would otherwise skip this permanently.
+        # before the ML engine reachability check below: that check `return`s early on a cold start without the ML
+        # engine reachable yet, which would otherwise skip this permanently.
         ollama_telemetry.init_ollama_telemetry()
         matricxon_telemetry.init_matricxon_telemetry()
 

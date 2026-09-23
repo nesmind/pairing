@@ -3,7 +3,7 @@ default dashboard view (see app/services/stats_service.py for the
 aggregation queries and app/templates/stats.html for the page this
 serves). Admin-only — unlike the Notes/Images links it used to sit
 alongside in chat.html's sidebar, this page also covers the Telemetry
-and System views (Ollama call data, this machine's own CPU/RAM/disk),
+and System views (ML engine call data, this machine's own CPU/RAM/disk),
 which read as more operational/infra-facing than something every
 regular user should see by default.
 """

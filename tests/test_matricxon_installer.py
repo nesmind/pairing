@@ -26,7 +26,7 @@ def _assume_a_real_pinned_default(monkeypatch):
     pinned to real-looking defaults here so the rest of this file's tests exercise the clone/venv/pip flow
     without needing to pass repo=/version= explicitly every time."""
     monkeypatch.setattr(matricxon_installer, "MATRICXON_GITHUB_REPO", "nesmind/matricxon")
-    monkeypatch.setattr(matricxon_installer, "MATRICXON_PINNED_VERSION", "v0.1")
+    monkeypatch.setattr(matricxon_installer, "MATRICXON_DEFAULT_VERSION", "v0.1")
 
 
 def test_is_installed_delegates_to_matricxon_process(monkeypatch):
@@ -39,7 +39,7 @@ def test_is_installed_delegates_to_matricxon_process(monkeypatch):
 @pytest.mark.asyncio
 async def test_install_stream_reports_error_when_no_repo_or_version_is_configured(monkeypatch):
     monkeypatch.setattr(matricxon_installer, "MATRICXON_GITHUB_REPO", "")
-    monkeypatch.setattr(matricxon_installer, "MATRICXON_PINNED_VERSION", "")
+    monkeypatch.setattr(matricxon_installer, "MATRICXON_DEFAULT_VERSION", "")
 
     events = [event async for event in matricxon_installer.install_stream()]
 
