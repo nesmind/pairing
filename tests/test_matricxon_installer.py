@@ -105,6 +105,10 @@ class _FakeSubprocess:
         self.returncode = self._returncode_to_report
         return self.returncode
 
+    async def communicate(self):
+        # Answers PipProgressTracker.supports_raw's `pip install --help` probe like a modern pip.
+        return b"--progress-bar [on, off, raw]", b""
+
 
 def _fake_clone_and_venv(tmp_path):
     """Shared fake create_subprocess_exec: simulates git actually creating the target directory +
@@ -147,8 +151,10 @@ async def test_install_stream_runs_clone_venv_and_pip_in_order(monkeypatch, tmp_
     assert calls[0][0] == "git"
     assert calls[1][1:3] == ("-m", "venv")
     assert str(tmp_path / "matricxon" / ".venv") in calls[1]
-    assert "pip" in calls[2]
-    assert str(tmp_path / "matricxon" / ".venv" / "bin" / "python") == calls[2][0]
+    assert calls[2][-2:] == ("install", "--help")  # PipProgressTracker.supports_raw's probe
+    assert "pip" in calls[3]
+    assert str(tmp_path / "matricxon" / ".venv" / "bin" / "python") == calls[3][0]
+    assert calls[3][4:6] == ("--progress-bar", "raw")
 
     clone_events = [e for e in events if e.get("step") == 1]
     venv_events = [e for e in events if e.get("step") == 2]
@@ -247,7 +253,8 @@ async def test_install_stream_sets_proxy_env_for_clone_and_pip_but_not_venv(monk
 
     [event async for event in matricxon_installer.install_stream(proxy_url="http://10.0.0.5:8080")]
 
-    git_env, venv_env, pip_env = calls[0][1], calls[1][1], calls[2][1]
+    # calls[2] is PipProgressTracker.supports_raw's local `pip install --help` probe - no network, no proxy.
+    git_env, venv_env, pip_env = calls[0][1], calls[1][1], calls[3][1]
     for env in (git_env, pip_env):
         assert env["HTTP_PROXY"] == "http://10.0.0.5:8080"
         assert env["http_proxy"] == "http://10.0.0.5:8080"

@@ -2435,6 +2435,71 @@ for (const server of EXTERNAL_SERVERS) {
  * real, confirmed-live gap without this: reinstalling left the admin with a freshly-updated but stopped engine
  * and no visible signal that a manual Start was now needed, reading as "stuck" until a page reload happened to
  * show the true (stopped) status. */
+// Spinner + elapsed timer beside an install's step label, so a long step with no numbers to show (pip's
+// install phase, a slow mirror) never reads as frozen — reported live, 2026-09-23: "3/3 at 100%" sitting
+// still through a ~900 MB PyTorch download. The spinner goes in a small wrapper around the label so the
+// header row's existing label-left / percent-right layout is unchanged.
+function startInstallActivity(stepLabelEl, percentEl) {
+  let wrapper = stepLabelEl.parentElement;
+  if (!wrapper.dataset.installActivity) {
+    wrapper = document.createElement("span");
+    wrapper.dataset.installActivity = "1";
+    wrapper.className = "flex min-w-0 items-center gap-2";
+    stepLabelEl.before(wrapper);
+    wrapper.appendChild(stepLabelEl);
+  }
+  const spinner = document.createElement("span");
+  spinner.className = "inline-flex shrink-0";
+  spinner.innerHTML =
+    '<svg class="h-3.5 w-3.5 animate-spin text-brand-500" viewBox="0 0 24 24" fill="none">' +
+    '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
+    '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>';
+  wrapper.prepend(spinner);
+
+  const startedAt = Date.now();
+  let progressText = "";
+  const render = () => {
+    const seconds = Math.floor((Date.now() - startedAt) / 1000);
+    const elapsed = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+    percentEl.textContent = progressText ? `${progressText} · ${elapsed}` : elapsed;
+  };
+  const timer = setInterval(render, 1000);
+  render();
+  return {
+    setProgress(text) {
+      progressText = text;
+      render();
+    },
+    stop() {
+      clearInterval(timer);
+      spinner.remove();
+    },
+  };
+}
+
+// A real "working, no numbers yet" bar in place of the value-less <progress>, which Firefox draws as a full,
+// static bar (read as "100%, stuck" through pip's whole install phase). A short segment slides across a track
+// the same size as the progress bar, animated with the Web Animations API so no extra CSS is needed.
+function setInstallBarIndeterminate(barEl, indeterminate) {
+  let track = barEl.nextElementSibling;
+  if (!track?.dataset.installIndeterminate) {
+    track = document.createElement("div");
+    track.dataset.installIndeterminate = "1";
+    track.className = "hidden relative h-1.5 w-full overflow-hidden rounded-full bg-slate-800";
+    const segment = document.createElement("div");
+    segment.className = "absolute inset-y-0 w-1/3 rounded-full bg-brand-500";
+    track.appendChild(segment);
+    barEl.after(track);
+    segment.animate([{ left: "-33%" }, { left: "100%" }], {
+      duration: 1400,
+      iterations: Infinity,
+      easing: "ease-in-out",
+    });
+  }
+  track.classList.toggle("hidden", !indeterminate);
+  barEl.classList.toggle("hidden", indeterminate);
+}
+
 async function installServer(server, section, restartAfter = false) {
   const installIdle = section.querySelector('[data-field="install-idle"]');
   const progressPanel = section.querySelector('[data-field="install-progress-panel"]');
@@ -2459,6 +2524,8 @@ async function installServer(server, section, restartAfter = false) {
   percentEl.textContent = "";
   stepLabelEl.textContent = "Starting…";
   modeSelect.disabled = true;
+  const activity = startInstallActivity(stepLabelEl, percentEl);
+  setInstallBarIndeterminate(barEl, true);
 
   try {
     const response = await fetch(`/api/settings/${server}/install`, { method: "POST" });
@@ -2495,17 +2562,25 @@ async function installServer(server, section, restartAfter = false) {
         if (payload.total && payload.completed) {
           const pct = Math.round((payload.completed / payload.total) * 100);
           barEl.value = pct;
-          percentEl.textContent = `${pct}%`;
+          // pip download progress is in bytes (app.services.pip_progress) — worth showing as MB; git clone's
+          // completed/total are object counts, where only the percentage means anything.
+          const mb = (bytes) => (bytes / 1e6).toFixed(0);
+          const size = payload.unit === "bytes" ? ` · ${mb(payload.completed)} / ${mb(payload.total)} MB` : "";
+          activity.setProgress(`${pct}%${size}`);
+          setInstallBarIndeterminate(barEl, false);
         } else {
           barEl.removeAttribute("value");
-          percentEl.textContent = "";
+          setInstallBarIndeterminate(barEl, true);
+          activity.setProgress("");
         }
         if (payload.status) appendLog(payload.status);
       }
     }
 
+    activity.stop();
     stepLabelEl.textContent = "Installed.";
     percentEl.textContent = "100%";
+    setInstallBarIndeterminate(barEl, false);
     barEl.value = 100;
     // Ollama's own managed binary IS in ollama_process._FALLBACK_BIN_PATHS, so a *first-ever* install with no
     // override set already auto-detects it correctly with nothing saved here. The real gap this closes: an
@@ -2580,6 +2655,8 @@ async function installServer(server, section, restartAfter = false) {
     // to retry successfully.
     installIdle.classList.remove("hidden");
   } finally {
+    activity.stop();
+    setInstallBarIndeterminate(barEl, false);
     modeSelect.disabled = false;
   }
 }

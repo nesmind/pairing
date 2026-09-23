@@ -46,6 +46,7 @@ from pathlib import Path
 from app.config import EXTERNAL_DIR, MATRICXON_GITHUB_REPO, MATRICXON_PINNED_VERSION
 from app.hardware import local_install_supported
 from app.services import matricxon_process
+from app.services.pip_progress import PipProgressTracker
 
 logger = logging.getLogger("llama_chat")
 
@@ -214,12 +215,16 @@ async def install_stream(
         "step_label": "Installing dependencies — this can take several minutes (PyTorch is a large download)",
     }
     yield {**pip_meta, "status": "Installing dependencies (this can take a while)..."}
+    venv_python = venv_dir / "bin" / "python"
+    # Real per-download percentages instead of minutes of silence - see app.services.pip_progress.
+    progress = PipProgressTracker("Installing dependencies")
+    raw_progress = ["--progress-bar", "raw"] if await PipProgressTracker.supports_raw(venv_python) else []
     try:
         async for line in _run_streamed(
-            [str(venv_dir / "bin" / "python"), "-m", "pip", "install", "-r", str(target_dir / "requirements.txt")],
+            [str(venv_python), "-m", "pip", "install", *raw_progress, "-r", str(target_dir / "requirements.txt")],
             env=proxied_env,
         ):
-            yield {**pip_meta, "status": line}
+            yield {**pip_meta, **progress.event_for(line)}
     except RuntimeError as exc:
         yield {"error": f"Could not install Matricxon's dependencies: {exc}"}
         return
