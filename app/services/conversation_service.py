@@ -14,7 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Conversation, Message, User
 from app.models._base import utcnow
 from app.schemas import ConversationCreate, ConversationUpdate, MessagesLatestResponse
-from app.services import channel_service, chat_attachment_service, reply_broadcast_service, reply_generation_service
+from app.services import (
+    channel_service,
+    chat_attachment_service,
+    note_service,
+    reply_broadcast_service,
+    reply_generation_service,
+)
 from app.services.model_catalog_service import installed_chat_models, resolve_installed_model
 from app.services.settings_service import get_default_model, get_default_params
 
@@ -39,10 +45,11 @@ async def create_conversation(db: AsyncSession, body: ConversationCreate, user: 
     else:
         model = await resolve_installed_model(db, user, await get_default_model(db, user))
 
+    params = await note_service.seed_initial_disabled_notes(db, user, await get_default_params(db, user))
     conversation = Conversation(
         owner_id=user.id,
         model=model,
-        params=await get_default_params(db, user),
+        params=params,
     )
     db.add(conversation)
     await db.commit()

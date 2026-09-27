@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from app.models import Conversation, Note, NotePin
 from app.schemas import NotePinCreate
-from app.services import note_service
+from app.services import default_notes_setting, note_service
 
 
 def test_build_pinned_system_prompt_orders_persona_first():
@@ -23,6 +23,26 @@ def test_build_pinned_system_prompt_orders_persona_first():
         }
     )
     assert prompt.index("Persona") < prompt.index("Rules")
+
+
+@pytest.mark.asyncio
+async def test_seed_initial_disabled_notes_disables_all_slots_when_setting_is_off(db, user):
+    """The default for a brand-new account (see default_notes_setting.get_default_notes_enabled's
+    own docstring): no saved preference yet means off, so a new conversation starts with all 3
+    slots pre-disabled instead of the old unconditional "every slot on" behavior."""
+    params = await note_service.seed_initial_disabled_notes(db, user, {"temperature": 0.5})
+
+    assert params["temperature"] == 0.5
+    assert set(params["disabled_default_notes"]) == set(note_service.NOTE_SLOTS)
+
+
+@pytest.mark.asyncio
+async def test_seed_initial_disabled_notes_leaves_params_untouched_when_setting_is_on(db, user):
+    await default_notes_setting.set_default_notes_enabled(db, user, True)
+
+    params = await note_service.seed_initial_disabled_notes(db, user, {"temperature": 0.5})
+
+    assert "disabled_default_notes" not in params
 
 
 @pytest.mark.asyncio

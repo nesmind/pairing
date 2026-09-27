@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Connectors — {{ app_name }}{% endblock %}
+{% block body %}
+<div class="flex h-full flex-col">
+  <header class="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
+    <div class="flex items-center gap-3">
+      <a href="/" class="rounded-lg p-1.5 hover:bg-slate-800 transition-colors" title="Back to chat">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+      </a>
+      <h1 class="text-sm font-semibold">Connectors</h1>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs text-slate-500">{{ username }}</span>
+      <form method="post" action="/logout" class="flex items-center">
+        <button type="submit" class="text-xs text-slate-500 hover:text-slate-300 transition-colors">Log out</button>
+      </form>
+      <!-- Opens the slide-in account panel — see
+           app/static/js/account_panel.js and app/templates/_account_panel.html. -->
+      <button id="account-panel-badge" type="button"
+        class="h-7 w-7 shrink-0 rounded-full overflow-hidden bg-slate-800 text-xs font-medium text-slate-300 hover:opacity-80 transition-opacity"
+        title="{{ username }}"></button>
+    </div>
+  </header>
+
+  <div class="flex-1 overflow-y-auto">
+    <div class="mx-auto max-w-5xl px-4 py-8 space-y-4">
+      <div>
+        <h2 class="text-sm font-semibold text-slate-200">Available connectors</h2>
+        <p class="text-xs text-slate-500 mt-0.5">
+          A connector extends pAIring route chat/model-list requests to a third-party, cloud based
+          GPUs engine instead of Ollama or Matricxon. Configure and enable one below, then pick it
+          as the active engine in Settings &gt; External servers.
+        </p>
+      </div>
+
+      <p id="connectors-error" class="hidden text-sm text-red-400"></p>
+
+      <!-- Populated by app/static/js/connectors.js — one card per connector, generic form built
+           from that connector's own config_fields (see app.services.connectors), so a future
+           connector needs no template change here. A grid (not flex) naturally left-aligns a
+           partial last row instead of centering/stretching it. items-start keeps a collapsed
+           card's own box from stretching to match a taller, expanded neighbor in the same row. -->
+      <div id="connectors-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-start"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Template for one connector row, cloned and filled in by connectors.js. Kept in the DOM (hidden)
+     rather than built as an HTML string in JS, so the toggle/inputs stay real, inspectable elements.
+     Collapsed by default (like Settings > Model's "Browse more models" panel) — clicking the row
+     reveals its config form; only one connector's form is open at a time (see connectors.js). -->
+<template id="connector-card-template">
+  <div class="connector-card rounded-lg bg-slate-900 border border-slate-800 overflow-hidden">
+    <div class="flex items-center justify-between gap-3 px-4 py-3">
+      <button type="button" class="connector-card-toggle flex flex-1 min-w-0 items-center gap-2 text-left">
+        <svg class="connector-chevron h-4 w-4 shrink-0 text-slate-500 transition-transform" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="m6 9 6 6 6-6"/>
+        </svg>
+        <span class="min-w-0">
+          <span class="flex items-center gap-2">
+            <span class="connector-name text-sm font-semibold text-slate-100"></span>
+            <span class="connector-ready-badge hidden rounded-full bg-emerald-900/60 px-2 py-0.5 text-[11px] font-medium text-emerald-300">Ready</span>
+          </span>
+          <span class="connector-description block text-xs text-slate-500 mt-0.5 truncate"></span>
+        </span>
+      </button>
+      <div class="flex items-center gap-2 shrink-0">
+        <span class="connector-enabled-status text-xs text-slate-500"></span>
+        <label class="relative inline-flex items-center cursor-pointer" title="Enable this connector">
+          <input type="checkbox" class="connector-enabled-toggle peer sr-only">
+          <div class="h-6 w-11 rounded-full bg-slate-700 transition-colors peer-checked:bg-brand-600 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-500"></div>
+          <div class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-5"></div>
+        </label>
+      </div>
+    </div>
+
+    <div class="connector-detail hidden border-t border-slate-800 px-4 py-3 space-y-3">
+      <form class="connector-config-form space-y-2">
+        <!-- One row per config field, appended by connectors.js. -->
+        <div class="connector-fields space-y-2"></div>
+        <div class="flex items-center gap-3 pt-1">
+          <button type="submit"
+            class="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-500 transition-colors">
+            Save
+          </button>
+          <span class="connector-save-status text-xs text-slate-500"></span>
+        </div>
+      </form>
+
+      <div class="border-t border-slate-800 pt-3 space-y-2">
+        <div class="flex items-center gap-3">
+          <button type="button"
+            class="connector-test-btn rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            Test connection
+          </button>
+          <span class="connector-test-status text-xs text-slate-500"></span>
+        </div>
+        <p class="text-[11px] text-slate-500">
+          Must pass before this connector can be picked as the active engine in Settings &gt; External servers —
+          re-run this any time the config above changes.
+        </p>
+        <p class="connector-test-result hidden text-xs"></p>
+      </div>
+    </div>
+  </div>
+</template>
+
+<template id="connector-field-template">
+  <div class="space-y-1">
+    <label class="connector-field-label block text-xs font-medium text-slate-300"></label>
+    <input class="connector-field-input w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+    <p class="connector-field-help text-[11px] text-slate-500"></p>
+  </div>
+</template>
+
+{% include "_account_panel.html" %}
+
+<script src="/static/js/app.js?v={{ static_version }}"></script>
+<script src="/static/js/theme.js?v={{ static_version }}"></script>
+<script src="/static/js/account_panel.js?v={{ static_version }}"></script>
+<script src="/static/js/connectors.js?v={{ static_version }}"></script>
+{% endblock %}

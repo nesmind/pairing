@@ -23,16 +23,10 @@ from app.models import SYSTEM_OWNER_ID, AppSetting, User
 from app.schemas import CatalogEntry, ModelCatalogResponse
 from app.services import settings_service
 from app.services.default_model_settings import DefaultModelSettings
+from app.services.engine_support_checker import OLLAMA_RAM_ESTIMATE_MULTIPLIER, EngineSupportSet
 from app.services.extended_model_catalog_enrichment import HuggingFaceModelProbe
 from app.services.inference_client import list_models
 from app.services.installed_projector_catalog import InstalledProjectorCatalog
-from app.services.matricxon_support_checker import MatricxonSupportChecker
-
-# Ollama's own API exposes no per-model RAM estimate at all (unlike Matricxon's real `estimated_ram_gb`, see
-# MatricxonSupportChecker) - this is the same rule-of-thumb headroom-above-download-size multiplier this file
-# already used, before CatalogEntry split its RAM figure per engine, for auto-discovered installed models not
-# in the curated CATALOG. Named and reused here instead of two independent copies of the same magic number.
-OLLAMA_RAM_ESTIMATE_MULTIPLIER = 1.25
 
 # Matches the exact quant token as written at the end of a tag's own suffix (e.g. "Q3_K_M" out of
 # "...:Llama-3.2-3B-Instruct-Q3_K_M", "Q8_0" out of "...:Q8_0") — used as a fallback for parameter_size display
@@ -171,13 +165,13 @@ class ChatModelCatalogBuilder:
         hidden_tags = await self._hidden_tags.get()
         installed_by_tag = {m["name"]: m for m in installed_models if "completion" in m.get("capabilities", [])}
         capacity_gb = hardware.available_capacity_gb()
-        checker = await MatricxonSupportChecker.load(installed_models)
+        support_set = await EngineSupportSet.load(installed_models)
 
         entries = []
         for entry in CATALOG.chat_models:
             if entry.tag in hidden_tags and not is_admin:
                 continue
-            entries.append(self._catalog_entry(entry, installed_by_tag, hidden_tags, capacity_gb, checker))
+            entries.append(self._catalog_entry(entry, installed_by_tag, hidden_tags, capacity_gb, support_set))
 
         catalog_tags = {entry.tag for entry in CATALOG.chat_models if entry.tag}
         extended_catalog_entries = await self._extended_catalog_entries()
@@ -187,10 +181,10 @@ class ChatModelCatalogBuilder:
             extended_entry = extended_catalog_entries.get(name)
             if extended_entry is None and is_admin:
                 extended_entry = await self._self_register(name)
-            entries.append(self._auto_discovered_entry(name, installed_model, hidden_tags, checker, extended_entry))
+            entries.append(self._auto_discovered_entry(name, installed_model, hidden_tags, support_set, extended_entry))
 
         entries.extend(
-            InstalledProjectorCatalog.entries(installed_models, catalog_tags, hidden_tags, is_admin, checker)
+            InstalledProjectorCatalog.entries(installed_models, catalog_tags, hidden_tags, is_admin, support_set)
         )
         return ModelCatalogResponse(entries=entries, hardware=hardware.hardware_summary())
 
@@ -261,7 +255,9 @@ class ChatModelCatalogBuilder:
         match = _QUANT_TOKEN_RE.search(suffix)
         return match.group(0).upper() if match else None
 
-    def _catalog_entry(self, entry, installed_by_tag: dict, hidden_tags: set[str], capacity_gb: float, checker):
+    def _catalog_entry(
+        self, entry, installed_by_tag: dict, hidden_tags: set[str], capacity_gb: float, support_set: EngineSupportSet
+    ):
         tag = entry.tag
         installed_model = installed_by_tag.get(tag) if tag else None
         installed = installed_model is not None
@@ -275,12 +271,12 @@ class ChatModelCatalogBuilder:
             if installed_model is not None
             else entry.architecture
         )
-        verdict = checker.verdict_for(architecture, entry.quantizations)
-        # Ollama's own RAM figure from download_gb (it exposes no better number); Matricxon's real figure below
-        # only once this exact tag is confirmed installed (an un-pulled tag's can't be computed without its
-        # real GGUF file to read tensor shapes from).
-        min_ram_gb_ollama = (
-            round(entry.download_gb * OLLAMA_RAM_ESTIMATE_MULTIPLIER, 1) if entry.download_gb else entry.min_ram_gb
+        engine_support = support_set.support_for(
+            tag=tag,
+            architecture=architecture,
+            quantizations=entry.quantizations,
+            download_gb=entry.download_gb,
+            min_ram_gb=entry.min_ram_gb,
         )
         return CatalogEntry(
             family=entry.family,
@@ -290,8 +286,7 @@ class ChatModelCatalogBuilder:
             context_length=entry.context_length,
             download_gb=entry.download_gb,
             min_ram_gb=entry.min_ram_gb,
-            min_ram_gb_ollama=min_ram_gb_ollama,
-            min_ram_gb_matricxon=checker.estimated_ram_gb(tag) if tag else None,
+            engine_support=engine_support,
             locally_runnable=entry.locally_runnable,
             installed=installed,
             # Already-installed models get a pass on the live check — they clearly ran well enough to be
@@ -313,8 +308,13 @@ class ChatModelCatalogBuilder:
             # Every CATALOG entry is a normal chat model by definition (this whole list is curated as one) —
             # see CatalogEntry.text_capable's own docstring for why this is never actually False here today.
             text_capable=True,
-            matricxon_supported=verdict.supported,
-            matricxon_unsupported_reason=verdict.reason,
+            # No pre-install guess is possible for this one (see CatalogEntry.chat_format_unverified's own
+            # docstring) — only ever read live, and only False (the field's own default) until installed.
+            chat_format_unverified=(
+                "chat_format_unverified" in installed_model.get("capabilities", [])
+                if installed_model is not None
+                else False
+            ),
         )
 
     def _auto_discovered_entry(
@@ -322,7 +322,7 @@ class ChatModelCatalogBuilder:
         name: str,
         installed_model: dict,
         hidden_tags: set[str],
-        checker: MatricxonSupportChecker,
+        support_set: EngineSupportSet,
         extended_entry: dict | None,
     ) -> CatalogEntry:
         details = installed_model.get("details", {})
@@ -349,10 +349,8 @@ class ChatModelCatalogBuilder:
         # regardless of whether it's ever actually been loaded — real architecture support is only checked at
         # load time, the first time something tries to chat with it. A model could show up here looking fine,
         # then fail with a genuine "unsupported architecture" error from Matricxon on the very first message.
-        # checker.verdict_for is the one real check every other catalog entry (curated, extended, embedding)
-        # already goes through — the single source of truth this now shares too, instead of a second,
-        # independent guess that could (and did) disagree with it. Architecture prefers ExtendedModelCatalog's
-        # own real GGUF-probed value when this tag is registered, else whichever engine reported it installed —
+        # Architecture prefers ExtendedModelCatalog's own real GGUF-probed value when this tag is registered,
+        # else whichever engine reported it installed —
         # both Ollama's and Matricxon's own /api/tags report the real GGUF general.architecture string as
         # details.family regardless of which engine is currently active, so this gives a meaningful verdict
         # even for an Ollama-installed model, not the unconditional "not verified" the old code gave every
@@ -361,7 +359,19 @@ class ChatModelCatalogBuilder:
         quantizations = (extended_entry or {}).get(
             "quantizations"
         ) or HuggingFaceModelProbe.guess_quantizations_from_filename(name)
-        verdict = checker.verdict_for(architecture, quantizations)
+        # support_set.support_for is the one real check every other catalog entry (curated, extended, embedding)
+        # already goes through — the single source of truth this now shares too, instead of a second,
+        # independent guess that could (and did) disagree with it (see this method's own docstring above for
+        # the real bug that closed). download_gb passed raw (not pre-rounded) so each engine's own RAM formula
+        # reproduces the exact same figure ollama_ram_gb above already computed, not a second, slightly
+        # different rounding of it.
+        engine_support = support_set.support_for(
+            tag=name,
+            architecture=architecture,
+            quantizations=quantizations,
+            download_gb=size_gb or None,
+            min_ram_gb=ollama_ram_gb,
+        )
         return CatalogEntry(
             family=family,
             vendor=self._vendor_from_tag(name),
@@ -370,8 +380,7 @@ class ChatModelCatalogBuilder:
             context_length=details.get("context_length"),
             download_gb=round(size_gb, 1) if size_gb else None,
             min_ram_gb=ollama_ram_gb,
-            min_ram_gb_ollama=ollama_ram_gb,
-            min_ram_gb_matricxon=checker.estimated_ram_gb(name),
+            engine_support=engine_support,
             locally_runnable=True,
             installed=True,
             hardware_ok=True,
@@ -381,7 +390,6 @@ class ChatModelCatalogBuilder:
             # hand-curated guess like the CATALOG branch above.
             vision="vision" in installed_model.get("capabilities", []),
             text_capable="completion" in installed_model.get("capabilities", []),
-            matricxon_supported=verdict.supported,
-            matricxon_unsupported_reason=verdict.reason,
+            chat_format_unverified="chat_format_unverified" in installed_model.get("capabilities", []),
             is_auto_discovered=extended_entry is None,
         )

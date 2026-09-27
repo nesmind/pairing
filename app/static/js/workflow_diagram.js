@@ -104,6 +104,7 @@ function showWorkflowDetail(node) {
     <h3 class="text-base font-semibold text-slate-100 mt-1">${escapeHtml(node.detail.title)}</h3>
     <p class="text-xs font-mono text-slate-500 mt-1">${escapeHtml(node.detail.location)}</p>
     <p class="text-sm text-slate-300 mt-3 leading-relaxed">${escapeHtml(node.detail.body)}</p>
+    ${renderWorkflowLearn(node.id)}
   `;
   document.getElementById("workflow-detail-panel").classList.remove("hidden");
 

@@ -80,6 +80,17 @@ class NoteSlotUpdate(BaseModel):
     only_this_chat: bool = False
 
 
+class DefaultNotesEnabledConfig(BaseModel):
+    """GET/PUT /api/notes/default-notes-enabled body — see
+    app.services.default_notes_setting.get_default_notes_enabled/set_default_notes_enabled. Off
+    by default for a new account: a brand-new chat/channel starts with all 3 default notes turned
+    off (see NoteSlotOut.active's own docstring below — the chat page's icons show faded, not
+    hidden) until the user either flips this on (Settings > Account) or explicitly enables one
+    slot for one specific chat via its own icon."""
+
+    enabled: bool = False
+
+
 class NoteSlotOut(BaseModel):
     """One of a conversation's 3 persona/rules/skill slots, as shown by
     the chat page's icons (see GET/PUT/DELETE

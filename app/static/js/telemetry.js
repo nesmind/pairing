@@ -107,18 +107,40 @@ function renderTelemetry(summary) {
  * running. Also fills in the small "you're currently on: X" note next to the selector, which stays accurate
  * even after an admin switches the dropdown to look at the *other* engine's history — that note always reflects
  * what's really serving live traffic, independent of which engine this dashboard happens to be showing. */
+// Every engine's own display name (see app/schemas/common.py's EngineOption) — filled in once by
+// populateTelemetryEngineOptionsOnce, read by applyDefaultTelemetryEngineOnce's own "Currently on: X" note.
+let telemetryEngineDisplayNames = {};
+
+/** Fills #telemetry-source-select's <option>s from GET /api/settings/engine/options (every engine
+ * app.services.engines.registry knows about) instead of two hardcoded <option>s — same "don't hardcode the
+ * engine list" reasoning as settings.js's identical Active-engine picker. Runs once; the registry's own engine
+ * set never changes at runtime. */
+async function populateTelemetryEngineOptionsOnce() {
+  const selectEl = document.getElementById("telemetry-source-select");
+  if (selectEl.options.length > 0) return;
+  const { engines } = await api("/api/settings/engine/options");
+  for (const { name, display_name: displayName } of engines) {
+    telemetryEngineDisplayNames[name] = displayName;
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = displayName;
+    selectEl.appendChild(option);
+  }
+}
+
 async function applyDefaultTelemetryEngineOnce() {
   const selectEl = document.getElementById("telemetry-source-select");
+  await populateTelemetryEngineOptionsOnce();
   let activeEngine;
   try {
     ({ active_engine: activeEngine } = await api("/health"));
   } catch (_err) {
-    // Leave the "ollama" fallback in place — a /health hiccup here shouldn't block the dashboard itself.
+    // Leave the current fallback selection in place — a /health hiccup here shouldn't block the dashboard itself.
     selectEl.classList.remove("invisible");
     return;
   }
   const noteEl = document.getElementById("telemetry-active-engine-note");
-  noteEl.textContent = `Currently on: ${activeEngine === "matricxon" ? "Matricxon" : "Ollama"}`;
+  noteEl.textContent = `Currently on: ${telemetryEngineDisplayNames[activeEngine] || activeEngine}`;
   if (!telemetryDefaultEngineApplied) {
     telemetryDefaultEngineApplied = true;
     currentTelemetrySource = activeEngine;

@@ -95,7 +95,7 @@ async def test_seed_default_users_creates_exactly_one_admin_account(db):
     """Regression test: this used to also seed a second "ran"/"ran"
     account — a leftover personal/dev convenience, not a real default —
     onto every fresh install. Only the one admin account should exist
-    now, with no name set (see User.first_name/last_name)."""
+    now, with a placeholder name (see User.first_name/last_name)."""
     admin = await auth_service.seed_default_users(db)
 
     all_users = (await db.execute(select(User))).scalars().all()
@@ -104,8 +104,8 @@ async def test_seed_default_users_creates_exactly_one_admin_account(db):
     assert admin.username == "admin"
     assert admin.role == "admin"
     assert auth_service.verify_password("admin", admin.password_hash)
-    assert admin.first_name is None
-    assert admin.last_name is None
+    assert admin.first_name == "Admin"
+    assert admin.last_name == "Demo"
 
 
 @pytest.mark.asyncio

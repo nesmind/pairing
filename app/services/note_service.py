@@ -10,6 +10,13 @@ conversation) lives in app/services/note_slot_service.py instead —
 split out purely to stay under CLAUDE.md's file-size rule. Kept separate
 from app/services/document_ingest.py since none of this has anything to
 do with embeddings/retrieval.
+
+seed_initial_disabled_notes below turns the per-user "default notes
+enabled" preference (Settings > Account, stored in
+app/services/default_notes_setting.py) into a brand-new chat/channel's
+own initial disabled_default_notes — the actual per-user setting getter/
+setter live in that separate file, not here, purely to dodge a circular
+import (this module already imports app.services.channel_service).
 """
 
 from fastapi import HTTPException
@@ -20,6 +27,7 @@ from sqlalchemy.orm import joinedload
 from app.models import Conversation, Note, NotePin, User
 from app.schemas import NoteOut, NotePinCreate, NotePinOut
 from app.services import channel_service
+from app.services.default_notes_setting import get_default_notes_enabled
 
 # Slot types, in the fixed order they're always shown/combined in — a
 # plain tuple (not a set) so persona always appears first in the
@@ -33,16 +41,15 @@ NOTE_SLOTS: tuple[str, ...] = ("persona", "rules", "skill")
 DEFAULT_NOTE_SEEDS: dict[str, tuple[str, str]] = {
     "persona": (
         "Persona",
-        "You are a friendly, knowledgeable assistant who explains things "
-        "clearly and adapts your tone to the person you're talking to.",
+        "Friendly and clear; adapts tone to the user.",
     ),
     "rules": (
         "Rules",
-        "Never make up facts. If you're not sure about something, say so clearly instead of guessing.",
+        "Never make up facts; say so if unsure.",
     ),
     "skill": (
         "Skill",
-        "You can help with writing, summarizing, brainstorming, and answering general questions.",
+        "Writing, summarizing, brainstorming, general Q&A.",
     ),
 }
 
@@ -67,6 +74,25 @@ async def seed_default_notes(db: AsyncSession, user: User) -> None:
     for pin_type, (title, content) in DEFAULT_NOTE_SEEDS.items():
         if pin_type not in existing_types:
             db.add(Note(owner_id=user.id, title=title, content=content, default_type=pin_type))
+
+
+async def seed_initial_disabled_notes(db: AsyncSession, user: User, params: dict) -> dict:
+    """Mutates and returns `params` (a brand-new conversation's/channel's own initial
+    GenerationParams dict, from settings_service.get_default_params) so it starts with all 3
+    default notes turned off when `user`'s own default_notes_setting.get_default_notes_enabled
+    preference is off — leaves `params` untouched (every slot on, as always) when it's on.
+
+    Deliberately seeds `disabled_default_notes` once, at creation time, rather than having
+    resolve_conversation_notes re-check this global setting live on every message: the chat
+    page's own per-chat "Enable"/"Turn off" icons already read/write disabled_default_notes
+    directly for one specific conversation (see app/routers/notes.py's slot endpoints), and a
+    live global gate layered on top would silently defeat "Enable" for as long as this setting
+    stays off — clicking it would look like it worked but the slot would never actually turn on.
+    Seeding once at creation, then leaving the existing per-conversation mechanism completely
+    unchanged afterward, avoids that."""
+    if not await get_default_notes_enabled(db, user):
+        params["disabled_default_notes"] = list(NOTE_SLOTS)
+    return params
 
 
 async def get_default_note(db: AsyncSession, owner_id: str, pin_type: str) -> Note | None:

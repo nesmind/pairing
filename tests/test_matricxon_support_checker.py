@@ -110,17 +110,11 @@ def _reset_engine_cache():
     engine_service._cached_engine = engine_service.DEFAULT_ENGINE
 
 
-@pytest.mark.asyncio
-async def test_load_skips_both_calls_when_ollama_is_active(monkeypatch):
-    engine_service._cached_engine = "ollama"
-
-    async def _fail_if_called():
-        raise AssertionError("should never be called while Ollama is active")
-
-    monkeypatch.setattr(matricxon_client, "get_capabilities", _fail_if_called)
-    monkeypatch.setattr(matricxon_client, "list_models", _fail_if_called)
-
-    checker = await MatricxonSupportChecker.load()
+def test_unloaded_gives_an_honest_could_not_reach_verdict():
+    """The "not active" instance a caller uses instead of calling load() at all when this engine isn't the
+    active one (see app.services.engine_support_checker.EngineSupportSet.load, which now owns the "only the
+    active engine's checker does real I/O" rule this class used to enforce on itself inside load())."""
+    checker = MatricxonSupportChecker.unloaded()
 
     assert checker.verdict_for("mistral3", ["Q4_K"]).supported is False
 

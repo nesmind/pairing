@@ -131,6 +131,60 @@ async def test_delete_model_dispatches_to_matricxon_admin_when_active(monkeypatc
     assert calls == ["some-tag"]
 
 
+def test_active_capabilities_reflects_the_active_engine():
+    engine_service._cached_engine = "ollama"
+    assert inference_client.active_capabilities().support_checking is False
+
+    engine_service._cached_engine = "matricxon"
+    assert inference_client.active_capabilities().support_checking is True
+
+
+@pytest.mark.asyncio
+async def test_embed_raises_inference_error_when_the_active_engine_cannot_embed(monkeypatch):
+    """A future engine without real embedding support (see InferenceEngine.embed's own default) must fail the
+    same clean way an unreachable engine already does — one InferenceError, not an AttributeError or a silent
+    no-op — so a caller only ever needs one except clause regardless of *why* the call couldn't go through."""
+    from app.services.engines.base import EngineCapabilities, InferenceEngine
+    from app.services.engines.registry import EngineRegistry
+
+    class _NoEmbeddingsEngine(InferenceEngine):
+        name = "ollama"
+        display_name = "No-Embeddings Test Engine"
+        capabilities = EngineCapabilities(
+            embeddings=False,
+            model_management=False,
+            stop_model=False,
+            local_process=False,
+            host_pool=False,
+            support_checking=False,
+            format_introspection=False,
+        )
+        error_types = ()
+
+        async def list_models(self):
+            return []
+
+        def chat_stream(self, model, messages, params):
+            async def _gen():
+                return
+                yield
+
+            return _gen()
+
+        async def chat_once(self, model, messages, params=None):
+            return ""
+
+        async def check_health(self):
+            return {}
+
+    fake_registry = EngineRegistry([_NoEmbeddingsEngine()])
+    monkeypatch.setattr(inference_client, "registry", fake_registry)
+    engine_service._cached_engine = "ollama"
+
+    with pytest.raises(inference_client.InferenceError):
+        await inference_client.embed("some text", "some-model")
+
+
 @pytest.mark.asyncio
 async def test_stop_model_does_not_wrap_errors(monkeypatch):
     # stop_model is cleanup/best-effort on both engines (see ollama_client.stop_model/matricxon_client.stop_model's

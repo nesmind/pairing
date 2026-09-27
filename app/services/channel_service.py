@@ -115,15 +115,20 @@ async def create_channel(db: AsyncSession, body: ChannelCreate, creator: User) -
     db.add(channel)
     await db.flush()  # assigns channel.id for the conversation/members below
 
+    # Deferred import: note_service itself imports this module (for can_manage_channel_conversation
+    # below), so importing it back at module level here would be circular.
+    from app.services import note_service
+
     # get_default_model is a raw stored preference with no installed-check of its own — see
     # conversation_service.create_conversation's identical resolve_installed_model call for why a channel's
     # brand-new shared conversation needs the same fallback (creator's stored default routinely goes stale:
     # an admin switching the active engine, or simply deleting a model, both leave it pointed at nothing).
+    params = await note_service.seed_initial_disabled_notes(db, creator, await get_default_params(db, creator))
     db.add(
         Conversation(
             channel_id=channel.id,
             model=await resolve_installed_model(db, creator, await get_default_model(db, creator)),
-            params=await get_default_params(db, creator),
+            params=params,
         )
     )
     for member in members:

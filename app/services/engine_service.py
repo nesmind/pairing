@@ -14,12 +14,14 @@ keeps the cache and the DB in lockstep on every admin save.
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import SYSTEM_OWNER_ID, AppSetting
-from app.schemas import EngineName
+
+# DEFAULT_ENGINE re-exported here (not redefined) so every existing `engine_service.DEFAULT_ENGINE` call site
+# (this module's own get_active_engine below, and the many tests that reset _cached_engine to it) keeps working
+# unchanged — see app.schemas.common.DEFAULT_ENGINE's own docstring for why this used to be its own separate,
+# disagreeing copy here.
+from app.schemas import DEFAULT_ENGINE, EngineName
 
 ACTIVE_ENGINE_KEY = "active_llm_engine"
-# Matricxon is the default for now (see Settings > External servers' "Active engine" picker) while it's still
-# the engine under active development/testing — revisit once Ollama should go back to being the safer default.
-DEFAULT_ENGINE: EngineName = "matricxon"
 
 _cached_engine: EngineName = DEFAULT_ENGINE
 

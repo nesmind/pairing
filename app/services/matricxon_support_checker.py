@@ -15,32 +15,32 @@ sequence.
 """
 
 import asyncio
-from dataclasses import dataclass
 
-from app.services import engine_service, matricxon_client
+from app.services import matricxon_client
+from app.services.engine_support_checker import EngineSupportChecker, SupportVerdict
 from app.services.matricxon_client import MatricxonError
 
-
-@dataclass(frozen=True)
-class SupportVerdict:
-    """`.supported` mirrors CatalogEntry.matricxon_supported; `.reason` mirrors
-    CatalogEntry.matricxon_unsupported_reason (always None when supported)."""
-
-    supported: bool
-    reason: str | None = None
+__all__ = ["MatricxonSupportChecker", "SupportVerdict"]
 
 
-class MatricxonSupportChecker:
+class MatricxonSupportChecker(EngineSupportChecker):
     def __init__(self, capabilities: dict | None, installed_info: dict[str, dict] | None) -> None:
         self._capabilities = capabilities
         self._installed_info = installed_info or {}
 
     @classmethod
+    def unloaded(cls) -> "MatricxonSupportChecker":
+        """The "not active / unreachable" instance — same shape `load()` falls back to when Matricxon can't be
+        reached, so a caller never needs to tell the two apart (see verdict_for's own "Could not reach
+        Matricxon..." branch)."""
+        return cls(None, None)
+
+    @classmethod
     async def load(cls, installed_models: list[dict] | None = None) -> "MatricxonSupportChecker":
-        """Skips both real Matricxon calls entirely (an "unreachable" checker, capabilities=None) unless
-        Matricxon is the currently active engine — asking about it regardless used to mean every catalog load
-        made a real network round trip to a server nobody was actually using, worth nothing while Ollama serves
-        every request (confirmed a real, unwanted cost, not just theoretical).
+        """A real network round trip to Matricxon's own GET /api/health (and, unless `installed_models` is
+        given, GET /api/tags too) — see app.services.engine_support_checker.EngineSupportSet.load, the caller
+        that decides whether this engine is even active before calling this at all (asking a non-active engine,
+        possibly a paid remote API, on every catalog load would be a real, unwanted cost for no benefit).
 
         `installed_models` — pass the caller's own already-fetched list_models() result (every one of the three
         catalog builders — ChatModelCatalogBuilder, EmbeddingModelCatalogService, ExtendedModelCatalog.build —
@@ -52,8 +52,6 @@ class MatricxonSupportChecker:
         unnecessary latency, and since Matricxon's own /api/tags can be slow to answer while it's mid-generation,
         real extra risk of the whole page load timing out. The two real calls that remain (this and
         capabilities) run concurrently rather than one after another, for the same reason."""
-        if engine_service.current_engine() != "matricxon":
-            return cls(None, None)
         if installed_models is not None:
             return cls(await cls._capabilities_or_none(), cls._installed_info_from(installed_models))
         capabilities, installed_info = await asyncio.gather(cls._capabilities_or_none(), cls._installed_info_or_none())
@@ -93,10 +91,20 @@ class MatricxonSupportChecker:
             return None
         return MatricxonSupportChecker._installed_info_from(installed)
 
-    def estimated_ram_gb(self, tag: str) -> float | None:
+    def estimated_ram_gb(
+        self,
+        tag: str | None,
+        *,
+        download_gb: float | None = None,
+        fallback_min_ram_gb: float = 0.0,
+    ) -> float | None:
         """Matricxon's own real per-tag RAM estimate — None if this tag isn't confirmed installed there (an
         un-pulled tag's real requirement can't be computed without its real GGUF file to read tensor shapes
-        from, so this is never a guess)."""
+        from, so this is never a guess). `download_gb`/`fallback_min_ram_gb` are part of the generic
+        EngineSupportChecker signature (see OllamaSupportChecker, which actually uses them) — ignored here,
+        since Matricxon never estimates from anything but a real installed file's own tensor shapes."""
+        if tag is None:
+            return None
         return self._installed_info.get(tag, {}).get("estimated_ram_gb")
 
     def verdict_for(

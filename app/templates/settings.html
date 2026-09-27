@@ -471,6 +471,29 @@
           </div>
         </div>
       </section>
+
+      <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Rule notes</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          Only affects chats/channels you start from now on — never changes any conversation that
+          already exists. When off, a new chat's persona/rules/skill icons still show (faded) so
+          you can turn any one of them on for that specific chat.
+        </p>
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-sm text-slate-200">Add default notes to new chats/channels</p>
+            <p class="text-xs text-slate-500">Off by default — your saved persona/rules/skill notes won't be added automatically.</p>
+          </div>
+          <div class="flex items-center gap-3 shrink-0">
+            <span id="default-notes-enabled-status" class="text-xs text-slate-500"></span>
+            <label class="relative inline-flex items-center cursor-pointer" title="Add persona/rules/skill notes to new chats/channels by default">
+              <input type="checkbox" id="default-notes-enabled-toggle" class="peer sr-only">
+              <div class="h-6 w-11 rounded-full bg-slate-700 transition-colors peer-checked:bg-brand-600 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-500"></div>
+              <div class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-5"></div>
+            </label>
+          </div>
+        </div>
+      </section>
     </div>
 
     {% if is_admin %}
@@ -931,8 +954,6 @@
         <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 flex items-center gap-3">
           <select id="active-engine-select" title="Which engine below actually answers chat and embedding requests right now. Switching here doesn't start or stop either engine — configure and start them independently below."
             class="rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
-            <option value="ollama">Ollama</option>
-            <option value="matricxon">Matricxon</option>
           </select>
           <button id="active-engine-save-btn" type="button"
             class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
@@ -955,7 +976,7 @@
           app start/stop Ollama itself on this machine; <span class="font-mono">Remote</span> points at
           one or more external Ollama servers instead, load-balanced across whichever is least busy.
         </p>
-        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
+        <div data-field="fetch-panel" class="relative rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
           <div>
             <label class="block text-xs font-medium text-slate-400 mb-1">Mode</label>
             <select data-field="mode" title="Local: this app starts and stops Ollama itself on this machine. Remote: point at one or more Ollama servers already running elsewhere." class="server-mode-select w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
@@ -1102,7 +1123,7 @@
           checkout; <span class="font-mono">Remote</span> points at a Matricxon server running elsewhere. Not
           every model in the Model tab is supported yet — see each model's own note there.
         </p>
-        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
+        <div data-field="fetch-panel" class="relative rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
           <div>
             <label class="block text-xs font-medium text-slate-400 mb-1">Mode</label>
             <select data-field="mode" title="Local: this app starts and stops Matricxon itself on this machine via its own scripts/start.sh and scripts/stop.sh. Remote: point at a Matricxon server already running elsewhere." class="server-mode-select w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
@@ -1263,11 +1284,11 @@
       <section class="space-y-3" data-server="comfyui">
         <h2 class="text-sm font-semibold text-slate-200">ComfyUI</h2>
         <p class="text-xs text-slate-500 -mt-2">
-          The image-generation backend (see the Images page). <span class="font-mono">Local</span> lets this
+          The image-generation engine (see the Images page). <span class="font-mono">Local</span> lets this
           app install (from GitHub) and start/stop ComfyUI on this machine, or point at one you already have
           installed; <span class="font-mono">Remote</span> points at one or more external ComfyUI servers instead.
         </p>
-        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
+        <div data-field="fetch-panel" class="relative rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
           <div>
             <label class="block text-xs font-medium text-slate-400 mb-1">Mode</label>
             <select data-field="mode" title="Local: this app installs and starts/stops ComfyUI itself on this machine. Remote: point at one or more ComfyUI servers already running elsewhere." class="server-mode-select w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">

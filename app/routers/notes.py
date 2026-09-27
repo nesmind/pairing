@@ -22,8 +22,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import Note, NotePin, User
-from app.schemas import NoteCreate, NoteOut, NoteSlotOut, NoteSlotUpdate, NoteUpdate, OkResponse
-from app.services import channel_service, conversation_service, note_service, note_slot_service
+from app.schemas import (
+    DefaultNotesEnabledConfig,
+    NoteCreate,
+    NoteOut,
+    NoteSlotOut,
+    NoteSlotUpdate,
+    NoteUpdate,
+    OkResponse,
+)
+from app.services import channel_service, conversation_service, default_notes_setting, note_service, note_slot_service
 from app.services.auth_service import get_current_user
 
 router = APIRouter(prefix="/api/notes", tags=["notes"])
@@ -52,6 +60,29 @@ async def _require_slot_edit_rights(conversation, user: User) -> None:
             status_code=403,
             detail="Only admins and this channel's managers can change its persona/rules/skill.",
         )
+
+
+@router.get("/default-notes-enabled", response_model=DefaultNotesEnabledConfig)
+async def get_default_notes_enabled_setting(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """The current user's own preference (Settings > Account, under the Theme section) for
+    whether a brand-new chat/channel of theirs starts with persona/rules/skill defaults on or
+    off — available to every logged-in user, not just admins, since it only ever affects that
+    user's own future chats (same reasoning as the theme preference right above it in Settings)."""
+    return DefaultNotesEnabledConfig(enabled=await default_notes_setting.get_default_notes_enabled(db, user))
+
+
+@router.put("/default-notes-enabled", response_model=DefaultNotesEnabledConfig)
+async def set_default_notes_enabled_setting(
+    body: DefaultNotesEnabledConfig,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Saves the current user's own preference — never affects any other user's chats, and never
+    retroactively changes any conversation that already exists (see
+    note_service.seed_initial_disabled_notes's own docstring for why this is seeded once, at
+    creation time, rather than checked live)."""
+    await default_notes_setting.set_default_notes_enabled(db, user, body.enabled)
+    return body
 
 
 @router.get("", response_model=list[NoteOut])

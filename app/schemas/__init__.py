@@ -11,14 +11,25 @@ from app.schemas.channel import ChannelCreate, ChannelMemberOut, ChannelOut, Cha
 from app.schemas.chat import DeleteMessageResponse, MessageOut, MessagesLatestResponse
 from app.schemas.comfyui_config import ComfyUIProcessConfig, ComfyUIStatus
 from app.schemas.common import (
+    DEFAULT_ENGINE,
     ActiveEngineConfig,
     AvailableVersions,
+    EngineCapabilitiesOut,
     EngineName,
+    EngineOption,
+    EngineOptionsResponse,
     GenerationParams,
     HostHealthCheck,
     InstallDefaults,
     OkResponse,
     PinType,
+)
+from app.schemas.connector import (
+    ConnectorConfigFieldOut,
+    ConnectorConfigUpdate,
+    ConnectorEnabledUpdate,
+    ConnectorOut,
+    ConnectorsResponse,
 )
 from app.schemas.conversation import ConversationCreate, ConversationOut, ConversationUpdate
 from app.schemas.db_config import (
@@ -48,11 +59,16 @@ from app.schemas.matricxon_server_config import (
     MatricxonServerStatus,
 )
 from app.schemas.model_catalog import (
-    AddExtendedModelRequest,
     CatalogEntry,
-    DeleteModelResponse,
     EmbeddingCatalogEntry,
     EmbeddingModelCatalogResponse,
+    EngineModelSupport,
+    InstalledModelsResponse,
+    ModelCatalogResponse,
+)
+from app.schemas.model_catalog_admin import (
+    AddExtendedModelRequest,
+    DeleteModelResponse,
     ExtendedModelCatalogResponse,
     HfFileOption,
     HfRepoFilesRequest,
@@ -60,14 +76,13 @@ from app.schemas.model_catalog import (
     HfSearchResult,
     HideModelRequest,
     HideModelResponse,
-    InstalledModelsResponse,
-    ModelCatalogResponse,
     PullModelRequest,
     RemoveExtendedModelRequest,
     SearchHfModelsRequest,
     SearchHfModelsResponse,
 )
 from app.schemas.note import (
+    DefaultNotesEnabledConfig,
     NoteCreate,
     NoteOut,
     NotePinCreate,
@@ -128,12 +143,21 @@ __all__ = [
     "ComfyUIStatus",
     "ActiveEngineConfig",
     "AvailableVersions",
+    "DEFAULT_ENGINE",
+    "EngineCapabilitiesOut",
     "EngineName",
+    "EngineOption",
+    "EngineOptionsResponse",
     "GenerationParams",
     "HostHealthCheck",
     "InstallDefaults",
     "OkResponse",
     "PinType",
+    "ConnectorConfigFieldOut",
+    "ConnectorConfigUpdate",
+    "ConnectorEnabledUpdate",
+    "ConnectorOut",
+    "ConnectorsResponse",
     "ConversationCreate",
     "ConversationOut",
     "ConversationUpdate",
@@ -158,6 +182,7 @@ __all__ = [
     "InstancesConfig",
     "InstancesUpdate",
     "ProxyMode",
+    "DefaultNotesEnabledConfig",
     "NoteCreate",
     "NoteOut",
     "NotePinCreate",
@@ -176,6 +201,7 @@ __all__ = [
     "DeleteModelResponse",
     "EmbeddingCatalogEntry",
     "EmbeddingModelCatalogResponse",
+    "EngineModelSupport",
     "EngineSupportResponse",
     "ExtendedModelCatalogResponse",
     "HfFileOption",

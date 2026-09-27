@@ -187,8 +187,8 @@ const WORKFLOW_NODES = [
     detail: {
       server: "ML engine",
       title: "Where the actual inference happens",
-      location: "The active engine's own process/host — Ollama or Matricxon, not this app's own code",
-      body: "Runs the real AI/machine learning model (loading its trained weights into RAM/VRAM as needed) and streams its response back as NDJSON — one JSON object per line, each carrying the next piece of generated text, not the SSE format the browser eventually receives (that translation happens back in inference_client.chat_stream). Ollama is the original third-party server this app started against; Matricxon is this project's own from-scratch GGUF inference runtime (no llama.cpp dependency), built deliberately Ollama-API-compatible so this whole pipeline needed no changes to support it. This is also where an image attachment's base64 bytes are processed by a vision-capable model (Ollama only — Matricxon has no vision/mmproj support yet), or an embedding request for RAG is run through a separate embedding model (see the RAG branch's own dedicated ML engine step).",
+      location: "The active engine's own process/host, not this app's own code",
+      body: "Runs the real AI/machine learning model (loading its trained weights into RAM/VRAM as needed) and streams its response back as NDJSON — one JSON object per line, each carrying the next piece of generated text, not the SSE format the browser eventually receives (that translation happens back in inference_client.chat_stream). This is also where an image attachment's base64 bytes are processed by a vision-capable model (when the active engine supports vision), or an embedding request for RAG is run through a separate embedding model (see the RAG branch's own dedicated ML engine step).",
     },
   },
   {

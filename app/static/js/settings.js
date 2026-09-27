@@ -8,6 +8,38 @@
  * the System tab.
  */
 
+// A small inline "animate-spin" SVG, shared by every ad-hoc loading indicator on this page (the
+// install-progress spinner further below, and the ones added around Settings > System's
+// default-model selects, External servers' Start/Stop buttons, and the Matricxon panel's own
+// data-fetching div) so they all look identical instead of each hand-rolling their own markup.
+const SPINNER_SVG_HTML =
+  '<svg class="h-3.5 w-3.5 animate-spin text-brand-500" viewBox="0 0 24 24" fill="none">' +
+  '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
+  '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>';
+
+// Inserts a spinner right after `anchorEl` — call `.remove()` on the returned element once
+// whatever it's covering for (a fetch, a start/stop request) settles, in a `finally` so it comes
+// off on both success and failure.
+function addInlineSpinner(anchorEl) {
+  const spinner = document.createElement("span");
+  spinner.className = "inline-flex shrink-0 ml-2 align-middle";
+  spinner.innerHTML = SPINNER_SVG_HTML;
+  anchorEl.insertAdjacentElement("afterend", spinner);
+  return spinner;
+}
+
+// Dims `panelEl` (must be `position: relative`) behind a centered spinner overlay for as long as
+// `promise` is pending — for a whole section (e.g. External servers' per-engine config panel)
+// whose fields are still empty/stale while their own fetch is in flight, rather than a single
+// control next to it.
+function withPanelSpinner(panelEl, promise) {
+  const overlay = document.createElement("div");
+  overlay.className = "absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-slate-900/60";
+  overlay.innerHTML = SPINNER_SVG_HTML.replace("h-3.5 w-3.5", "h-5 w-5");
+  panelEl.appendChild(overlay);
+  return promise.finally(() => overlay.remove());
+}
+
 // Describes every slider on the page: which key in GenerationParams it
 // edits, its range/step, and a one-line explanation shown under it. This
 // is the single source of truth the UI is built from, so adding a new
@@ -86,6 +118,17 @@ let modelTabLoading = false; // guards against two overlapping initModelTab() ru
 // now — irrelevant, so hidden, whenever Ollama (which runs every catalog entry regardless) is the active one.
 let currentActiveEngine = null;
 
+// Every engine app.services.engines.registry knows about (see EngineOption's own docstring) — static for the
+// life of this page (the registry never changes at runtime), so fetched once and reused rather than refetched
+// by every caller (the Active engine picker, its display-name map, the Stats page's engine dropdown).
+let _engineOptionsPromise = null;
+function engineOptionsList() {
+  if (!_engineOptionsPromise) {
+    _engineOptionsPromise = api("/api/settings/engine/options").then((r) => r.engines);
+  }
+  return _engineOptionsPromise;
+}
+
 function renderSliders(params) {
   paramSlidersEl.innerHTML = "";
   for (const def of PARAM_DEFS) {
@@ -161,19 +204,15 @@ function formatSize(gb) {
   return gb ? `${gb} GB` : "—";
 }
 
-/** Real, per-engine RAM figure (see CatalogEntry.min_ram_gb_ollama/min_ram_gb_matricxon's own
- * docstrings) — never the old flat, hand-typed min_ram_gb alone, since Ollama and Matricxon's real
- * requirements for the same file aren't proportional to each other (Matricxon dequantizes to bf16
- * before computing; Ollama doesn't). Shows only whichever engine is actually active right now — that's
- * the number that matters for "can I chat with this today" — falling back to Ollama's/the static
- * estimate when Matricxon is active but hasn't reported its own real figure yet (not installed there,
- * so min_ram_gb_matricxon is still unknown — see _get_matricxon_installed_info_or_none's own
- * docstring). */
+/** Real, per-engine RAM figure (see CatalogEntry.engine_support/EngineModelSupport's own docstrings) —
+ * never the old flat, hand-typed min_ram_gb alone, since different engines' real requirements for the
+ * same file aren't proportional to each other (Matricxon dequantizes to bf16 before computing; Ollama
+ * doesn't). Shows only whichever engine is actually active right now — that's the number that matters
+ * for "can I chat with this today" — falling back to the static estimate when the active engine hasn't
+ * reported its own real figure yet (e.g. Matricxon, not installed there — see EngineModelSupport.min_ram_gb's
+ * own docstring: never a guess borrowed from a different engine). */
 function formatRam(entry) {
-  const ram =
-    currentActiveEngine === "matricxon"
-      ? (entry.min_ram_gb_matricxon ?? entry.min_ram_gb_ollama ?? entry.min_ram_gb)
-      : (entry.min_ram_gb_ollama ?? entry.min_ram_gb);
+  const ram = entry.engine_support?.[currentActiveEngine]?.min_ram_gb ?? entry.min_ram_gb;
   return ram != null ? `${ram}GB RAM` : null;
 }
 
@@ -390,16 +429,17 @@ function renderModelRow(entry) {
   const visionBadge = entry.vision
     ? ` <span class="inline-flex items-center rounded-full bg-[rgb(var(--color-brand-500)/0.15)] border border-[rgb(var(--color-brand-500)/0.4)] px-1.5 py-0.5 text-[10px] font-medium text-brand-500 align-middle">${entry.text_capable ? "+Vision" : "Vision"}</span>`
     : "";
-  // Only shown while Matricxon is the currently active engine (see the "Active engine" picker above the
-  // External servers tab) — Ollama runs every catalog entry regardless, so this distinction is meaningless
-  // (and would just read as confusing noise) whenever it's the one actually serving requests. See
-  // CatalogEntry.matricxon_supported's own docstring. Also skipped for a vision projector (entry.is_projector)
-  // regardless of engine — "Not supported" reads as "Matricxon can't run this," which is backwards for a file
-  // that was never meant to run as a standalone chat model at all; its own "(vision projector)" family label
-  // already says what it actually is.
-  const matricxonBadge = entry.matricxon_supported || entry.is_projector || currentActiveEngine !== "matricxon"
+  // Shown for whichever engine is actually active right now (see the "Active engine" picker above the
+  // External servers tab) — most engines (e.g. Ollama) run every catalog entry regardless, so this reads as
+  // empty/meaningless noise for them, same effective result as the old Matricxon-only check without hardcoding
+  // its name. See CatalogEntry.engine_support/EngineModelSupport's own docstrings. Also skipped for a vision
+  // projector (entry.is_projector) regardless of engine — "Not supported" reads as "this engine can't run
+  // this," which is backwards for a file that was never meant to run as a standalone chat model at all; its
+  // own "(vision projector)" family label already says what it actually is.
+  const activeSupport = entry.engine_support?.[currentActiveEngine];
+  const matricxonBadge = !activeSupport || activeSupport.supported || entry.is_projector
     ? ""
-    : ` <span class="inline-flex items-center rounded-full bg-slate-800 border border-slate-700 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 align-middle" title="${escapeHtml(entry.matricxon_unsupported_reason || "Not supported by Matricxon")}">Not supported</span>`;
+    : ` <span class="inline-flex items-center rounded-full bg-slate-800 border border-slate-700 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 align-middle" title="${escapeHtml(activeSupport.reason || "Not supported by the active engine")}">Not supported</span>`;
   // Only for an *installed* entry that isn't in app/model_catalog.py's hand-curated list (see
   // CatalogEntry.is_auto_discovered's own docstring) — a not-yet-installed extended-catalog entry is already
   // clearly organized under its own "Browse more models" section, so it doesn't need this too. Projectors are
@@ -408,12 +448,21 @@ function renderModelRow(entry) {
   const notInCatalogBadge = entry.installed && entry.is_auto_discovered && !entry.is_projector
     ? ` <span class="inline-flex items-center rounded-full bg-slate-800 border border-slate-700 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 align-middle" title="Installed, but not part of the hand-curated model list">Not in catalog</span>`
     : "";
+  // Matricxon's own "chat_format_unverified" capability (see CatalogEntry.chat_format_unverified's own
+  // docstring) — a real, confirmed-live case (Hebrew-Mistral-7B-Q5_K_M, 2026-09-27) produced incoherent,
+  // non-chat-like output no matter which prompt format it was given, with nothing here warning that its real
+  // instruction format was never actually confirmed. Amber (a caution, not a hard "broken" claim — the model
+  // may still work fine) rather than +Vision's brand color or the other badges' neutral slate.
+  const chatFormatUnverifiedBadge = entry.chat_format_unverified
+    ? ` <span class="inline-flex items-center rounded-full bg-amber-500/15 border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-medium text-amber-400 align-middle" title="Matricxon has no confirmed chat template for this model and is falling back to a best-effort guess — it may not reliably follow instructions or stay in character.">Chat format unverified</span>`
+    : "";
   label.innerHTML =
     `<span class="block truncate font-medium text-slate-100">${escapeHtml(modelName || entry.tag)}` +
     (entry.hidden ? ` <span class="text-xs font-normal text-slate-500">(hidden from users)</span>` : "") +
     visionBadge +
     matricxonBadge +
     notInCatalogBadge +
+    chatFormatUnverifiedBadge +
     `</span>` +
     `<span class="block truncate text-xs text-slate-500">${escapeHtml(metaParts.join(" · "))}</span>`;
 
@@ -527,7 +576,7 @@ function renderModelRow(entry) {
     const reason = document.createElement("p");
     reason.className = "mt-1.5 text-xs text-amber-400";
     reason.textContent = entry.unavailable_reason
-      || `Requires ~${entry.min_ram_gb_ollama ?? entry.min_ram_gb}GB RAM/VRAM — this machine has ~${currentCatalog.hardware.total_gb}GB.`;
+      || `Requires ~${entry.engine_support?.[currentActiveEngine]?.min_ram_gb ?? entry.min_ram_gb}GB RAM/VRAM — this machine has ~${currentCatalog.hardware.total_gb}GB.`;
     row.appendChild(reason);
   }
 
@@ -538,30 +587,35 @@ function renderModelRow(entry) {
 
 /** Shared by both the default catalog (#model-catalog) and the admin-extensible one behind "Browse more models"
  * (#extended-model-catalog) — same CatalogEntry shape from either endpoint, so one grouping/rendering routine
- * covers both. Groups by vendor first, family second — "Google" / "Gemma 4" reads more like a real product
- * catalog than a flat list of tags, and answers "who makes this" at a glance; every tag sharing one family
- * (e.g. Gemma 4's e2b/e4b/12b/26b/31b sizes) renders together as that family's own "versions." */
+ * covers both. One heading per vendor ("who makes this," at a glance) — every model from that vendor lists
+ * under it regardless of family, with each row's own bold title (see renderModelRow: family + parameter_size,
+ * e.g. "Llama-3.2-3B-Instruct 3.2B") carrying the family-level detail instead of a separate sub-heading.
+ * Previously split into one heading per vendor+family pair ("unsloth — Llama-3.2-3B-Instruct," "unsloth —
+ * gemma-4-E2B-it," ...) — confirmed live, 2026-09-27: with `family` frequently this specific (the exact model
+ * name, not a coarser architecture label), that meant almost every admin-added model got its own single-entry
+ * heading, defeating the entire point of grouping by vendor. Entries are still sorted by family within a
+ * vendor, so same-family variants (e.g. Gemma 4's e2b/e4b/12b sizes) stay visually adjacent even without their
+ * own heading. */
 function renderCatalogGroup(containerEl, entries) {
   containerEl.innerHTML = "";
   const vendors = [...new Set(entries.map((entry) => entry.vendor))];
   for (const vendor of vendors) {
-    const vendorEntries = entries.filter((e) => e.vendor === vendor);
-    const families = [...new Set(vendorEntries.map((e) => e.family))];
+    const vendorEntries = [...entries.filter((e) => e.vendor === vendor)].sort((a, b) =>
+      a.family.localeCompare(b.family)
+    );
 
-    for (const family of families) {
-      const group = document.createElement("div");
-      group.className = "space-y-1.5";
+    const group = document.createElement("div");
+    group.className = "space-y-1.5";
 
-      const heading = document.createElement("p");
-      heading.className = "text-xs font-semibold text-slate-300";
-      heading.innerHTML = `${escapeHtml(vendor)} <span class="font-normal text-slate-500">— ${escapeHtml(family)}</span>`;
-      group.appendChild(heading);
+    const heading = document.createElement("p");
+    heading.className = "text-xs font-semibold text-slate-300";
+    heading.textContent = vendor;
+    group.appendChild(heading);
 
-      for (const entry of vendorEntries.filter((e) => e.family === family)) {
-        group.appendChild(renderModelRow(entry));
-      }
-      containerEl.appendChild(group);
+    for (const entry of vendorEntries) {
+      group.appendChild(renderModelRow(entry));
     }
+    containerEl.appendChild(group);
   }
 }
 
@@ -930,9 +984,10 @@ function renderEmbeddingCatalog() {
       ? ` <span class="inline-flex items-center rounded-full bg-[rgb(var(--color-brand-500)/0.15)] border border-[rgb(var(--color-brand-500)/0.4)] px-1.5 py-0.5 text-[10px] font-medium text-brand-500 align-middle">Default</span>`
       : "";
     // See renderModelRow's identical matricxonBadge for the full reasoning.
-    const matricxonBadge = entry.matricxon_supported || currentActiveEngine !== "matricxon"
+    const activeSupport = entry.engine_support?.[currentActiveEngine];
+    const matricxonBadge = !activeSupport || activeSupport.supported
       ? ""
-      : ` <span class="inline-flex items-center rounded-full bg-slate-800 border border-slate-700 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 align-middle" title="${escapeHtml(entry.matricxon_unsupported_reason || "Not supported by Matricxon")}">Not supported</span>`;
+      : ` <span class="inline-flex items-center rounded-full bg-slate-800 border border-slate-700 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 align-middle" title="${escapeHtml(activeSupport.reason || "Not supported by the active engine")}">Not supported</span>`;
     label.innerHTML =
       `<span class="block truncate font-medium text-slate-100">${escapeHtml(modelName || entry.tag)}${defaultBadge}${matricxonBadge}</span>` +
       `<span class="block truncate text-xs text-slate-500">${escapeHtml(metaParts.join(" · "))}</span>`;
@@ -1490,6 +1545,7 @@ function loadTabData(name) {
   }
   if (name === "account") {
     loadAccountProfileIntoEditor();
+    loadDefaultNotesEnabledIntoEditor();
   }
   if (name === "external-servers") {
     loadExternalServersIntoEditor();
@@ -1977,28 +2033,35 @@ function collectServerConfig(server, section) {
     install_repo: section.querySelector('[data-field="install_repo"]')?.value.trim() || null,
     install_version: section.querySelector('[data-field="install_version"]')?.value.trim() || null,
   };
+  // Local-mode-only fields are read from inputs that stay in the DOM (just hidden, see
+  // applyServerVisibility) after switching to remote — reading them unconditionally would resend
+  // a stale local-mode value (e.g. models_path) on every Save made in remote mode, which then
+  // silently reapplies if the admin later switches back to local. Remote mode has no local
+  // process/path of its own, so these are nulled/defaulted instead of read once mode is "remote".
+  const isRemote = base.mode === "remote";
   if (server === "ollama") {
     return {
       ...base,
-      binary_path: section.querySelector('[data-field="binary_path"]').value.trim() || null,
-      models_path: section.querySelector('[data-field="models_path"]').value.trim() || null,
-      num_parallel: intFieldOrNull(section, "num_parallel"),
-      keep_alive: section.querySelector('[data-field="keep_alive"]').value.trim() || null,
-      max_loaded_models: intFieldOrNull(section, "max_loaded_models"),
-      context_length: intFieldOrNull(section, "context_length"),
+      binary_path: isRemote ? null : section.querySelector('[data-field="binary_path"]').value.trim() || null,
+      models_path: isRemote ? null : section.querySelector('[data-field="models_path"]').value.trim() || null,
+      num_parallel: isRemote ? null : intFieldOrNull(section, "num_parallel"),
+      keep_alive: isRemote ? null : section.querySelector('[data-field="keep_alive"]').value.trim() || null,
+      max_loaded_models: isRemote ? null : intFieldOrNull(section, "max_loaded_models"),
+      context_length: isRemote ? null : intFieldOrNull(section, "context_length"),
     };
   }
   if (server === "matricxon") {
     return {
       ...base,
-      project_dir: section.querySelector('[data-field="project_dir"]').value.trim() || null,
-      models_path: section.querySelector('[data-field="models_path"]').value.trim() || null,
-      max_loaded_models: intFieldOrNull(section, "max_loaded_models"),
-      memory_safety_margin: floatFieldOrNull(section, "memory_safety_margin"),
-      log_level: parseInt(section.querySelector('[data-field="log_level"]').value, 10),
-      enable_quantized_native_compute: section.querySelector('[data-field="enable_quantized_native_compute"]').checked,
-      gemv_backend: section.querySelector('[data-field="gemv_backend"]').value,
-      torch_threads: intFieldOrNull(section, "torch_threads"),
+      project_dir: isRemote ? null : section.querySelector('[data-field="project_dir"]').value.trim() || null,
+      models_path: isRemote ? null : section.querySelector('[data-field="models_path"]').value.trim() || null,
+      max_loaded_models: isRemote ? null : intFieldOrNull(section, "max_loaded_models"),
+      memory_safety_margin: isRemote ? null : floatFieldOrNull(section, "memory_safety_margin"),
+      log_level: isRemote ? 0 : parseInt(section.querySelector('[data-field="log_level"]').value, 10),
+      enable_quantized_native_compute:
+        !isRemote && section.querySelector('[data-field="enable_quantized_native_compute"]').checked,
+      gemv_backend: isRemote ? "numba" : section.querySelector('[data-field="gemv_backend"]').value,
+      torch_threads: isRemote ? null : intFieldOrNull(section, "torch_threads"),
     };
   }
   return {
@@ -2027,10 +2090,11 @@ function renderInstallSource(section, config, defaults) {
 async function loadServerSection(server) {
   const section = serverSectionEl(server);
   if (!section) return;
-  const [config, installDefaults] = await Promise.all([
-    api(`/api/settings/${server}/config`),
-    api(`/api/settings/${server}/install-defaults`),
-  ]);
+  const fetchPanel = section.querySelector('[data-field="fetch-panel"]');
+  const [config, installDefaults] = await withPanelSpinner(
+    fetchPanel,
+    Promise.all([api(`/api/settings/${server}/config`), api(`/api/settings/${server}/install-defaults`)]),
+  );
   section.querySelector('[data-field="mode"]').value = config.mode;
   renderInstallSource(section, config, installDefaults);
 
@@ -2041,7 +2105,7 @@ async function loadServerSection(server) {
     // then the usual fixed locations) — a real, current value rather
     // than just the generic words "auto-detected from PATH".
     const autoDetected = await api("/api/settings/ollama/auto-detected-path");
-    binaryPathInput.placeholder = autoDetected.path || "not found — install or enter a path";
+    binaryPathInput.placeholder = autoDetected.path || "/var/lib/Ollama";
     const modelsPathInput = section.querySelector('[data-field="models_path"]');
     modelsPathInput.value = config.models_path ?? "";
     modelsPathInput.dataset.loadedValue = config.models_path ?? ""; // see the save handler's own confirm check
@@ -2056,11 +2120,11 @@ async function loadServerSection(server) {
     // Same "show what blank actually resolves to" idea as Ollama's binary_path above — here, the sibling
     // checkout app.services.matricxon_process._find_project_dir falls back to.
     const autoDetected = await api("/api/settings/matricxon/auto-detected-path");
-    projectDirInput.placeholder = autoDetected.path || "not found — enter a path";
+    projectDirInput.placeholder = autoDetected.path || "/var/lib/matricxon";
     const modelsPathInput = section.querySelector('[data-field="models_path"]');
     modelsPathInput.value = config.models_path ?? "";
     modelsPathInput.dataset.loadedValue = config.models_path ?? ""; // see the save handler's own confirm check
-    modelsPathInput.placeholder = autoDetected.models_path || "<project directory>/data/models";
+    modelsPathInput.placeholder = autoDetected.models_path || "/var/lib/models";
     section.querySelector('[data-field="max_loaded_models"]').value = config.max_loaded_models ?? "";
     section.querySelector('[data-field="memory_safety_margin"]').value = config.memory_safety_margin ?? "";
     section.querySelector('[data-field="log_level"]').value = String(config.log_level ?? 0);
@@ -2126,7 +2190,23 @@ let savedActiveEngine = null;
 async function loadActiveEngineIntoEditor() {
   const selectEl = document.getElementById("active-engine-select");
   if (!selectEl) return;
-  const { active_engine: activeEngine } = await api("/api/settings/engine");
+  const [{ active_engine: activeEngine }, engineOptions] = await Promise.all([
+    api("/api/settings/engine"),
+    engineOptionsList(),
+  ]);
+  selectEl.innerHTML = "";
+  // Only an engine that's actually ready (see app/schemas/common.py's EngineOption.ready) can be picked here —
+  // Ollama/Matricxon always are; a Connector-backed engine (e.g. "runpod") isn't until an admin has configured,
+  // enabled, and successfully tested it on the Connectors page. The already-active engine is always shown even
+  // if it somehow became not-ready since (e.g. its connector was just disabled) so the picker still reflects
+  // reality instead of silently hiding the current selection.
+  for (const { name, display_name: displayName, ready } of engineOptions) {
+    if (!ready && name !== activeEngine) continue;
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = displayName;
+    selectEl.appendChild(option);
+  }
   selectEl.value = activeEngine;
   savedActiveEngine = activeEngine;
   applyActiveEngineVisibility();
@@ -2345,9 +2425,16 @@ for (const server of EXTERNAL_SERVERS) {
   });
 
   for (const action of ["start", "stop"]) {
-    section.querySelector(`[data-action="${action}"]`).addEventListener("click", async () => {
+    const actionBtn = section.querySelector(`[data-action="${action}"]`);
+    actionBtn.addEventListener("click", async () => {
       const statusEl = section.querySelector('[data-field="status"]');
+      // Anchored to the Save button (the last one in this row, right before the status text)
+      // rather than whichever of Start/Stop was actually clicked, so the spinner always shows up
+      // in the same place next to the status line instead of jumping between the two.
+      const saveBtn = section.querySelector('[data-action="save"]');
       statusEl.textContent = "Working…";
+      actionBtn.disabled = true;
+      const spinner = addInlineSpinner(saveBtn);
       try {
         const result = await api(`/api/settings/${server}/${action}`, { method: "POST" });
         renderServerStatus(section, result);
@@ -2378,6 +2465,8 @@ for (const server of EXTERNAL_SERVERS) {
       } catch (err) {
         statusEl.textContent = `Failed: ${err.message}`;
       } finally {
+        spinner.remove();
+        actionBtn.disabled = false;
         setTimeout(() => (statusEl.textContent = ""), 2500);
       }
     });
@@ -2669,7 +2758,12 @@ async function loadDefaultModelForNewUsersEditor() {
   const saveBtn = document.getElementById("default-model-for-new-users-save-btn");
   if (!selectEl) return;
 
-  await loadCatalog();
+  const spinner = addInlineSpinner(selectEl);
+  try {
+    await loadCatalog();
+  } finally {
+    spinner.remove();
+  }
   const installed = currentCatalog.entries.filter((entry) => entry.installed);
 
   selectEl.innerHTML = "";
@@ -2732,7 +2826,13 @@ async function loadDefaultVisionModelEditor() {
   const saveBtn = document.getElementById("default-vision-model-save-btn");
   if (!selectEl) return;
 
-  const { models } = await api("/api/settings/installed-vision-models");
+  const spinner = addInlineSpinner(selectEl);
+  let models;
+  try {
+    ({ models } = await api("/api/settings/installed-vision-models"));
+  } finally {
+    spinner.remove();
+  }
 
   selectEl.innerHTML = "";
   const hasInstalled = models.length > 0;
@@ -2785,7 +2885,13 @@ async function loadDefaultEmbeddingModelEditor() {
   const saveBtn = document.getElementById("default-embedding-model-save-btn");
   if (!selectEl) return;
 
-  const { models } = await api("/api/settings/installed-embedding-models");
+  const spinner = addInlineSpinner(selectEl);
+  let models;
+  try {
+    ({ models } = await api("/api/settings/installed-embedding-models"));
+  } finally {
+    spinner.remove();
+  }
 
   selectEl.innerHTML = "";
   const hasInstalled = models.length > 0;
@@ -3011,6 +3117,40 @@ document.getElementById("ui-theme-save-btn").addEventListener("click", async () 
       statusEl.textContent = "";
       statusEl.classList.remove("text-amber-400");
     }, 3000);
+  }
+});
+
+// ---- Default persona/rules/skill notes on new chats/channels (every user, not admin-only) ----
+// A plain on/off toggle, not a Save button: unlike theme's multi-swatch "try a few, then commit"
+// flow, there's nothing to preview here — flipping it saves immediately, the way a real hardware
+// switch would. Only ever affects chats/channels this user starts *after* changing it (see
+// app.services.note_service.seed_initial_disabled_notes's own docstring for why).
+
+async function loadDefaultNotesEnabledIntoEditor() {
+  const toggleEl = document.getElementById("default-notes-enabled-toggle");
+  if (!toggleEl) return;
+  const { enabled } = await api("/api/notes/default-notes-enabled");
+  toggleEl.checked = enabled;
+}
+
+document.getElementById("default-notes-enabled-toggle").addEventListener("change", async (e) => {
+  const statusEl = document.getElementById("default-notes-enabled-status");
+  const enabled = e.target.checked;
+  e.target.disabled = true;
+  statusEl.textContent = "Saving…";
+  try {
+    await api("/api/notes/default-notes-enabled", { method: "PUT", body: JSON.stringify({ enabled }) });
+    statusEl.textContent = "Saved";
+  } catch (err) {
+    e.target.checked = !enabled; // revert the visible toggle — the save didn't actually take effect
+    statusEl.textContent = err.message;
+    statusEl.classList.add("text-amber-400");
+  } finally {
+    e.target.disabled = false;
+    setTimeout(() => {
+      statusEl.textContent = "";
+      statusEl.classList.remove("text-amber-400");
+    }, 2500);
   }
 });
 

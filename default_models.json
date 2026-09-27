@@ -81,22 +81,6 @@
       "note": "Google's own official GGUF repo — confirmed live: google/gemma-4-31B-it-qat-q4_0-gguf, arch \"gemma4\", 30.7B total params, 262144 ctx — matches this entry exactly."
     },
     {
-      "family": "LLaVA",
-      "vendor": "LLaVA / Ollama",
-      "tag": "hf.co/second-state/Llava-v1.6-Vicuna-7B-GGUF:llava-v1.6-vicuna-7b-Q4_K_M",
-      "parameter_size": "7B",
-      "context_length": 4096,
-      "download_gb": 4.7,
-      "min_ram_gb": 6,
-      "locally_runnable": true,
-      "architecture": "llama",
-      "quantizations": ["Q4_K", "Q6_K"],
-      "vision": true,
-      "unavailable_reason": null,
-      "embedding_dim": null,
-      "note": "Vision-capable — Vicuna-7B fine-tuned with a CLIP ViT-L vision encoder. The standard, most widely-used size for this family; noticeably lighter than gemma4:12b for image-attachment replies. Sourced from Hugging Face — confirmed live: second-state/Llava-v1.6-Vicuna-7B-GGUF, arch \"llama\", 6.74B params, 4096 ctx, with a Q4_K_M main file plus its own -mmproj-model-f16.gguf projector in the same repo. Ollama's hf.co/ pull syntax was confirmed (via a real pull + `ollama show`, not just repo inspection) to auto-detect and pull a same-repo \"mmproj\"-named file alongside the tagged one and keep vision working. \"Q4_K_M\" is llama.cpp's own mix label, not a real GGML type by itself — the underlying [Q4_K, Q6_K] pair is recorded in quantizations instead."
-    },
-    {
       "family": "Ministral 3",
       "vendor": "Mistral AI",
       "tag": "hf.co/mistralai/Ministral-3-3B-Instruct-2512-GGUF:Ministral-3-3B-Instruct-2512-Q4_K_M",

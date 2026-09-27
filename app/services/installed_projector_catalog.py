@@ -9,8 +9,8 @@ stray one, since it was invisible everywhere.
 
 import re
 
-from app.schemas import CatalogEntry
-from app.services.matricxon_support_checker import MatricxonSupportChecker
+from app.schemas import CatalogEntry, EngineModelSupport
+from app.services.engine_support_checker import EngineSupportSet
 
 
 class InstalledProjectorCatalog:
@@ -31,7 +31,7 @@ class InstalledProjectorCatalog:
         catalog_tags: set[str],
         hidden_tags: set[str],
         is_admin: bool,
-        checker: MatricxonSupportChecker,
+        support_set: EngineSupportSet,
     ) -> list[CatalogEntry]:
         """Every installed tag reporting a "clip" (vision-projector) architecture and no chat capability of its
         own — `installed_models` is the caller's own already-fetched list_models() result, so this makes no
@@ -46,6 +46,21 @@ class InstalledProjectorCatalog:
             if model.get("details", {}).get("family") != "clip":
                 continue
             size_gb = (model.get("size") or 0) / 1_000_000_000
+            # Not support_set.support_for: every engine's own real verdict_for(is_projector=True) call would
+            # say "not supported" (a projector is never a standalone chat model) — genuinely true, but the
+            # frontend never actually shows the "Not supported" badge for an is_projector entry regardless (see
+            # renderModelRow's own is_projector check), so showing it as unsupported would just be misleading
+            # noise. Each engine's own real RAM estimate is still worth showing, so that part is read directly.
+            engine_support = {
+                engine_name: EngineModelSupport(
+                    supported=True,
+                    reason=None,
+                    min_ram_gb=support_set.checker_for(engine_name).estimated_ram_gb(
+                        name, download_gb=round(size_gb, 1) if size_gb else None
+                    ),
+                )
+                for engine_name in support_set.engine_names()
+            }
             entries.append(
                 CatalogEntry(
                     family=f"{InstalledProjectorCatalog._display_name(name)} (vision projector)",
@@ -54,18 +69,13 @@ class InstalledProjectorCatalog:
                     parameter_size="?",
                     download_gb=round(size_gb, 1) if size_gb else None,
                     min_ram_gb=0,
-                    min_ram_gb_matricxon=checker.estimated_ram_gb(name),
+                    engine_support=engine_support,
                     locally_runnable=True,
                     installed=True,
                     hardware_ok=True,
                     hidden=name in hidden_tags,
                     vision=False,
                     text_capable=False,
-                    # Genuinely already loaded/working wherever it's installed — the frontend never actually
-                    # shows this badge for an is_projector entry regardless (see renderModelRow's own
-                    # is_projector check), so the exact value here is moot; kept an honest True/None default.
-                    matricxon_supported=True,
-                    matricxon_unsupported_reason=None,
                     is_projector=True,
                     is_auto_discovered=True,
                 )

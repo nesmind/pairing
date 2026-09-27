@@ -24,10 +24,10 @@ from app import hardware
 from app.model_catalog import CuratedModel
 from app.models import SYSTEM_OWNER_ID, AppSetting, User
 from app.schemas import CatalogEntry
+from app.services.engine_support_checker import OLLAMA_RAM_ESTIMATE_MULTIPLIER, EngineSupportSet
 from app.services.extended_model_catalog_enrichment import HuggingFaceModelProbe
 from app.services.huggingface_client import HuggingFaceCatalogSearch, HuggingFaceLookupError
 from app.services.inference_client import list_models
-from app.services.matricxon_support_checker import MatricxonSupportChecker
 from app.services.model_catalog_service import HiddenModelTags
 
 
@@ -55,12 +55,24 @@ class ExtendedModelCatalog:
         return re.sub(r"[-_]?gguf$", "", name, flags=re.IGNORECASE) or name
 
     @staticmethod
+    def _vendor_from_tag(tag: str) -> str:
+        """Same logic as app.services.model_catalog_service.ModelCatalogService._vendor_from_tag, duplicated
+        to avoid a circular import for one helper — every tag here is
+        always `hf.co/<org>/<repo>:<suffix>` (see build_tag above), so the org segment is always real, never
+        the "Other" this returned unconditionally before this fix (confirmed live, 2026-09-27: two Browse-more-
+        models entries both published by "unsloth" rendered under separate vendor headings in the Model tab
+        because of it, while an already-installed unsloth model showed the real vendor via the other code
+        path)."""
+        if not tag.startswith("hf.co/"):
+            return "Other"
+        repo_id = tag.removeprefix("hf.co/").split(":", 1)[0]
+        return repo_id.split("/", 1)[0] or "Other"
+
+    @staticmethod
     def _min_ram_gb(download_gb: float | None) -> float:
         """Ollama's own rule-of-thumb multiplier — same OLLAMA_RAM_ESTIMATE_MULTIPLIER
-        app.services.model_catalog_service uses for auto-discovered installed models, duplicated here as a
-        literal since importing it back would create a circular import (model_catalog_service imports nothing
-        from this module, and shouldn't start to just for one constant)."""
-        return round(download_gb * 1.25, 1) if download_gb else 0.0
+        app.services.engine_support_checker.OllamaSupportChecker uses for its own real per-model estimate."""
+        return round(download_gb * OLLAMA_RAM_ESTIMATE_MULTIPLIER, 1) if download_gb else 0.0
 
     async def list(self) -> list[dict]:
         row = await self._db.get(AppSetting, (SYSTEM_OWNER_ID, self._KEY))
@@ -153,7 +165,7 @@ class ExtendedModelCatalog:
 
         is_admin = user.role == "admin"
         hidden_tags = await HiddenModelTags(self._db).get()
-        checker = await MatricxonSupportChecker.load(installed_models)
+        support_set = await EngineSupportSet.load(installed_models)
         capacity_gb = hardware.available_capacity_gb()
 
         result = []
@@ -165,15 +177,18 @@ class ExtendedModelCatalog:
                 continue
             min_ram_gb = self._min_ram_gb(entry.get("download_gb"))
             is_projector = entry.get("is_projector", False)
-            verdict = checker.verdict_for(
-                entry.get("architecture"),
-                entry.get("quantizations"),
+            engine_support = support_set.support_for(
+                tag=tag,
+                architecture=entry.get("architecture"),
+                quantizations=entry.get("quantizations"),
                 is_projector=is_projector,
+                download_gb=entry.get("download_gb"),
+                min_ram_gb=min_ram_gb,
             )
             result.append(
                 CatalogEntry(
                     family=entry.get("family") or "Other",
-                    vendor="Other",
+                    vendor=self._vendor_from_tag(tag),
                     tag=tag,
                     parameter_size=entry.get("parameter_size") or "?",
                     context_length=None,
@@ -187,8 +202,7 @@ class ExtendedModelCatalog:
                     vision=entry.get("vision", False),
                     text_capable=True,
                     removable=is_admin,
-                    matricxon_supported=verdict.supported,
-                    matricxon_unsupported_reason=verdict.reason,
+                    engine_support=engine_support,
                     is_projector=is_projector,
                     is_auto_discovered=True,
                 )
@@ -204,7 +218,7 @@ class ExtendedModelCatalog:
             return None
         return CuratedModel(
             family=entry.get("family") or "Other",
-            vendor="Other",
+            vendor=self._vendor_from_tag(tag),
             tag=tag,
             parameter_size=entry.get("parameter_size") or "?",
             context_length=None,

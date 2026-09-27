@@ -18,16 +18,60 @@ PinType = Literal["persona", "rules", "skill"]
 ServerMode = Literal["local", "remote"]
 
 # Which LLM backend app.services.inference_client dispatches chat/embedding/model-management calls to right now
-# — see app.services.engine_service, the single source of truth for this choice (Settings > External servers'
-# "Active engine" picker). Only one is ever active at a time; the other can still be configured/started/stopped
-# independently (see app/routers/ollama_admin.py|matricxon_admin.py), it just doesn't serve live traffic.
-EngineName = Literal["ollama", "matricxon"]
+# — see app.services.engine_service, which owns *live* engine state (the DB-backed setting/its in-process
+# cache); this is just the type + default it's typed against. Only one is ever active at a time; the others can
+# still be configured/started/stopped (Ollama/Matricxon) or configured via a Connector (RunPod — see
+# app.services.connectors) independently, they just don't serve live traffic. Kept in sync with
+# app.services.engines.registry by tests/test_engine_registry.py.
+EngineName = Literal["ollama", "matricxon", "runpod"]
+
+# The single source of truth for "no engine explicitly chosen yet" — used both as ActiveEngineConfig's own
+# default below and as app.services.engine_service.DEFAULT_ENGINE (imported from here, not redefined there).
+# Matricxon while it's still the engine under active development/testing — revisit once Ollama should go back
+# to being the safer default. Previously drifted into two separate, disagreeing copies (this field defaulted
+# to "ollama" while engine_service.DEFAULT_ENGINE said "matricxon") — a fresh install with no saved setting at
+# all silently routed to whichever one a given code path happened to ask, confirmed live, 2026-09-27.
+DEFAULT_ENGINE: EngineName = "matricxon"
 
 
 class ActiveEngineConfig(BaseModel):
     """GET/PUT /api/settings/engine body — see app.services.engine_service.get_active_engine/set_active_engine."""
 
-    active_engine: EngineName = "ollama"
+    active_engine: EngineName = DEFAULT_ENGINE
+
+
+class EngineCapabilitiesOut(BaseModel):
+    """Pydantic mirror of app.services.engines.base.EngineCapabilities (a plain dataclass — services code has
+    no reason to depend on Pydantic) — see that class's own docstring for what each flag means. Built via
+    `EngineCapabilitiesOut(**dataclasses.asdict(engine.capabilities))` at the one call site that needs this
+    (GET /api/settings/engine/options)."""
+
+    embeddings: bool
+    model_management: bool
+    stop_model: bool
+    local_process: bool
+    host_pool: bool
+    support_checking: bool
+    format_introspection: bool
+
+
+class EngineOption(BaseModel):
+    """One entry in GET /api/settings/engine/options — every engine app.services.engines.registry knows about,
+    for a caller that wants to render a picker/dropdown or check a capability without hardcoding engine names
+    (see Settings > External servers' "Active engine" picker and the Stats page's engine dropdown, both
+    previously hand-written <option> lists)."""
+
+    name: EngineName
+    display_name: str
+    capabilities: EngineCapabilitiesOut
+    # Whether this engine can actually be activated right now (see
+    # app.services.engines.base.InferenceEngine.is_ready) — False for a Connector-backed engine (e.g. "runpod")
+    # an admin hasn't configured/enabled yet on the Connectors page. Always True for Ollama/Matricxon.
+    ready: bool = True
+
+
+class EngineOptionsResponse(BaseModel):
+    engines: list[EngineOption]
 
 
 # Shared by the same two schemas above (their remote_hosts field's own

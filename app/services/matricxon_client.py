@@ -128,13 +128,17 @@ async def embed(text: str, model: str) -> list[float]:
 
 
 def _error_detail_from_body(body: bytes, status_code: int) -> str:
-    """Pulls Matricxon's own `{"error": "..."}` detail out of an error response body — falls back to a generic
-    message only when the body isn't the shape Matricxon's own routers always send (../matricxon/app/routers/
-    chat_router.py's error responses, and every other router's, are this same shape)."""
+    """Pulls Matricxon's own `{"error": "..."}` detail out of an error response body — every one of its own
+    typed errors (../matricxon/app/server/errors.py's MatricxonError subclasses) is always this shape. Falls
+    back to whatever raw text the body does contain (still real information — e.g. an unhandled exception's
+    message before ../matricxon's own catch-all handler was added, 2026-09-27, produced a plain, non-JSON body)
+    and only to a wholly generic message when there's truly nothing to show."""
     try:
         detail = json.loads(body).get("error")
     except (json.JSONDecodeError, AttributeError):
         detail = None
+    if not detail:
+        detail = body.decode("utf-8", errors="replace").strip() or None
     return detail or f"Matricxon returned HTTP {status_code} with no error detail."
 
 

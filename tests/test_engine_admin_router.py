@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from app.models import SYSTEM_OWNER_ID, AppSetting
 from app.routers import engine_admin
 from app.schemas import ActiveEngineConfig
-from app.services import engine_service, server_pool_broadcast, settings_service
+from app.services import connector_config_cache, engine_service, server_pool_broadcast, settings_service
 
 
 class _FakeClient:
@@ -103,3 +103,42 @@ async def test_internal_refresh_reloads_the_cache_from_the_shared_db(db):
     await engine_admin.internal_refresh(_FakeRequest("127.0.0.1"), db=db)
 
     assert engine_service.current_engine() == "matricxon"
+
+
+@pytest.mark.asyncio
+async def test_get_engine_options_reports_runpod_not_ready_until_configured():
+    connector_config_cache._cache = {}
+    try:
+        result = await engine_admin.get_engine_options(_user=None)
+        by_name = {option.name: option for option in result.engines}
+        assert by_name["ollama"].ready is True
+        assert by_name["matricxon"].ready is True
+        assert by_name["runpod"].ready is False
+    finally:
+        connector_config_cache._cache = {}
+
+
+@pytest.mark.asyncio
+async def test_set_active_engine_rejects_runpod_when_not_ready(db):
+    connector_config_cache._cache = {}
+    with pytest.raises(HTTPException) as exc_info:
+        await engine_admin.set_active_engine(ActiveEngineConfig(active_engine="runpod"), db=db, _admin=None)
+    assert exc_info.value.status_code == 400
+    assert engine_service.current_engine() != "runpod"
+
+
+@pytest.mark.asyncio
+async def test_set_active_engine_allows_runpod_once_ready(db, monkeypatch):
+    async def fake_broadcast(_path):
+        return []
+
+    monkeypatch.setattr(server_pool_broadcast, "broadcast_refresh", fake_broadcast)
+    connector_config_cache._cache = {
+        "runpod": {"config": {}, "enabled": True, "configured": True, "last_test_passed": True}
+    }
+    try:
+        result = await engine_admin.set_active_engine(ActiveEngineConfig(active_engine="runpod"), db=db, _admin=None)
+        assert result.active_engine == "runpod"
+        assert engine_service.current_engine() == "runpod"
+    finally:
+        connector_config_cache._cache = {}

@@ -2,11 +2,11 @@
 GET /health — a reverse-proxy-facing readiness check, not part of the
 app's own UI. Reports whether *this* instance can actually serve a real
 chat request right now: at least one of the currently *active* engine's
-effective host(s) reachable (Ollama or Matricxon, whichever
-app.services.engine_service says is live — see that engine's own pool's
-get_effective_hosts, local or remote per Settings > External servers),
-and the database reachable — not just "is the process alive," which a
-plain TCP/HTTP check to any other route would already tell you.
+effective host(s) reachable (see app.services.engines.registry, resolved
+via app.services.engine_service — local or remote per Settings >
+External servers), and the database reachable — not just "is the
+process alive," which a plain TCP/HTTP check to any other route would
+already tell you.
 
 Deliberately unauthenticated (infrastructure polls this, not logged-in
 users) and cheap (a short-timeout GET per host, a plain `SELECT 1`), so
@@ -24,16 +24,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.schemas import HealthStatus
-from app.services import engine_service, matricxon_pool, ollama_pool
+from app.services.engines.registry import registry
 
 router = APIRouter(tags=["health"])
 
 
 @router.get("/health", response_model=HealthStatus)
 async def health(db: AsyncSession = Depends(get_db)) -> JSONResponse:
-    active_engine = engine_service.current_engine()
-    pool = matricxon_pool if active_engine == "matricxon" else ollama_pool
-    engine_hosts = await pool.check_hosts()
+    engine = registry.active()
+    active_engine = engine.name
+    engine_hosts = await engine.check_health()
     engine_ok = any(engine_hosts.values())
 
     try:

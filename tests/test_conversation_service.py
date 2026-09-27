@@ -15,6 +15,7 @@ from app.services import (
     channel_service,
     chat_attachment_service,
     conversation_service,
+    default_notes_setting,
     reply_broadcast_service,
     reply_generation_service,
 )
@@ -36,6 +37,35 @@ async def test_create_conversation_uses_user_defaults(db, user, monkeypatch):
     assert conversation.owner_id == user.id
     assert conversation.model == "llama3:latest"
     assert conversation.params["temperature"] == 0.5
+
+
+@pytest.mark.asyncio
+async def test_create_conversation_starts_with_notes_disabled_by_default(db, user, monkeypatch):
+    """A brand-new account has no saved default_notes_setting row yet, so a brand-new
+    conversation now starts with all 3 persona/rules/skill slots pre-disabled (see
+    note_service.seed_initial_disabled_notes) instead of the old unconditional "every slot on"."""
+
+    async def fake_get_default_model(_db, _user):
+        return "llama3:latest"
+
+    monkeypatch.setattr(conversation_service, "get_default_model", fake_get_default_model)
+
+    conversation = await conversation_service.create_conversation(db, ConversationCreate(), user)
+
+    assert set(conversation.params["disabled_default_notes"]) == {"persona", "rules", "skill"}
+
+
+@pytest.mark.asyncio
+async def test_create_conversation_leaves_notes_enabled_when_the_user_turned_it_on(db, user, monkeypatch):
+    async def fake_get_default_model(_db, _user):
+        return "llama3:latest"
+
+    monkeypatch.setattr(conversation_service, "get_default_model", fake_get_default_model)
+    await default_notes_setting.set_default_notes_enabled(db, user, True)
+
+    conversation = await conversation_service.create_conversation(db, ConversationCreate(), user)
+
+    assert conversation.params.get("disabled_default_notes", []) == []
 
 
 @pytest.mark.asyncio

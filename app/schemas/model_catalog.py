@@ -3,9 +3,26 @@
 search/lookup (app/services/huggingface_client.py). Split out of app/schemas/settings.py once this many
 model-catalog-specific shapes pushed that file over CLAUDE.md's line cap."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, computed_field
 
+from app.schemas.common import EngineName
 from app.schemas.settings import HardwareSummary
+
+
+class EngineModelSupport(BaseModel):
+    """One engine's own verdict on one model — see
+    app.services.engine_support_checker.SupportVerdict/EngineSupportChecker.estimated_ram_gb, the source of
+    truth this is built from (EngineSupportSet.support_for). Replaces the old per-engine-named fields
+    (min_ram_gb_ollama/min_ram_gb_matricxon/matricxon_supported/matricxon_unsupported_reason below, kept only as
+    computed properties for backward compatibility) with one dict keyed by EngineName, so a third engine needs
+    no new field anywhere."""
+
+    supported: bool = True
+    reason: str | None = None
+    # This engine's own real per-model RAM estimate, or None when unknown/not applicable (see
+    # EngineSupportChecker.estimated_ram_gb's own docstring — never a guess extrapolated from a
+    # *different* engine's own figure).
+    min_ram_gb: float | None = None
 
 
 class CatalogEntry(BaseModel):
@@ -29,17 +46,12 @@ class CatalogEntry(BaseModel):
     # 2026-09-21: Matricxon dequantizes to bf16 before computing, so its real need for a real
     # Ministral-3B Q4_K_M file runs to ~7.5GB, not the ~3GB this field alone implied).
     min_ram_gb: float
-    # Ollama's own real per-model RAM figure — computed from this entry's real download_gb (Ollama's
-    # API exposes no better number of its own), or falling back to min_ram_gb only when download_gb
-    # isn't known at all. See app.services.model_catalog_service.OLLAMA_RAM_ESTIMATE_MULTIPLIER.
-    min_ram_gb_ollama: float | None = None
-    # Matricxon's own real, current per-tag `estimated_ram_gb` (see
-    # ../matricxon/app/models/load_dtype.py's own docstring) — only known once this exact tag is
-    # confirmed actually installed on Matricxon (its real GGUF tensor shapes have to be read to
-    # compute it); None otherwise, including whenever Matricxon can't be reached at all. Never a
-    # guess extrapolated from Ollama's own figure — the two engines' real per-model requirements are
-    # not proportional to each other (dequantize-to-bf16-then-compute vs. quantized-native compute).
-    min_ram_gb_matricxon: float | None = None
+    # Every registered engine's own verdict on this exact model (see EngineModelSupport above) — built by
+    # app.services.engine_support_checker.EngineSupportSet.support_for, once per catalog build. The
+    # min_ram_gb_ollama/min_ram_gb_matricxon/matricxon_supported/matricxon_unsupported_reason properties below
+    # read from this and exist only so old callers/tests keep working unchanged; new code should read this
+    # dict directly.
+    engine_support: dict[EngineName, EngineModelSupport] = Field(default_factory=dict)
     locally_runnable: bool
     installed: bool
     hardware_ok: bool
@@ -65,6 +77,18 @@ class CatalogEntry(BaseModel):
     # text chat ability) is modeled honestly for correctness but can't
     # actually appear in this catalog as currently scoped.
     text_capable: bool = True
+    # Whether the active engine actually has *no real confirmation* of this model's true chat/
+    # instruction format (Matricxon's own "chat_format_unverified" capability tag — see
+    # ../matricxon/app/models/capabilities.py's own docstring: true for a "completion"-capable
+    # model with no real chat_template and no mistral3 tokenizer, meaning Matricxon is falling
+    # back to a best-effort guess). Only ever read live, post-install, like `vision` above — there
+    # is no meaningful pre-install guess for this (unlike vision's HF-repo-tag hint, nothing in a
+    # not-yet-downloaded repo's listing reveals whether its own instruction format will actually
+    # be followed). Surfaced so the model list can flag "this might not behave like a normal chat
+    # model" instead of looking identical to one that's fully confirmed — added 2026-09-27 after
+    # Hebrew-Mistral-7B-Q5_K_M produced incoherent, non-chat-like output regardless of prompt
+    # format, with nothing in the list distinguishing it from a well-behaved model.
+    chat_format_unverified: bool = False
     # Whether an admin has hidden this model from regular users' picker
     # (see POST /api/settings/hide-model). Non-admin callers never
     # receive a hidden entry at all — this field only ever comes back
@@ -86,8 +110,6 @@ class CatalogEntry(BaseModel):
     # verified architecture) is explicitly constructed with this False instead — see
     # app.services.extended_model_catalog_service.ExtendedModelCatalog.build's own comment — since Matricxon fails
     # closed on an unrecognized architecture and a false "supported" badge would be actively misleading.
-    matricxon_supported: bool = True
-    matricxon_unsupported_reason: str | None = None
     # A vision-projector (mmproj) sidecar, pulled alongside its own paired text model rather than run as a
     # standalone chat model — see
     # app.services.huggingface_client.HuggingFaceCatalogSearch.is_projector_file's own docstring. Lets the
@@ -105,6 +127,30 @@ class CatalogEntry(BaseModel):
     # that a duplicate model pulled under an unfamiliar repo name showed up as a bare "Phi2 · unknown" row with
     # nothing explaining why it looked so different from every other entry.
     is_auto_discovered: bool = False
+
+    # --- Backward-compatible views onto engine_support above -----------------------------------------------
+    # Computed, not settable at construction time — every producer builds engine_support directly instead (see
+    # app.services.engine_support_checker.EngineSupportSet.support_for). Kept only so old callers/tests reading
+    # entry.matricxon_supported (etc.) keep working unchanged; new code should read engine_support directly.
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def min_ram_gb_ollama(self) -> float | None:
+        return self.engine_support.get("ollama", EngineModelSupport()).min_ram_gb
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def min_ram_gb_matricxon(self) -> float | None:
+        return self.engine_support.get("matricxon", EngineModelSupport()).min_ram_gb
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def matricxon_supported(self) -> bool:
+        return self.engine_support.get("matricxon", EngineModelSupport()).supported
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def matricxon_unsupported_reason(self) -> str | None:
+        return self.engine_support.get("matricxon", EngineModelSupport()).reason
 
 
 class ModelCatalogResponse(BaseModel):
@@ -127,15 +173,32 @@ class EmbeddingCatalogEntry(BaseModel):
     embedding_dim: int
     download_gb: float | None = None
     min_ram_gb: float
-    # See CatalogEntry.min_ram_gb_ollama/min_ram_gb_matricxon's own docstrings — same meaning here.
-    min_ram_gb_ollama: float | None = None
-    min_ram_gb_matricxon: float | None = None
+    # See CatalogEntry.engine_support's own docstring — same meaning here.
+    engine_support: dict[EngineName, EngineModelSupport] = Field(default_factory=dict)
     installed: bool
     hardware_ok: bool
     unavailable_reason: str | None = None
-    # See CatalogEntry.matricxon_supported/matricxon_unsupported_reason's own docstring — same meaning here.
-    matricxon_supported: bool = True
-    matricxon_unsupported_reason: str | None = None
+
+    # See CatalogEntry's identical computed properties — same "old field name, new dict underneath" reasoning.
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def min_ram_gb_ollama(self) -> float | None:
+        return self.engine_support.get("ollama", EngineModelSupport()).min_ram_gb
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def min_ram_gb_matricxon(self) -> float | None:
+        return self.engine_support.get("matricxon", EngineModelSupport()).min_ram_gb
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def matricxon_supported(self) -> bool:
+        return self.engine_support.get("matricxon", EngineModelSupport()).supported
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def matricxon_unsupported_reason(self) -> str | None:
+        return self.engine_support.get("matricxon", EngineModelSupport()).reason
 
 
 class EmbeddingModelCatalogResponse(BaseModel):
@@ -152,104 +215,3 @@ class InstalledModelsResponse(BaseModel):
     get_model_catalog's hardware/download info."""
 
     models: list[str]
-
-
-class PullModelRequest(BaseModel):
-    tag: str
-    # True once the admin has confirmed "pull anyway" past a 409 DuplicateInstallDetector warning (see
-    # app/routers/settings.py's pull_model) — False on a normal first attempt, so the duplicate check always
-    # runs at least once.
-    confirm_duplicate: bool = False
-
-
-class HideModelRequest(BaseModel):
-    tag: str
-    hidden: bool
-
-
-class HideModelResponse(BaseModel):
-    tag: str
-    hidden: bool
-
-
-class DeleteModelResponse(BaseModel):
-    deleted: str
-
-
-class ExtendedModelCatalogResponse(BaseModel):
-    """GET /api/settings/model-catalog/extended — the admin-managed "browse more models" list behind Settings >
-    Model (see app.services.extended_model_catalog_service), separate from the small hand-curated default list
-    GET /api/settings/model-catalog still returns unchanged."""
-
-    entries: list[CatalogEntry]
-    # POST only (see add_extended_model's own docstring) — True when the just-added tag turned out to already
-    # be installed, so it was never going to appear in `entries` above (ExtendedModelCatalog.build excludes any
-    # installed tag on purpose — see its own docstring). Lets the frontend tell that apart from a genuine new
-    # addition instead of showing a flat "Added" that's misleading here: confirmed live, an admin re-adding an
-    # already-installed tag saw "Added ..." and then couldn't find it anywhere to pull, since there was nothing
-    # left to pull. Always False on GET/DELETE, where it's meaningless.
-    already_installed: bool = False
-
-
-class AddExtendedModelRequest(BaseModel):
-    """POST /api/settings/model-catalog/extended — adds one specific GGUF file from a Hugging Face repo (see
-    app.services.extended_model_catalog_service.ExtendedModelCatalog.add, which re-verifies both against
-    Hugging Face itself rather than trusting this request body)."""
-
-    repo_id: str
-    filename: str
-
-
-class RemoveExtendedModelRequest(BaseModel):
-    tag: str
-
-
-class SearchHfModelsRequest(BaseModel):
-    query: str
-
-
-class HfSearchResult(BaseModel):
-    """One repo from POST /api/settings/model-catalog/extended/search-hf — see
-    app.services.huggingface_client.HuggingFaceCatalogSearch.search. `license` is always None here — Hugging
-    Face's own search API doesn't return it; only the per-repo lookup (HfRepoFilesResponse below) does."""
-
-    repo_id: str
-    downloads: int
-    likes: int
-    gated: bool
-    license: str | None
-
-
-class SearchHfModelsResponse(BaseModel):
-    results: list[HfSearchResult]
-
-
-class HfFileOption(BaseModel):
-    filename: str
-    download_gb: float
-    # See app.services.huggingface_client.HuggingFaceCatalogSearch.is_projector_file's own docstring — a
-    # vision-projector (mmproj) sidecar, not a standalone chat model, so the file-picker UI flags it rather than
-    # implying it's whatever this response's own family/parameter_size (below) describes, which almost never
-    # applies to it.
-    is_projector: bool = False
-    # A chat-model file whose repo also ships an mmproj sidecar — see HuggingFaceCatalogSearch.repo_files.
-    vision: bool = False
-
-
-class HfRepoFilesRequest(BaseModel):
-    repo_id: str
-
-
-class HfRepoFilesResponse(BaseModel):
-    """POST /api/settings/model-catalog/extended/hf-files — every single-file GGUF variant `repo_id` offers,
-    each with its real download size, plus repo-level metadata (see
-    app.services.huggingface_client.HuggingFaceCatalogSearch.repo_files). The Model tab's own file-picker step,
-    shown once an admin picks a repo from a search result (or already knows the exact repo path)."""
-
-    repo_id: str
-    family: str | None
-    parameter_size: str | None
-    context_length: int | None
-    gated: bool
-    license: str | None
-    files: list[HfFileOption]

@@ -197,6 +197,14 @@ async def seed_default_users(db: AsyncSession) -> User:
     """
     existing = (await db.execute(select(User).where(User.username == "admin"))).scalar_one_or_none()
     if existing is None:
-        db.add(User(username="admin", password_hash=hash_password("admin"), role="admin"))
+        db.add(
+            User(
+                username="admin",
+                password_hash=hash_password("admin"),
+                role="admin",
+                first_name="Admin",
+                last_name="Demo",
+            )
+        )
         await db.commit()
     return (await db.execute(select(User).where(User.username == "admin"))).scalar_one()

@@ -1,6 +1,7 @@
 """Unit tests for app/services/installed_projector_catalog.py — pure functions, no I/O, so no monkeypatching
 needed here at all."""
 
+from app.services.engine_support_checker import AlwaysSupportedChecker, EngineSupportSet
 from app.services.installed_projector_catalog import InstalledProjectorCatalog
 from app.services.matricxon_support_checker import MatricxonSupportChecker
 
@@ -8,7 +9,7 @@ _PROJECTOR_TAG = (
     "hf.co/concedo/llama-joycaption-beta-one-hf-llava-mmproj-gguf:llama-joycaption-beta-one-llava-mmproj-model-f16"
 )
 
-_NO_MATRICXON = MatricxonSupportChecker(None, None)
+_NO_SUPPORT = EngineSupportSet({"ollama": AlwaysSupportedChecker(), "matricxon": MatricxonSupportChecker.unloaded()})
 
 
 def test_display_name_strips_the_hf_co_prefix_the_file_suffix_and_the_gguf_noise():
@@ -24,7 +25,7 @@ def test_entries_surfaces_a_clip_family_tag_with_no_chat_capability():
     installed_models = [{"name": _PROJECTOR_TAG, "size": 877771808, "details": {"family": "clip"}}]
 
     entries = InstalledProjectorCatalog.entries(
-        installed_models, catalog_tags=set(), hidden_tags=set(), is_admin=True, checker=_NO_MATRICXON
+        installed_models, catalog_tags=set(), hidden_tags=set(), is_admin=True, support_set=_NO_SUPPORT
     )
 
     assert len(entries) == 1
@@ -37,13 +38,16 @@ def test_entries_surfaces_a_clip_family_tag_with_no_chat_capability():
     assert entry.vision is False
     assert entry.download_gb == 0.9
     assert entry.is_auto_discovered is True
+    # Never shown by the frontend for a projector regardless (see entries' own comment), but should still read
+    # as an honest "fine" rather than a real, always-false verdict_for(is_projector=True) result.
+    assert entry.matricxon_supported is True
 
 
 def test_entries_ignores_a_chat_capable_tag():
     installed_models = [{"name": "some-tag", "size": 1_000_000, "details": {"family": "mistral3"}}]
 
     entries = InstalledProjectorCatalog.entries(
-        installed_models, catalog_tags=set(), hidden_tags=set(), is_admin=True, checker=_NO_MATRICXON
+        installed_models, catalog_tags=set(), hidden_tags=set(), is_admin=True, support_set=_NO_SUPPORT
     )
 
     assert entries == []
@@ -53,7 +57,7 @@ def test_entries_skips_a_tag_already_in_the_curated_catalog():
     installed_models = [{"name": _PROJECTOR_TAG, "size": 1_000_000, "details": {"family": "clip"}}]
 
     entries = InstalledProjectorCatalog.entries(
-        installed_models, catalog_tags={_PROJECTOR_TAG}, hidden_tags=set(), is_admin=True, checker=_NO_MATRICXON
+        installed_models, catalog_tags={_PROJECTOR_TAG}, hidden_tags=set(), is_admin=True, support_set=_NO_SUPPORT
     )
 
     assert entries == []
@@ -67,10 +71,10 @@ def test_entries_hides_a_hidden_tag_from_a_regular_user():
         catalog_tags=set(),
         hidden_tags={_PROJECTOR_TAG},
         is_admin=False,
-        checker=_NO_MATRICXON,
+        support_set=_NO_SUPPORT,
     )
     admin = InstalledProjectorCatalog.entries(
-        installed_models, catalog_tags=set(), hidden_tags={_PROJECTOR_TAG}, is_admin=True, checker=_NO_MATRICXON
+        installed_models, catalog_tags=set(), hidden_tags={_PROJECTOR_TAG}, is_admin=True, support_set=_NO_SUPPORT
     )
 
     assert regular == []
@@ -80,14 +84,19 @@ def test_entries_hides_a_hidden_tag_from_a_regular_user():
 
 def test_entries_reads_matricxons_own_real_ram_estimate():
     installed_models = [{"name": _PROJECTOR_TAG, "size": 1_000_000, "details": {"family": "clip"}}]
-    checker = MatricxonSupportChecker(None, {_PROJECTOR_TAG: {"estimated_ram_gb": 1.04}})
+    support_set = EngineSupportSet(
+        {
+            "ollama": AlwaysSupportedChecker(),
+            "matricxon": MatricxonSupportChecker(None, {_PROJECTOR_TAG: {"estimated_ram_gb": 1.04}}),
+        }
+    )
 
     entries = InstalledProjectorCatalog.entries(
         installed_models,
         catalog_tags=set(),
         hidden_tags=set(),
         is_admin=True,
-        checker=checker,
+        support_set=support_set,
     )
 
     assert entries[0].min_ram_gb_matricxon == 1.04

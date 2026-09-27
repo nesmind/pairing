@@ -12,9 +12,9 @@ from app.config import EMBEDDING_MODEL
 from app.model_catalog import CATALOG
 from app.schemas import EmbeddingCatalogEntry, EmbeddingModelCatalogResponse
 from app.services.default_model_settings import DefaultModelSettings
+from app.services.engine_support_checker import EngineSupportSet
 from app.services.inference_client import list_models
-from app.services.matricxon_support_checker import MatricxonSupportChecker
-from app.services.model_catalog_service import OLLAMA_RAM_ESTIMATE_MULTIPLIER, ChatModelCatalogBuilder
+from app.services.model_catalog_service import ChatModelCatalogBuilder
 
 
 class EmbeddingModelCatalogService:
@@ -28,7 +28,7 @@ class EmbeddingModelCatalogService:
         installed_models = await list_models()
         installed_by_tag = {m["name"]: m for m in installed_models if "embedding" in m.get("capabilities", [])}
         capacity_gb = hardware.available_capacity_gb()
-        checker = await MatricxonSupportChecker.load(installed_models)
+        support_set = await EngineSupportSet.load(installed_models)
 
         entries = []
         for entry in CATALOG.embedding_models:
@@ -44,9 +44,12 @@ class EmbeddingModelCatalogService:
                 if installed_model is not None
                 else entry.architecture
             )
-            verdict = checker.verdict_for(architecture, entry.quantizations)
-            min_ram_gb_ollama = (
-                round(entry.download_gb * OLLAMA_RAM_ESTIMATE_MULTIPLIER, 1) if entry.download_gb else entry.min_ram_gb
+            engine_support = support_set.support_for(
+                tag=entry.tag,
+                architecture=architecture,
+                quantizations=entry.quantizations,
+                download_gb=entry.download_gb,
+                min_ram_gb=entry.min_ram_gb,
             )
             entries.append(
                 EmbeddingCatalogEntry(
@@ -58,13 +61,10 @@ class EmbeddingModelCatalogService:
                     embedding_dim=entry.embedding_dim,
                     download_gb=entry.download_gb,
                     min_ram_gb=entry.min_ram_gb,
-                    min_ram_gb_ollama=min_ram_gb_ollama,
-                    min_ram_gb_matricxon=checker.estimated_ram_gb(entry.tag),
+                    engine_support=engine_support,
                     installed=installed,
                     hardware_ok=installed or capacity_gb >= entry.min_ram_gb,  # same exemption as above
                     unavailable_reason=entry.unavailable_reason,
-                    matricxon_supported=verdict.supported,
-                    matricxon_unsupported_reason=verdict.reason,
                 )
             )
 

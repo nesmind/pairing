@@ -1,27 +1,28 @@
 """
 The active engine's own supported model architectures and quantization (dequant) types, for the Stats page's
-"Supported architectures" view. Matricxon-only: it's the one engine that exposes this (GET /api/health, see
+"Supported architectures" view. Only meaningful for an engine with real format introspection (see
+InferenceEngine.capabilities.format_introspection — Matricxon today, via GET /api/health, see
 app.services.matricxon_client.get_capabilities) — Ollama has no API listing what it can load, so an Ollama-active
-response is simply `available=False` rather than a hand-maintained list that would silently drift.
+response is simply `available=False` rather than a hand-maintained list that would silently drift. A future
+engine without this capability gets the same honest `available=False`, with no code change needed here.
 """
 
 from app.schemas.engine_support import EngineSupportResponse
-from app.services import engine_service, matricxon_client
-from app.services.matricxon_client import MatricxonError
+from app.services.engines.registry import registry
 
 
 class EngineSupportService:
     @staticmethod
     async def get() -> EngineSupportResponse:
-        active_engine = engine_service.current_engine()
-        if active_engine != "matricxon":
-            return EngineSupportResponse(active_engine=active_engine, available=False)
+        engine = registry.active()
+        if not engine.capabilities.format_introspection:
+            return EngineSupportResponse(active_engine=engine.name, available=False)
         try:
-            capabilities = await matricxon_client.get_capabilities()
-        except MatricxonError as exc:
-            return EngineSupportResponse(active_engine=active_engine, available=True, error=str(exc))
+            capabilities = await engine.get_format_support()
+        except engine.error_types as exc:
+            return EngineSupportResponse(active_engine=engine.name, available=True, error=str(exc))
         return EngineSupportResponse(
-            active_engine=active_engine,
+            active_engine=engine.name,
             available=True,
             architectures=capabilities.get("supported_architectures", []),
             quantizations=capabilities.get("supported_quantizations", []),

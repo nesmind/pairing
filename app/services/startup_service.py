@@ -14,10 +14,12 @@ from app.database import AsyncSessionLocal, init_db
 from app.models import User
 from app.services import (
     comfyui_pool,
+    connector_config_cache,
     engine_service,
     instance_pool,
     instance_service,
     matricxon_pool,
+    matricxon_process,
     matricxon_ps_poller,
     matricxon_telemetry,
     ollama_pool,
@@ -119,11 +121,15 @@ async def run_startup_tasks() -> None:
         # ML engine connectivity check right after this block runs.
         ollama_pool.refresh_from_config(await settings_service.get_ollama_server_config(db))
         comfyui_pool.refresh_from_config(await settings_service.get_comfyui_config(db))
-        matricxon_pool.refresh_from_config(await settings_service.get_matricxon_server_config(db))
+        matricxon_config = await settings_service.get_matricxon_server_config(db)
+        matricxon_pool.refresh_from_config(matricxon_config)
         # Which of the two feeds app.services.inference_client's dispatch — see
         # app.services.engine_service.load_cache_from_db's own docstring for why every instance needs this,
         # same "own in-process cache, not re-read per request" reasoning as the pool refreshes right above.
         await engine_service.load_cache_from_db(db)
+        # Every Connector's admin-configured state — same reasoning, and must run before the reachability check
+        # below in case a Connector-backed engine is already the active one (see app.services.connectors).
+        await connector_config_cache.load_cache_from_db(db)
 
         # Same "every instance, not just primary" reasoning as the pool refresh right above — each instance
         # instruments its own outbound Ollama/Matricxon calls independently (see app.services.ollama_client/
@@ -144,6 +150,18 @@ async def run_startup_tasks() -> None:
         if IS_PRIMARY:
             await instance_service.reconcile_on_startup(db)
             instance_pool.set_cached_proxy_mode(await settings_service.get_proxy_mode(db))
+
+            # Re-syncs Matricxon's own .env file to the last-saved config on every startup, not
+            # just on config save (see matricxon_process.write_env_file's own docstring on why
+            # that file exists at all: Matricxon must get the right parameters no matter what
+            # actually starts it — this app, a bare scripts/start.sh, a reboot, systemd — since
+            # it's meant to work as a dependent server either way). Closes a real gap found live,
+            # 2026-09-27: a save that happened to land before write_env_file could resolve the
+            # project directory yet silently no-oped (its own documented guard for an install
+            # that isn't finished/found), leaving .env stale indefinitely with nothing to ever
+            # retry it — a plain restart is exactly the moment the project directory is most
+            # likely resolvable again, so this is a cheap, safe place to self-heal that.
+            matricxon_process.write_env_file(matricxon_config)
 
             # Ollama/Matricxon's currently-loaded-model state (GET /api/ps), this machine's own CPU/RAM/disk
             # usage, and the retention sweep that keeps all of these (plus telemetry_events) from growing

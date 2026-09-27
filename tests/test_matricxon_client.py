@@ -289,6 +289,53 @@ async def test_chat_stream_surfaces_matricxons_own_error_body_not_the_generic_ht
 
 
 @pytest.mark.asyncio
+async def test_chat_stream_falls_back_to_raw_body_text_when_it_isnt_json(monkeypatch):
+    """An unhandled exception on Matricxon's side (a real bug, not one of its own typed
+    MatricxonError subclasses) used to reach here as a plain-text, non-JSON body — surfacing as a
+    contentless "Matricxon returned HTTP 500 with no error detail" even though the body itself had
+    real information. Whatever text is actually there should reach the admin instead."""
+
+    async def fake_stream_with_failover(make_stream):
+        async for chunk in make_stream("http://chosen-by-pool:8420"):
+            yield chunk
+
+    monkeypatch.setattr(matricxon_pool, "stream_with_failover", fake_stream_with_failover)
+
+    class _FakeErrorStreamCtx:
+        is_error = True
+        status_code = 500
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc):
+            return False
+
+        async def aread(self):
+            return b"Internal Server Error"
+
+        async def aiter_lines(self):
+            return
+            yield  # pragma: no cover - never reached, keeps this an async generator
+
+    class _FakeStreamClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc):
+            return False
+
+        def stream(self, _method, url, json):
+            return _FakeErrorStreamCtx()
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kw: _FakeStreamClient())
+
+    with pytest.raises(matricxon_client.MatricxonError, match="Internal Server Error"):
+        async for _ in matricxon_client.chat_stream("fake-model", [], _chat_params()):
+            pass
+
+
+@pytest.mark.asyncio
 async def test_chat_stream_raises_matricxon_error_on_http_failure(monkeypatch):
     async def fake_stream_with_failover(make_stream):
         async for _ in make_stream("http://chosen-by-pool:8420"):

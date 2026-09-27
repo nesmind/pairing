@@ -29,7 +29,7 @@ Configure it as a system service: `scripts/pairing.service` is a
 systemd unit template (Linux) — edit a couple of values and
 `systemctl enable` it.
 
-Full setup, MySQL migration, and multi-server deployment notes: see
+Supports MySQL migration, and multi-server deployment notes: see
 [README.md](README.md).
 
 ## ✨ Features
@@ -87,7 +87,7 @@ Full setup, MySQL migration, and multi-server deployment notes: see
 - Live GPUs usage shows up right in the dashboard, alongside CPU/RAM/disk.
 
 **⚖️ Load balancing**
-- Point at extra Ollama servers (more GPUs, more machines) and this app spreads requests across them, with automatic failover if one goes down.
+- Point at extra ML engine (Ollama or Matricxon) servers (more GPUs, more machines) and this app spreads requests across them, with automatic failover if one goes down.
 - Can also run multiple copies of itself behind one URL, no reverse proxy needed.
 - Or, if you'd rather test it for enterprise use, use a reverse proxy (nginx, Caddy, ...) to balance across a ring of pAIring servers — that works too. All configurable directly from the UI.
 
@@ -108,9 +108,7 @@ Full setup, MySQL migration, and multi-server deployment notes: see
   documents/RAG, notes, users, stats, telemetry, and every admin setting, so anything the UI can do, your own
   scripts/automation can do too.
 - Live, interactive docs at `/docs` (Swagger UI) and `/redoc`
-- `GET /health` reports whether *this* instance can actually serve a chat request right now (Ollama reachable,
-  database reachable), not just "is the process alive" — built for a load balancer or uptime monitor to poll.
-- Same session-based login as the browser UI secures it — no separate API-key system (yet).
+- `GET /health` reports whether *this* instance can actually serve a chat request right now.
 
 <br>
 

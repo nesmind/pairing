@@ -12,7 +12,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.database import Base
 from app.models import Chunk, Document, User
 from app.schemas import ChannelCreate, ChannelUpdate, ConversationUpdate
-from app.services import channel_service, chat_attachment_service, conversation_service, document_retrieval
+from app.services import (
+    channel_service,
+    chat_attachment_service,
+    conversation_service,
+    default_notes_setting,
+    document_retrieval,
+)
 from app.services.auth_service import hash_password
 
 
@@ -33,6 +39,35 @@ async def test_create_channel_builds_shared_conversation_and_membership(db, admi
     assert set(by_user) == {user.id, channel_manager_user.id}
     assert by_user[channel_manager_user.id].is_manager is True
     assert by_user[user.id].is_manager is False
+
+
+@pytest.mark.asyncio
+async def test_create_channel_starts_its_shared_conversation_with_notes_disabled_by_default(
+    db, admin_user, user, channel_manager_user
+):
+    """Same seeding a brand-new personal chat gets (see test_conversation_service.py's identical
+    test) — the creator's own default_notes_setting decides this, not each member's."""
+    body = ChannelCreate(
+        name="general", member_user_ids=[user.id, channel_manager_user.id], manager_user_ids=[channel_manager_user.id]
+    )
+
+    channel = await channel_service.create_channel(db, body, admin_user)
+
+    assert set(channel.conversation.params["disabled_default_notes"]) == {"persona", "rules", "skill"}
+
+
+@pytest.mark.asyncio
+async def test_create_channel_leaves_notes_enabled_when_the_creator_turned_it_on(
+    db, admin_user, user, channel_manager_user
+):
+    await default_notes_setting.set_default_notes_enabled(db, admin_user, True)
+    body = ChannelCreate(
+        name="general", member_user_ids=[user.id, channel_manager_user.id], manager_user_ids=[channel_manager_user.id]
+    )
+
+    channel = await channel_service.create_channel(db, body, admin_user)
+
+    assert channel.conversation.params.get("disabled_default_notes", []) == []
 
 
 @pytest.mark.asyncio

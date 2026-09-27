@@ -6,10 +6,8 @@ the single file `run.py` imports to start the server.
 import logging
 import time
 
-from fastapi import Depends, FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import (
@@ -20,14 +18,13 @@ from app.config import (
     SECRET_KEY,
     SESSION_COOKIE_SECURE,
 )
-from app.database import get_db
-from app.models import User
 from app.routers import (
     account,
     auth,
     channels,
     chat,
     comfyui_admin,
+    connectors,
     conversations,
     db_admin,
     documents,
@@ -40,6 +37,7 @@ from app.routers import (
     model_catalog_admin,
     notes,
     ollama_admin,
+    pages,
     proxy_admin,
     settings,
     stats,
@@ -49,11 +47,8 @@ from app.routers import (
     users,
 )
 from app.services import startup_service
-from app.services.auth_service import PageAuth
 from app.services.instance_proxy import InstanceProxyMiddleware
-from app.services.theme_service import get_ui_theme
 from app.templates_env import templates
-from app.theme_config import UI_THEMES
 
 logger = logging.getLogger("llama_chat")
 logging.basicConfig(level=logging.INFO)
@@ -107,9 +102,9 @@ app.add_middleware(InstanceIndexHeaderMiddleware)
 # crashed a systemd-launched instance with "Directory 'app/static' does not exist").
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
 
-# `templates` (imported above) is shared with app/routers/auth.py's login page — see app/templates_env.py for why
-# this must be one instance rather than each file creating its own (a global registered on one wouldn't exist on
-# the other's).
+# `templates` (imported above) is shared with app/routers/auth.py's login page and app/routers/pages.py's HTML
+# routes — see app/templates_env.py for why this must be one instance rather than each file creating its own (a
+# global registered on one wouldn't exist on the other's).
 
 # Appended as `?v=...` on every /static/ URL in the templates. Changes on every restart, which is exactly when a
 # code change might have shipped — without this, a browser that already cached an old script can end up running
@@ -118,6 +113,10 @@ STATIC_VERSION = str(int(time.time()))
 templates.env.globals["static_version"] = STATIC_VERSION
 templates.env.globals["app_version"] = APP_VERSION
 templates.env.globals["app_name"] = APP_NAME
+
+# The HTML page routes (chat, notes, stats, connectors, images, settings) — see app/routers/pages.py. Registered
+# alongside the JSON API routers below, not treated specially, even though it's the one router that renders pages.
+app.include_router(pages.router)
 
 # All JSON API endpoints live under their own routers, grouped by resource — see each module's docstring for what it
 # covers. Every endpoint in these (besides the auth router itself) requires a logged-in user via
@@ -143,6 +142,7 @@ app.include_router(http_proxy_admin.router)
 app.include_router(ollama_admin.router)
 app.include_router(matricxon_admin.router)
 app.include_router(engine_admin.router)
+app.include_router(connectors.router)
 app.include_router(stats.router)
 app.include_router(telemetry.router)
 app.include_router(system_metrics.router)
@@ -159,85 +159,3 @@ async def on_startup():
 async def on_shutdown():
     """See app.services.startup_service.run_shutdown_tasks."""
     await startup_service.run_shutdown_tasks()
-
-
-async def _profile_context(db: AsyncSession, user: User) -> dict:
-    """Shared <body>/<html> data-attributes every page but Settings passes to base.html — first/last name +
-    avatar_url seed the header's account panel badge (see app/templates/_account_panel.html/account_panel.js) with
-    no round trip needed just to render it; theme the app-wide UI theme <html data-theme="..."> renders with,
-    ui_themes the catalog _account_panel.html's own Appearance section renders its swatch picker from (mirrors
-    settings_page's own ui_themes/theme pair)."""
-    return {
-        "username": user.username,
-        "first_name": user.first_name,
-        "last_name": user.last_name,
-        "avatar_url": user.avatar_url,
-        "theme": await get_ui_theme(db, user),
-        "ui_themes": UI_THEMES,
-    }
-
-
-@app.get("/", response_class=HTMLResponse)
-async def chat_page(request: Request, db: AsyncSession = Depends(get_db)):
-    """The main chat screen — a single page; conversations are switched
-    client-side via the JSON API rather than separate server routes."""
-    auth = await PageAuth(request, db).resolve()
-    if isinstance(user := auth.require_login(), RedirectResponse):
-        return user
-    context = {"is_admin": auth.is_admin, "user_id": user.id, **await _profile_context(db, user)}
-    return templates.TemplateResponse(request, "chat.html", context)
-
-
-@app.get("/notes", response_class=HTMLResponse)
-async def notes_page(request: Request, db: AsyncSession = Depends(get_db)):
-    """The Notes screen — create/edit notes and pin them to specific
-    conversations as a persona/rules/skill (see app/routers/notes.py and
-    app/services/note_service.py)."""
-    auth = await PageAuth(request, db).resolve()
-    if isinstance(user := auth.require_login(), RedirectResponse):
-        return user
-    return templates.TemplateResponse(request, "notes.html", await _profile_context(db, user))
-
-
-@app.get("/stats", response_class=HTMLResponse)
-async def stats_page(request: Request, db: AsyncSession = Depends(get_db)):
-    """The Stats screen — a real usage dashboard by default, with "Visual chat workflow", "Telemetry", and
-    "System" options on its own page-local left nav (see app/templates/stats.html; unlike notes.html/settings.html's
-    centered-column pages, this one is full-bleed with a second sidebar). Admin-only — see app/routers/stats.py's
-    own docstring for why; a non-admin who somehow lands here (the sidebar link is already hidden for them) is
-    bounced to chat rather than shown a bare 403 page."""
-    auth = await PageAuth(request, db).resolve()
-    if isinstance(user := auth.require_admin(), RedirectResponse):
-        return user
-    return templates.TemplateResponse(request, "stats.html", await _profile_context(db, user))
-
-
-@app.get("/images", response_class=HTMLResponse)
-async def image_generation_page(request: Request, db: AsyncSession = Depends(get_db)):
-    """The Image generation screen — type a prompt, get a ComfyUI-backed
-    text-to-image result, browse past generations (see
-    app/routers/image_generation.py and
-    app/services/image_generation_service.py)."""
-    auth = await PageAuth(request, db).resolve()
-    if isinstance(user := auth.require_login(), RedirectResponse):
-        return user
-    return templates.TemplateResponse(request, "image_generation.html", await _profile_context(db, user))
-
-
-@app.get("/settings", response_class=HTMLResponse)
-async def settings_page(request: Request, db: AsyncSession = Depends(get_db)):
-    """The settings/fine-tuning screen. `is_admin` decides whether the
-    template renders the System tab (see app/templates/settings.html)."""
-    auth = await PageAuth(request, db).resolve()
-    if isinstance(user := auth.require_login(), RedirectResponse):
-        return user
-    return templates.TemplateResponse(
-        request,
-        "settings.html",
-        {
-            "is_admin": auth.is_admin,
-            "username": user.username,
-            "ui_themes": UI_THEMES,
-            "theme": await get_ui_theme(db, user),
-        },
-    )

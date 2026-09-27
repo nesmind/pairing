@@ -28,7 +28,9 @@ from app.services.model_catalog_service import ChatModelCatalogBuilder
 _MINISTRAL_TAG = "hf.co/mistralai/Ministral-3-3B-Instruct-2512-GGUF:Ministral-3-3B-Instruct-2512-Q4_K_M"
 _GEMMA_E2B_TAG = "hf.co/google/gemma-4-E2B-it-qat-q4_0-gguf:gemma-4-E2B_q4_0-it"
 _GEMMA_12B_TAG = "hf.co/google/gemma-4-12B-it-qat-q4_0-gguf:gemma-4-12b-it-qat-q4_0"  # vision: True, gemma4
-_LLAVA_TAG = "hf.co/second-state/Llava-v1.6-Vicuna-7B-GGUF:llava-v1.6-vicuna-7b-Q4_K_M"  # vision: True, llama
+_LLAVA_TAG = "hf.co/second-state/Llava-v1.6-Vicuna-7B-GGUF:llava-v1.6-vicuna-7b-Q4_K_M"
+# llama, vision: True — no longer in the curated catalog (removed 2026-09-27), only ever exercised
+# here as an auto-discovered install.
 _NOMIC_TAG = "hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF:Q8_0"
 
 # Matricxon's own real support surface *before* the "llama"/"gemma4" architecture additions this file's tests
@@ -141,13 +143,23 @@ async def test_build_model_catalog_marks_gemma_matricxon_supported_once_the_arch
 
 @pytest.mark.asyncio
 async def test_build_model_catalog_vision_entry_support_ignores_install_and_vision_pairing_state(db, user, monkeypatch):
-    """gemma4:12b/LLaVA are vision-capable per this app's own catalog — matricxon_supported for them must track
-    only the base architecture/quantization check, the same as any non-vision entry, regardless of whether the
-    tag is installed at all or whether Matricxon's own real per-tag capabilities happen to include "vision":
-    confirmed live (2026-09-21) that gating this field on vision-pairing too made an installed, demonstrably-
-    working chat model (moondream2, text half confirmed running) show a plain "Not supported" badge, which reads
-    as "this doesn't work at all" and is wrong for a model whose text chat clearly does (see
-    MatricxonSupportChecker.verdict_for's own docstring)."""
+    """gemma4:12b (still in this app's own curated catalog) and LLaVA (no longer curated — removed from
+    default_models.json, 2026-09-27 — exercised here via the auto-discovered path instead) are both
+    vision-capable — matricxon_supported for them must track only the base architecture/quantization check, the
+    same as any non-vision entry, regardless of whether the tag is installed at all or whether Matricxon's own
+    real per-tag capabilities happen to include "vision": confirmed live (2026-09-21) that gating this field on
+    vision-pairing too made an installed, demonstrably-working chat model (moondream2, text half confirmed
+    running) show a plain "Not supported" badge, which reads as "this doesn't work at all" and is wrong for a
+    model whose text chat clearly does (see MatricxonSupportChecker.verdict_for's own docstring).
+
+    Every case below monkeypatches `svc.list_models` (this module's own imported binding — see the "module-split
+    import-binding gotcha" this file's own docstring already tracks), never `matricxon_client.list_models`
+    directly: once `svc.list_models` is rebound (the first case below), it stays rebound for the rest of the
+    test — patching `matricxon_client.list_models` afterwards would have no effect on `build()` at all, since it
+    never reads that module again once its own `list_models` name points elsewhere. A real, confirmed-live gap
+    this now guards against: that exact inconsistency let this test's own last assertion silently check nothing
+    for years — LLaVA's curated entry masked it, showing up as "not installed" via the curated fallback instead
+    of a hard failure, until removing LLaVA from the curated catalog above exposed it as a bare KeyError."""
 
     async def fake_get_capabilities():
         return {
@@ -166,9 +178,9 @@ async def test_build_model_catalog_vision_entry_support_ignores_install_and_visi
 
     # Installed, but Matricxon's own real per-tag capabilities report no "vision" for it.
     async def fake_list_models_no_vision():
-        return [{"name": _GEMMA_12B_TAG, "capabilities": ["completion"]}]
+        return [{"name": _GEMMA_12B_TAG, "capabilities": ["completion"], "details": {"family": "gemma4"}}]
 
-    monkeypatch.setattr(matricxon_client, "list_models", fake_list_models_no_vision)
+    monkeypatch.setattr(svc, "list_models", fake_list_models_no_vision)
     response = await ChatModelCatalogBuilder(db, user).build()
     by_tag = {e.tag: e for e in response.entries}
     assert by_tag[_GEMMA_12B_TAG].matricxon_supported is True
@@ -176,13 +188,14 @@ async def test_build_model_catalog_vision_entry_support_ignores_install_and_visi
 
     # Installed, with Matricxon's own real per-tag capabilities confirming "vision" too.
     async def fake_list_models_with_vision():
-        return [{"name": _LLAVA_TAG, "capabilities": ["completion", "vision"]}]
+        return [{"name": _LLAVA_TAG, "capabilities": ["completion", "vision"], "details": {"family": "llama"}}]
 
-    monkeypatch.setattr(matricxon_client, "list_models", fake_list_models_with_vision)
+    monkeypatch.setattr(svc, "list_models", fake_list_models_with_vision)
     response = await ChatModelCatalogBuilder(db, user).build()
     by_tag = {e.tag: e for e in response.entries}
     assert by_tag[_LLAVA_TAG].matricxon_supported is True
     assert by_tag[_LLAVA_TAG].matricxon_unsupported_reason is None
+    assert by_tag[_LLAVA_TAG].is_auto_discovered is True
 
 
 @pytest.mark.asyncio
@@ -260,6 +273,39 @@ async def test_build_model_catalog_auto_discovered_entry_gets_a_real_verdict_whe
     entry = {e.tag: e for e in response.entries}["hf.co/org/repo:model-Q4_K_M"]
     assert entry.matricxon_supported is True
     assert entry.matricxon_unsupported_reason is None
+
+
+@pytest.mark.asyncio
+async def test_build_model_catalog_surfaces_matricxons_chat_format_unverified_capability(db, user, monkeypatch):
+    """Matricxon's own "chat_format_unverified" capability (see ../matricxon/app/models/capabilities.py) must
+    flow through to CatalogEntry.chat_format_unverified the same honest, live-only way "vision" already does —
+    real, confirmed-live gap this covers (2026-09-27): Hebrew-Mistral-7B-Q5_K_M produced incoherent, non-chat-
+    like output no matter which prompt format Matricxon gave it, with nothing in the catalog distinguishing it
+    from a normal, well-behaved chat model."""
+    engine_service._cached_engine = "matricxon"
+    monkeypatch.setattr(
+        svc,
+        "list_models",
+        lambda: _async_return([{"name": "custom:latest", "capabilities": ["completion", "chat_format_unverified"]}]),
+    )
+
+    response = await ChatModelCatalogBuilder(db, user).build()
+
+    assert {e.tag: e for e in response.entries}["custom:latest"].chat_format_unverified is True
+
+
+@pytest.mark.asyncio
+async def test_build_model_catalog_does_not_flag_a_model_matricxon_confirmed(db, user, monkeypatch):
+    engine_service._cached_engine = "matricxon"
+    monkeypatch.setattr(
+        svc,
+        "list_models",
+        lambda: _async_return([{"name": "custom:latest", "capabilities": ["completion"]}]),
+    )
+
+    response = await ChatModelCatalogBuilder(db, user).build()
+
+    assert {e.tag: e for e in response.entries}["custom:latest"].chat_format_unverified is False
 
 
 @pytest.mark.asyncio
