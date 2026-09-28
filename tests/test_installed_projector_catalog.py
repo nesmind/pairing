@@ -21,6 +21,14 @@ def test_display_name_leaves_a_repo_with_no_gguf_suffix_alone():
     assert InstalledProjectorCatalog._display_name(tag) == "Llava-v1.6-Vicuna-7B"
 
 
+def test_vendor_from_tag_reads_the_real_hf_org_not_a_hardcoded_other():
+    assert InstalledProjectorCatalog._vendor_from_tag(_PROJECTOR_TAG) == "concedo"
+
+
+def test_vendor_from_tag_falls_back_to_other_for_a_non_hf_tag():
+    assert InstalledProjectorCatalog._vendor_from_tag("some-plain-ollama-tag") == "Other"
+
+
 def test_entries_surfaces_a_clip_family_tag_with_no_chat_capability():
     installed_models = [{"name": _PROJECTOR_TAG, "size": 877771808, "details": {"family": "clip"}}]
 
@@ -31,7 +39,14 @@ def test_entries_surfaces_a_clip_family_tag_with_no_chat_capability():
     assert len(entries) == 1
     entry = entries[0]
     assert entry.tag == _PROJECTOR_TAG
-    assert entry.family == "llama-joycaption-beta-one-hf-llava-mmproj (vision projector)"
+    # No more "(vision projector)" plain-text suffix - that's a real badge now (see renderModelRow's
+    # is_projector check in settings.js), so the family string is just the plain display name.
+    assert entry.family == "llama-joycaption-beta-one-hf-llava-mmproj"
+    assert entry.parameter_size == ""
+    # Real repo org ("concedo"), not the hardcoded "Other" this used to always be (see
+    # InstalledProjectorCatalog._vendor_from_tag's own docstring) - groups this row under the same vendor
+    # heading as its paired chat model in Settings > Model's installed list.
+    assert entry.vendor == "concedo"
     assert entry.installed is True
     assert entry.is_projector is True
     assert entry.text_capable is False

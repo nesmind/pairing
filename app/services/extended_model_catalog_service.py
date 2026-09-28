@@ -136,8 +136,11 @@ class ExtendedModelCatalog:
         probed = await HuggingFaceModelProbe.probe(repo_id, filename, proxy_url)
         architecture = probed["architecture"]
         is_projector = architecture == "clip" if architecture else matched.get("is_projector", False)
+        # "(vision projector)" used to be baked into `family` as plain text for is_projector - now a real
+        # badge instead (renderModelRow's is_projector check in settings.js, shared with the installed-catalog
+        # equivalent in installed_projector_catalog.py), so this is just the plain display name unconditionally.
         display_name = self._repo_display_name(repo_id)
-        family = f"{display_name} (vision projector)" if is_projector else display_name
+        family = display_name
         parameter_size = None if is_projector else repo["parameter_size"]
         return {
             "tag": tag,
@@ -190,7 +193,10 @@ class ExtendedModelCatalog:
                     family=entry.get("family") or "Other",
                     vendor=self._vendor_from_tag(tag),
                     tag=tag,
-                    parameter_size=entry.get("parameter_size") or "?",
+                    # A real "?" for a genuinely-unknown non-projector parameter count (a probe re-run that
+                    # failed, see add()'s own fallback above) - never "?" for a projector though, which now
+                    # reads via its own badge instead of parameter_size (see _probe_entry's own comment).
+                    parameter_size="" if is_projector else entry.get("parameter_size") or "?",
                     context_length=None,
                     download_gb=entry.get("download_gb"),
                     min_ram_gb=min_ram_gb,

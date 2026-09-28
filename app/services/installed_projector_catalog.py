@@ -15,6 +15,22 @@ from app.services.engine_support_checker import EngineSupportSet
 
 class InstalledProjectorCatalog:
     @staticmethod
+    def _vendor_from_tag(tag: str) -> str:
+        """Same logic as `model_catalog_service.ChatModelCatalogBuilder._vendor_from_tag` - kept as its own
+
+        copy rather than imported (that module already imports *this* one, so importing back would be
+        circular) - see that method's own docstring for the real "hf.co/<org>/<repo>:<suffix>" reasoning.
+        Real fix, not cosmetic (confirmed live, 2026-09-30): a hardcoded "Other" vendor here put a real
+        mmproj's own installed row in a different vendor heading than its paired chat model, even though
+        both come from the exact same real Hugging Face repo - reading the projector's own tag the same
+        way gets it right without needing to know its paired model's tag at all.
+        """
+        if not tag.startswith("hf.co/"):
+            return "Other"
+        repo_id = tag.removeprefix("hf.co/").split(":", 1)[0]
+        return repo_id.split("/", 1)[0] or "Other"
+
+    @staticmethod
     def _display_name(tag: str) -> str:
         """ "hf.co/concedo/llama-joycaption-beta-one-hf-llava-mmproj-gguf:llama-joycaption-...-f16" ->
         "llama-joycaption-beta-one-hf-llava-mmproj" — same "the repo's own name, not raw GGUF metadata"
@@ -63,10 +79,16 @@ class InstalledProjectorCatalog:
             }
             entries.append(
                 CatalogEntry(
-                    family=f"{InstalledProjectorCatalog._display_name(name)} (vision projector)",
-                    vendor="Other",
+                    # "(vision projector)" used to be baked into this string as plain text - now a real badge
+                    # instead (see renderModelRow's own is_projector check in settings.js), same "+Vision"/
+                    # "Vision" pill every vision-capable entry already gets, not a one-off label just for this.
+                    family=InstalledProjectorCatalog._display_name(name),
+                    vendor=InstalledProjectorCatalog._vendor_from_tag(name),
                     tag=name,
-                    parameter_size="?",
+                    # Never a real parameter count for a vision tower + projector, and the old literal "?" here
+                    # showed up as a stray " ?" appended to the row's title (modelName joins family +
+                    # parameter_size) - empty string instead, so the join's own `.filter(Boolean)` drops it.
+                    parameter_size="",
                     download_gb=round(size_gb, 1) if size_gb else None,
                     min_ram_gb=0,
                     engine_support=engine_support,

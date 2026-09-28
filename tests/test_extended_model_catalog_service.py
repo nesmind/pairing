@@ -121,7 +121,10 @@ async def test_add_labels_a_projector_file_with_the_repo_name_instead_of_inherit
 
     entry = await ExtendedModelCatalog(db).add(repo["repo_id"], "mmproj-f16.gguf", proxy_url=None)
 
-    assert entry["family"] == "moondream-2b-2025-04-14-4bit (vision projector)"
+    # No more "(vision projector)" text suffix - that's a real badge now (renderModelRow's is_projector
+    # check in settings.js) - but the repo's own name is still what identifies *which* projector this is
+    # among several, exactly the real lesson this test's own docstring already documents.
+    assert entry["family"] == "moondream-2b-2025-04-14-4bit"
     assert entry["parameter_size"] is None
     assert entry["download_gb"] == 0.9
     assert entry["is_projector"] is True

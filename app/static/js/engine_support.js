@@ -32,6 +32,7 @@ const QUANT_GROUPS = [
   { title: "Full / half precision", hint: "Unquantized weights — largest files, reference quality.", test: (q) => /^(F32|F16|BF16)$/.test(q) },
   { title: "K-quants", hint: "Q4_K_M/Q5_K_M/Q6_K files use these — the usual best size/quality balance.", test: (q) => /^Q\d_K$/.test(q) },
   { title: "Legacy quants", hint: "Older, simpler block formats (Q4_0, Q8_0, …).", test: (q) => /^Q\d_\d$/.test(q) },
+  { title: "I-quants / ternary", hint: "Newer, denser formats — IQ4_NL/IQ4_XS use a small lookup table, TQ1_0/TQ2_0 are ternary.", test: (q) => /^(IQ|TQ)/.test(q) },
 ];
 
 function _engineSupportChip(text, extraClass = "") {

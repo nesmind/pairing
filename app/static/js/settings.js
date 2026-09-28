@@ -419,15 +419,16 @@ function renderModelRow(entry) {
     formatContextLength(entry.context_length) ? `${formatContextLength(entry.context_length)} ctx` : null,
     formatRam(entry),
   ].filter(Boolean);
-  // "+Vision" = a normal chat model that can *also* see an image
-  // attachment (e.g. gemma4:12b) — the only case this catalog can
-  // actually produce today, since build_model_catalog only ever lists
-  // "completion"-capable models to begin with. "Vision" alone would
-  // mean a vision-only model with no text-chat ability at all — kept
-  // here for a correct/honest label if one ever does appear, not
-  // because one can right now.
-  const visionBadge = entry.vision
-    ? ` <span class="inline-flex items-center rounded-full bg-[rgb(var(--color-brand-500)/0.15)] border border-[rgb(var(--color-brand-500)/0.4)] px-1.5 py-0.5 text-[10px] font-medium text-brand-500 align-middle">${entry.text_capable ? "+Vision" : "Vision"}</span>`
+  // "+Vision" = a normal chat model that can *also* see an image attachment (e.g. gemma4:12b). "Vision" alone
+  // (no "+") means no text-chat ability at all - kept for a hypothetical future vision-only *model*.
+  // "Vision projector" is the real, live case an installed mmproj sidecar (entry.is_projector) hits: not a
+  // model at all, so calling it just "Vision" would misleadingly read the same as that hypothetical case -
+  // same pill/styling as the other two, not the plain "(vision projector)" text this used to be (moved into a
+  // real badge, 2026-09-30, so every vision-related row reads consistently at a glance instead of one of them
+  // being oddly plain-text).
+  const visionBadgeText = entry.is_projector ? "Vision projector" : entry.text_capable ? "+Vision" : "Vision";
+  const visionBadge = entry.vision || entry.is_projector
+    ? ` <span class="inline-flex items-center rounded-full bg-[rgb(var(--color-brand-500)/0.15)] border border-[rgb(var(--color-brand-500)/0.4)] px-1.5 py-0.5 text-[10px] font-medium text-brand-500 align-middle">${visionBadgeText}</span>`
     : "";
   // Shown for whichever engine is actually active right now (see the "Active engine" picker above the
   // External servers tab) — most engines (e.g. Ollama) run every catalog entry regardless, so this reads as
@@ -435,7 +436,7 @@ function renderModelRow(entry) {
   // its name. See CatalogEntry.engine_support/EngineModelSupport's own docstrings. Also skipped for a vision
   // projector (entry.is_projector) regardless of engine — "Not supported" reads as "this engine can't run
   // this," which is backwards for a file that was never meant to run as a standalone chat model at all; its
-  // own "(vision projector)" family label already says what it actually is.
+  // own vision badge (see visionBadge above) already says what it actually is.
   const activeSupport = entry.engine_support?.[currentActiveEngine];
   const matricxonBadge = !activeSupport || activeSupport.supported || entry.is_projector
     ? ""
@@ -443,8 +444,8 @@ function renderModelRow(entry) {
   // Only for an *installed* entry that isn't in app/model_catalog.py's hand-curated list (see
   // CatalogEntry.is_auto_discovered's own docstring) — a not-yet-installed extended-catalog entry is already
   // clearly organized under its own "Browse more models" section, so it doesn't need this too. Projectors are
-  // also auto-discovered by definition but already read clearly via their own "(vision projector)" family
-  // suffix, so this would just be redundant noise there.
+  // also auto-discovered by definition (never hand-curated) but that fact is inherent to what a projector *is*,
+  // not something worth calling out per-row - would just be redundant noise on every single one.
   const notInCatalogBadge = entry.installed && entry.is_auto_discovered && !entry.is_projector
     ? ` <span class="inline-flex items-center rounded-full bg-slate-800 border border-slate-700 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 align-middle" title="Installed, but not part of the hand-curated model list">Not in catalog</span>`
     : "";
@@ -741,11 +742,21 @@ function renderHfRepoFiles(repo) {
 
   // Stable sort (spec-guaranteed order for equal keys since ES2019) — only reorders the recommended file(s) to
   // the front, every other file keeps its original relative order.
-  const sortedFiles = [...repo.files].sort(
-    (a, b) => Number(isRecommendedQuantFile(b.filename)) - Number(isRecommendedQuantFile(a.filename))
-  );
+  const byRecommendedFirst = (a, b) =>
+    Number(isRecommendedQuantFile(b.filename)) - Number(isRecommendedQuantFile(a.filename));
+  // Grouped into two visually separate sections (not one flat interleaved list) — confirmed live, 2026-09-30:
+  // a repo with several chat-model quants *and* several mmproj quants (e.g. ggml-org/SmolVLM2-2.2B-Instruct-GGUF:
+  // three main files, two mmproj files) left it hard to tell which of the several "+Vision"-badged rows the
+  // projector file(s) further down the same flat list actually belonged with — there's no strict 1:1 pairing by
+  // quant either (a repo's mmproj files are usually offered in far fewer quant choices than its main model, so
+  // "same quant suffix" wouldn't even always find a match), so this groups by kind instead of attempting a
+  // one-to-one match that the ecosystem's own naming convention doesn't actually guarantee.
+  const modelFiles = repo.files.filter((f) => !f.is_projector).sort(byRecommendedFirst);
+  const projectorFiles = repo.files.filter((f) => f.is_projector).sort(byRecommendedFirst);
 
-  for (const file of sortedFiles) {
+  // Shared between both groups below — a projector file's row looks identical, just filtered into the second
+  // section instead of interleaved with the chat-model files above it.
+  function buildFileRow(file) {
     const fileRow = document.createElement("div");
     fileRow.className = "flex items-center justify-between gap-3 pt-1";
 
@@ -831,7 +842,25 @@ function renderHfRepoFiles(repo) {
     addBtnGroup.appendChild(addSpinner);
     addBtnGroup.appendChild(addBtn);
     fileRow.appendChild(addBtnGroup);
-    hfRepoFilesEl.appendChild(fileRow);
+    return fileRow;
+  }
+
+  for (const file of modelFiles) {
+    hfRepoFilesEl.appendChild(buildFileRow(file));
+  }
+
+  if (projectorFiles.length > 0) {
+    const divider = document.createElement("div");
+    divider.className = "pt-2 mt-1 border-t border-slate-700 text-[11px] font-medium text-slate-400";
+    divider.textContent =
+      modelFiles.length > 0
+        ? "Vision projector (mmproj) files — pull one of these too, alongside a model above, for image support:"
+        : "Vision projector (mmproj) files only — this repo has no standalone chat model file:";
+    hfRepoFilesEl.appendChild(divider);
+
+    for (const file of projectorFiles) {
+      hfRepoFilesEl.appendChild(buildFileRow(file));
+    }
   }
 
   hfRepoFilesEl.classList.remove("hidden");
