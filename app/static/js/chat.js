@@ -352,8 +352,60 @@ marked.use({
 });
 marked.setOptions({ breaks: true });
 
+// Matches $$...$$ and \[...\] (display/block math) or \(...\) (inline math) — deliberately NOT bare
+// $...$: a single dollar sign is common in ordinary prose ("$5 and $10"), and treating every pair of
+// them as math would corrupt normal currency text far more often than it would ever help. Extraction
+// happens on the *raw* model text, before marked.parse() ever sees it — marked's own CommonMark
+// backslash-escape rule (a backslash before any ASCII punctuation, including "(", ")", "[", "]", is an
+// escaped literal character, and the backslash is silently dropped) would otherwise eat exactly the
+// delimiters math relies on, long before KaTeX ever got a chance to render them.
+const MATH_SPAN_RE = /\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)/g;
+
+function mathPlaceholder(index) {
+  // Plain letters/digits/"@" — none of which marked.js treats as markdown syntax or HTML-escapes — so
+  // this survives marked.parse() and DOMPurify.sanitize() completely unchanged, as literal text, ready
+  // to be swapped back out for the real (trusted, KaTeX-generated, never raw-model-supplied) HTML below.
+  return `@@KATEX_MATH_${index}@@`;
+}
+
+/** Pulls every math span out of `text` before markdown parsing, rendering each with KaTeX up front and
+ * replacing it with a placeholder token — see MATH_SPAN_RE's own comment for why this has to happen
+ * before, not after, marked.parse(). Returns the placeholder-substituted text plus the rendered HTML for
+ * each placeholder, in order, for renderMessageContent to splice back in once sanitization is done. A
+ * span midway through streaming in (an opening \[ with no closing \] yet) simply doesn't match yet and is
+ * left as plain text until it completes — the same "incomplete syntax renders literally for now" behavior
+ * any partial markdown already has. */
+function extractMathSpans(text) {
+  const mathHtml = [];
+  const placeholderText = text.replace(MATH_SPAN_RE, (match, dollarBlock, bracketBlock, parenInline) => {
+    const displayMode = dollarBlock !== undefined || bracketBlock !== undefined;
+    const tex = dollarBlock ?? bracketBlock ?? parenInline;
+    let html;
+    try {
+      // throwOnError: false renders a parse error as visible red text inline instead of throwing —
+      // a malformed \[...\] from the model degrades gracefully instead of breaking the whole reply.
+      html = katex.renderToString(tex, { throwOnError: false, displayMode });
+    } catch (_err) {
+      return match; // katex itself unavailable/threw anyway — fall back to the original literal text.
+    }
+    const index = mathHtml.length;
+    mathHtml.push(html);
+    return mathPlaceholder(index);
+  });
+  return { placeholderText, mathHtml };
+}
+
 function renderMessageContent(container, text) {
-  container.innerHTML = DOMPurify.sanitize(marked.parse(text || ""));
+  const { placeholderText, mathHtml } = extractMathSpans(text || "");
+  let html = DOMPurify.sanitize(marked.parse(placeholderText));
+  // Substituted after sanitization, not before: this HTML comes from KaTeX's own renderer (a controlled,
+  // trusted source), not from the model's raw text, so it never needs to pass through DOMPurify's
+  // HTML-only allowlist — which doesn't know about the MathML tags (<math>, <mrow>, <annotation>, ...)
+  // KaTeX's own output includes alongside its visible HTML rendering, and would otherwise strip them.
+  mathHtml.forEach((rendered, index) => {
+    html = html.split(mathPlaceholder(index)).join(rendered);
+  });
+  container.innerHTML = html;
   // Re-derive direction from the actual (possibly still-growing, mid-
   // stream) text every time — see app.js:detectTextDirection for why
   // this is more reliable than the browser's own dir="auto" heuristic

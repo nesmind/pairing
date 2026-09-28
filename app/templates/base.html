@@ -54,6 +54,14 @@
        app.theme_config.HLJS_THEME) — not a per-user setting, unlike the app-wide UI theme below. -->
   <link rel="stylesheet" href="/static/vendor/highlightjs/styles/{{ hljs_theme }}.min.css">
   <script src="/static/vendor/highlightjs/highlight.min.js"></script>
+  <!-- KaTeX: renders LaTeX math a reply contains (\[...\]/\(...\)/$$...$$ — see chat.js's
+       extractMathSpans; bare $...$ is deliberately not supported, see that function's own
+       comment on why) as real typeset math instead of raw TeX source. Extracted and rendered
+       *before* marked.parse() runs, not left for marked itself — CommonMark's own backslash-escape
+       rule (a backslash before any ASCII punctuation, including \(, \), \[, \]) would otherwise
+       silently strip exactly the delimiters math relies on. -->
+  <link rel="stylesheet" href="/static/vendor/katex/katex.min.css">
+  <script src="/static/vendor/katex/katex.min.js"></script>
 
   <!-- Preloaded unconditionally on every page (not just when a Nunito-using theme is active) so the very first
        live preview of "Sunshine"/"Bubblegum" in Settings never shows a flash-of-fallback-font — by the time a
