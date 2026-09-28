@@ -167,7 +167,11 @@ async def build_reply_stream(
     system_prompt, source_filenames = await chat_prompt_service.build_system_prompt(
         db, conversation, user, content, params, attachments
     )
-    ollama_messages = ([{"role": "system", "content": system_prompt}] if system_prompt else []) + history
+    # Always sent, even when system_prompt is "" (no notes/RAG/attachments contributed anything) — an
+    # explicit empty system message is a real, deliberate signal to the engine that there is genuinely no
+    # preamble, as opposed to omitting the role entirely, which some chat-template layers (e.g. Matricxon's
+    # VicunaPromptBuilder) treat as "no opinion" and quietly substitute their own default system text for.
+    ollama_messages = [{"role": "system", "content": system_prompt}] + history
 
     # None (no override — reply_generation_service.stream_reply falls
     # back to conversation.model) unless one of `attachments` is an

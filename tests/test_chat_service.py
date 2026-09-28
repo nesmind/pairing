@@ -133,6 +133,29 @@ async def test_build_reply_stream_sends_the_current_message_to_the_model(db, use
 
 
 @pytest.mark.asyncio
+async def test_build_reply_stream_always_sends_a_system_message_even_when_empty(db, user, monkeypatch):
+    """A brand-new conversation with default notes disabled, no RAG hits, and no attachments has nothing to
+    put in the system prompt — but the system message itself must still be sent, with empty content, rather
+    than omitted outright: some engines' own chat-template layers (e.g. Matricxon's VicunaPromptBuilder)
+    treat "no system message at all" as license to substitute their own default preamble, which silently
+    reintroduces exactly the extra, unwanted tokens this is meant to prevent (confirmed live, 2026-09-28)."""
+    captured: list[list[dict]] = []
+
+    async def fake_chat_stream(_model, messages, _params):
+        captured.append([dict(m) for m in messages])
+        yield "ok"
+
+    monkeypatch.setattr(reply_generation_service, "chat_stream", fake_chat_stream)
+
+    conversation = await conversation_service.create_conversation(db, ConversationCreate(model="fake-model"), user)
+
+    async for _event in chat_service.build_reply_stream(db, conversation, user, "hi"):
+        pass
+
+    assert captured[0][0] == {"role": "system", "content": ""}
+
+
+@pytest.mark.asyncio
 async def test_build_reply_stream_simple_mode_done_event_carries_the_final_title(db, user, monkeypatch):
     """ "Simple" mode (the default — see
     app.services.chat_settings_service.DEFAULT_TITLE_MODE) sets the title
@@ -517,8 +540,11 @@ async def test_build_reply_stream_merges_consecutive_channel_messages_before_cal
         pass
 
     sent_messages = captured[0]
-    assert [m["role"] for m in sent_messages] == ["user"]
-    assert sent_messages[0]["content"] == (
+    # A leading system message is now always sent, even empty (see chat_service.build_reply_stream's own
+    # comment on why) — irrelevant to this test's own point (consecutive-user-message folding), so only its
+    # role is asserted here.
+    assert [m["role"] for m in sent_messages] == ["system", "user"]
+    assert sent_messages[1]["content"] == (
         f"{user.username}: hi there\n{channel_manager_user.username}: how's it going"
     )
 
