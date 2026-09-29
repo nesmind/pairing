@@ -11,4 +11,5 @@ class EngineSupportResponse(BaseModel):
     available: bool
     architectures: list[str] = []
     quantizations: list[str] = []
+    moe_architectures: list[str] = []
     error: str | None = None

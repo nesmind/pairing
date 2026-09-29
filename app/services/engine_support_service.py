@@ -26,4 +26,5 @@ class EngineSupportService:
             available=True,
             architectures=capabilities.get("supported_architectures", []),
             quantizations=capabilities.get("supported_quantizations", []),
+            moe_architectures=capabilities.get("moe_supported_architectures", []),
         )

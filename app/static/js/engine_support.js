@@ -39,17 +39,21 @@ function _engineSupportChip(text, extraClass = "") {
   return `<span class="inline-flex items-center rounded-md border border-slate-700 bg-slate-800/60 px-2 py-0.5 font-mono text-xs text-slate-200 ${extraClass}">${escapeHtml(text)}</span>`;
 }
 
-function _renderArchitectures(architectures) {
+function _renderArchitectures(architectures, moeArchitectures = []) {
+  const moeSet = new Set(moeArchitectures);
   const section = document.createElement("div");
   const cards = [...architectures]
     .sort((a, b) => Number(EMBEDDING_ARCHITECTURES.has(a)) - Number(EMBEDDING_ARCHITECTURES.has(b)) || a.localeCompare(b))
     .map((name) => {
       const kind = EMBEDDING_ARCHITECTURES.has(name) ? "Embeddings" : "Text generation";
+      const moeBadge = moeSet.has(name)
+        ? '<span class="text-[10px] uppercase tracking-wide text-amber-400">MoE</span>'
+        : "";
       return (
         `<div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3">` +
         `<p class="text-sm font-medium text-slate-100">${escapeHtml(ARCHITECTURE_LABELS[name] || name)}</p>` +
         `<p class="mt-1 flex items-center gap-2">${_engineSupportChip(name)}` +
-        `<span class="text-[10px] uppercase tracking-wide text-slate-500">${kind}</span></p></div>`
+        `<span class="text-[10px] uppercase tracking-wide text-slate-500">${kind}</span>${moeBadge}</p></div>`
       );
     });
   section.innerHTML =
@@ -90,7 +94,10 @@ async function loadEngineSupport() {
     } else if (support.error) {
       throw new Error(support.error);
     } else {
-      contentEl.replaceChildren(_renderArchitectures(support.architectures), _renderQuantizations(support.quantizations));
+      contentEl.replaceChildren(
+        _renderArchitectures(support.architectures, support.moe_architectures),
+        _renderQuantizations(support.quantizations)
+      );
     }
     errorEl.classList.add("hidden");
   } catch (err) {

@@ -17,6 +17,16 @@ const SPINNER_SVG_HTML =
   '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
   '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>';
 
+// A small, bare colored chevron (no filled circle/background - see renderModelRow's own `pairing` param)
+// placed at a paired row's own bottom/top edge. Down/up direction shows which of the two rows (the model
+// above, or its projector below) each one belongs to.
+const CHEVRON_DOWN_SVG_HTML =
+  '<svg class="h-2.5 w-2.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" ' +
+  'd="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>';
+const CHEVRON_UP_SVG_HTML =
+  '<svg class="h-2.5 w-2.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" ' +
+  'd="M14.77 12.79a.75.75 0 01-1.06-.02L10 8.832l-3.71 3.938a.75.75 0 11-1.08-1.04l4.25-4.5a.75.75 0 011.08 0l4.25 4.5a.75.75 0 01-.02 1.06z"/></svg>';
+
 // Inserts a spinner right after `anchorEl` — call `.remove()` on the returned element once
 // whatever it's covering for (a fetch, a start/stop request) settles, in a `finally` so it comes
 // off on both success and failure.
@@ -393,11 +403,11 @@ async function removeExtendedModel(entry, button, progressEl) {
  * flex layout rather than a fixed-column grid, so it can't overflow its
  * container no matter how many action buttons a row ends up with
  * (Select, Pull, Uninstall, Hide, Remove — not every row has all of them). */
-function renderModelRow(entry) {
+function renderModelRow(entry, pairing = null) {
   const isSelected = entry.tag !== null && entry.tag === selectedModelTag;
   const row = document.createElement("div");
   row.className =
-    "rounded-lg border px-3 py-2.5 text-sm " +
+    "relative rounded-lg border px-3 py-2.5 text-sm " +
     (isSelected ? "border-brand-500 bg-[rgb(var(--color-brand-500)/0.1)]" : "border-slate-800 bg-slate-900") +
     (entry.hidden ? " opacity-60" : "");
 
@@ -583,7 +593,62 @@ function renderModelRow(entry) {
 
   row.appendChild(progressRow);
 
+  // "Bound together" indicator for a real model+projector pair pulled from the same Hugging Face repo (see
+  // reorderProjectorsNextToTheirModel/renderCatalogGroup) — pinned to this row's own bottom edge (the model
+  // half of a pair, pointing down at its projector) or top edge (the projector half, pointing up at its
+  // model). Right side (near the action buttons, not the label text) - but a bare colored glyph, no filled
+  // circle/background, so it reads as a small accent near that corner rather than a solid shape sitting on
+  // top of the Hide button there.
+  if (pairing) {
+    const badge = document.createElement("span");
+    badge.className =
+      "absolute right-2 text-brand-500 " + (pairing.direction === "down" ? "bottom-0.5" : "top-0.5");
+    badge.title = pairing.tooltip;
+    badge.innerHTML = pairing.direction === "down" ? CHEVRON_DOWN_SVG_HTML : CHEVRON_UP_SVG_HTML;
+    row.appendChild(badge);
+  }
+
   return row;
+}
+
+/** "hf.co/<org>/<repo>:<file>" -> "<org>/<repo>", or null for a plain (non-hf.co) tag — same repo-id extraction
+ * app.services.installed_projector_catalog.InstalledProjectorCatalog._vendor_from_tag/_display_name already do
+ * server-side, used here to line up a projector row with its real parent model row (see
+ * reorderProjectorsNextToTheirModel below): family strings alone don't reliably match between the two (a
+ * projector's family is always this same repo id, the model's own is whatever its extended-catalog entry or the
+ * engine itself reports — often a coarser architecture name instead), but two files pulled from the exact same
+ * Hugging Face repo always share this. */
+function repoIdFromTag(tag) {
+  if (!tag || !tag.startsWith("hf.co/")) return null;
+  return tag.slice("hf.co/".length).split(":", 1)[0];
+}
+
+/** Moves each installed vision-projector row to sit directly after its real parent model row (same repo id, see
+ * repoIdFromTag) within one vendor's already family-sorted list — confirmed live, 2026-09-30: the ggml-org vendor
+ * heading is the first real case with both an installed model and its own installed projector, and their family
+ * strings don't happen to sort adjacently. A projector with no installed parent in this vendor group (parent not
+ * pulled, or hidden from a non-admin) is left in its original sorted position, just unlinked — still visible,
+ * same as before this reordering existed. */
+function reorderProjectorsNextToTheirModel(vendorEntries) {
+  const projectors = vendorEntries.filter((e) => e.is_projector);
+  const claimed = new Set();
+  const ordered = [];
+  for (const entry of vendorEntries) {
+    if (entry.is_projector) continue;
+    ordered.push(entry);
+    const repoId = repoIdFromTag(entry.tag);
+    if (!repoId) continue;
+    for (const projector of projectors) {
+      if (!claimed.has(projector) && repoIdFromTag(projector.tag) === repoId) {
+        ordered.push(projector);
+        claimed.add(projector);
+      }
+    }
+  }
+  for (const projector of projectors) {
+    if (!claimed.has(projector)) ordered.push(projector);
+  }
+  return ordered;
 }
 
 /** Shared by both the default catalog (#model-catalog) and the admin-extensible one behind "Browse more models"
@@ -601,9 +666,10 @@ function renderCatalogGroup(containerEl, entries) {
   containerEl.innerHTML = "";
   const vendors = [...new Set(entries.map((entry) => entry.vendor))];
   for (const vendor of vendors) {
-    const vendorEntries = [...entries.filter((e) => e.vendor === vendor)].sort((a, b) =>
+    const sortedEntries = [...entries.filter((e) => e.vendor === vendor)].sort((a, b) =>
       a.family.localeCompare(b.family)
     );
+    const vendorEntries = reorderProjectorsNextToTheirModel(sortedEntries);
 
     const group = document.createElement("div");
     group.className = "space-y-1.5";
@@ -613,8 +679,27 @@ function renderCatalogGroup(containerEl, entries) {
     heading.textContent = vendor;
     group.appendChild(heading);
 
-    for (const entry of vendorEntries) {
-      group.appendChild(renderModelRow(entry));
+    for (let i = 0; i < vendorEntries.length; i++) {
+      const entry = vendorEntries[i];
+      const prev = vendorEntries[i - 1];
+      const next = vendorEntries[i + 1];
+      let pairing = null;
+      if (
+        !entry.is_projector &&
+        next?.is_projector &&
+        repoIdFromTag(entry.tag) &&
+        repoIdFromTag(entry.tag) === repoIdFromTag(next.tag)
+      ) {
+        pairing = { direction: "down", tooltip: `Linked with its vision projector, right below (${next.family})` };
+      } else if (
+        entry.is_projector &&
+        prev &&
+        repoIdFromTag(entry.tag) &&
+        repoIdFromTag(entry.tag) === repoIdFromTag(prev.tag)
+      ) {
+        pairing = { direction: "up", tooltip: `Linked with its model, right above (${prev.family})` };
+      }
+      group.appendChild(renderModelRow(entry, pairing));
     }
     containerEl.appendChild(group);
   }
