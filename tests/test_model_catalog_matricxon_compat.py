@@ -507,6 +507,33 @@ async def test_build_model_catalog_self_heals_a_stray_install_for_an_admin(db, a
 
 
 @pytest.mark.asyncio
+async def test_build_model_catalog_backfills_discovered_via_engine_for_pre_existing_extended_entries(
+    db, admin_user, monkeypatch
+):
+    """A tag self-registered before ExtendedModelCatalog.add started recording discovered_via_engine at all
+    (2026-09-30) gets it backfilled the next time an admin's own catalog view finds it still installed - the
+    one moment this app has live, positive proof of which engine actually has it (see
+    ExtendedModelCatalog.backfill_discovered_via_engine's own docstring on why this can't be recovered later,
+    once uninstalled)."""
+    tag = "hf.co/unsloth/Llama-3.2-3B-Instruct-GGUF:Llama-3.2-3B-Instruct-Q3_K_M"
+    monkeypatch.setattr(extended_svc, "list_models", lambda: _async_return([]))
+    catalog = ExtendedModelCatalog(db)
+    await catalog.add("unsloth/Llama-3.2-3B-Instruct-GGUF", "Llama-3.2-3B-Instruct-Q3_K_M.gguf", proxy_url=None)
+    # Simulates real pre-2026-09-30 data: the key never existed at all, not merely set to None.
+    stored = await catalog.list()
+    del stored[0]["discovered_via_engine"]
+    await catalog._save(stored)
+
+    engine_service._cached_engine = "matricxon"
+    monkeypatch.setattr(svc, "list_models", lambda: _async_return([{"name": tag, "capabilities": ["completion"]}]))
+
+    await ChatModelCatalogBuilder(db, admin_user).build()
+
+    backfilled = await ExtendedModelCatalog(db).list()
+    assert backfilled[0]["discovered_via_engine"] == "matricxon"
+
+
+@pytest.mark.asyncio
 async def test_build_model_catalog_never_self_heals_for_a_non_admin(db, user, monkeypatch):
     """A regular user's own catalog view must never write to the admin-curated extended catalog — see
     ChatModelCatalogBuilder.build's is_admin gate around _self_register."""

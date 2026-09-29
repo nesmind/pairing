@@ -25,6 +25,7 @@ from app.model_catalog import CuratedModel
 from app.models import SYSTEM_OWNER_ID, AppSetting, User
 from app.schemas import CatalogEntry
 from app.services.engine_support_checker import OLLAMA_RAM_ESTIMATE_MULTIPLIER, EngineSupportSet
+from app.services.engines.registry import registry
 from app.services.extended_model_catalog_enrichment import HuggingFaceModelProbe
 from app.services.huggingface_client import HuggingFaceCatalogSearch, HuggingFaceLookupError
 from app.services.inference_client import list_models
@@ -99,7 +100,15 @@ class ExtendedModelCatalog:
         lookup every other tag gets), but never lets a failed one block registering something that's already on
         disk: a HuggingFaceLookupError (network down, repo gone, rate-limited) falls back to the old
         no-internet-lookup shape below instead of propagating, so silencing the "not in catalog" badge for an
-        already-installed model never requires connectivity."""
+        already-installed model never requires connectivity.
+
+        Every entry records `discovered_via_engine` (whichever engine is active right now), no exception for a
+        real admin-initiated Hugging Face search/add - real, confirmed gap (2026-09-30, two rounds: first for
+        ChatModelCatalogBuilder._self_register's own auto-discovered entries, then again for a manually
+        searched-and-added one behaving no differently): this searchbox has to stay engine-specific the same
+        way the installed-models list above it already is, full stop - an entry an admin found and added while
+        Ollama was active has no business resurfacing as a fresh suggestion the moment Matricxon becomes
+        active, whether this app noticed it on disk or the admin searched for it by hand."""
         tag = self.build_tag(repo_id, filename)
         entries = await self.list()
         already_installed = tag in {m["name"] for m in await list_models()}
@@ -118,6 +127,7 @@ class ExtendedModelCatalog:
             entry = {"tag": tag, "family": None, "parameter_size": None, "download_gb": None}
         if already_installed:
             entry["note"] = self.ALREADY_INSTALLED_NOTE
+        entry["discovered_via_engine"] = registry.active().name
 
         entries = [e for e in entries if e["tag"] != tag]
         entries.append(entry)
@@ -160,11 +170,40 @@ class ExtendedModelCatalog:
         entries = [e for e in await self.list() if e["tag"] != tag]
         await self._save(entries)
 
+    async def backfill_discovered_via_engine(self, tag: str, engine_name: str) -> None:
+        """Stamps `discovered_via_engine` onto an already-registered entry that predates this field entirely
+        (added before 2026-09-30, back when add() never recorded it at all) - called only while `tag` is
+        positively confirmed installed under `engine_name` right now (see ChatModelCatalogBuilder.build's own
+        auto-discovered loop), the one moment this app has real, live ground truth for which engine actually
+        has it; there's no way to recover that fact later, once it's uninstalled. A pre-2026-09-30 entry never
+        had this key at all - checked as real key *absence*, not `entry.get(...) is None`, since every entry
+        add() creates now always sets it to a real engine name, never None. A no-op once backfilled."""
+        entries = await self.list()
+        changed = False
+        for entry in entries:
+            if entry["tag"] == tag and "discovered_via_engine" not in entry:
+                entry["discovered_via_engine"] = engine_name
+                changed = True
+        if changed:
+            await self._save(entries)
+
     async def build(self, user: User) -> list[CatalogEntry]:
-        """Every admin-added entry not yet installed and not hidden from `user` — the extended-catalog analogue
-        of ChatModelCatalogBuilder.build."""
+        """Every admin-added entry not yet installed under the active engine and relevant to it, not hidden
+        from `user` — the extended-catalog analogue of ChatModelCatalogBuilder.build, and deliberately as
+        engine-specific as that one already is (both "not yet installed" and "relevant" below check only the
+        currently active engine, the same way the installed-models list above this searchbox always has).
+
+        Real, confirmed gap this closes (2026-09-30, two rounds): every entry now records which engine was
+        active when it was added (see add's own docstring) - a tag discovered installed under Matricxon, or
+        one an admin manually searched Hugging Face for and added while Ollama was active, must not resurface
+        as a fresh "Browse more models" suggestion the moment a *different* engine becomes active, even once
+        it's no longer installed anywhere at all - there's no live signal left to say otherwise once
+        uninstalled, so the engine it was added under is the only real answer left for "is this actually new
+        to this engine" (see backfill_discovered_via_engine for a pre-2026-09-30 entry missing this fact
+        entirely)."""
         installed_models = await list_models()
         installed_tags = {m["name"] for m in installed_models}
+        active_engine_name = registry.active().name
 
         is_admin = user.role == "admin"
         hidden_tags = await HiddenModelTags(self._db).get()
@@ -177,6 +216,9 @@ class ExtendedModelCatalog:
             if tag in hidden_tags and not is_admin:
                 continue
             if tag in installed_tags:
+                continue
+            discovered_via_engine = entry.get("discovered_via_engine")
+            if discovered_via_engine is not None and discovered_via_engine != active_engine_name:
                 continue
             min_ram_gb = self._min_ram_gb(entry.get("download_gb"))
             is_projector = entry.get("is_projector", False)

@@ -61,7 +61,7 @@ async def test_list_models_maps_the_live_models_response(monkeypatch):
 
     monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: _FakeClient())
 
-    assert await runpod_client.list_models() == [{"name": "meta/llama-3"}]
+    assert await runpod_client.list_models() == [{"name": "meta/llama-3", "capabilities": ["completion"]}]
 
 
 @pytest.mark.asyncio
@@ -80,7 +80,7 @@ async def test_list_models_falls_back_to_configured_model_on_http_error(monkeypa
 
     monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: _FakeClient())
 
-    assert await runpod_client.list_models() == [{"name": "fallback-model"}]
+    assert await runpod_client.list_models() == [{"name": "fallback-model", "capabilities": ["completion"]}]
 
 
 @pytest.mark.asyncio

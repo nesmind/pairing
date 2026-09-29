@@ -156,6 +156,11 @@ class CatalogEntry(BaseModel):
 class ModelCatalogResponse(BaseModel):
     entries: list[CatalogEntry]
     hardware: HardwareSummary
+    # The active engine's own EngineCapabilities.model_management (see app.services.engines.base) - False for a
+    # connector like RunPod, which manages its own model(s) remotely and has nothing here to Pull/Uninstall/Hide,
+    # nor a Hugging Face catalog to browse. The Model tab greys out those actions instead of rendering ones that
+    # would just fail or do nothing.
+    model_management: bool = True
 
 
 class EmbeddingCatalogEntry(BaseModel):

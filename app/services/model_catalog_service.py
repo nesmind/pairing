@@ -24,6 +24,7 @@ from app.schemas import CatalogEntry, ModelCatalogResponse
 from app.services import settings_service
 from app.services.default_model_settings import DefaultModelSettings
 from app.services.engine_support_checker import OLLAMA_RAM_ESTIMATE_MULTIPLIER, EngineSupportSet
+from app.services.engines.registry import registry
 from app.services.extended_model_catalog_enrichment import HuggingFaceModelProbe
 from app.services.inference_client import list_models
 from app.services.installed_projector_catalog import InstalledProjectorCatalog
@@ -181,12 +182,26 @@ class ChatModelCatalogBuilder:
             extended_entry = extended_catalog_entries.get(name)
             if extended_entry is None and is_admin:
                 extended_entry = await self._self_register(name)
+            elif extended_entry is not None and is_admin and "discovered_via_engine" not in extended_entry:
+                # Pre-2026-09-30 data: self-registered before this field existed at all, so it's never been
+                # engine-scoped - `name` is positively confirmed installed under the active engine right
+                # here (that's exactly how it ended up in installed_by_tag), the one chance to backfill it
+                # for real, before an eventual uninstall makes that fact unrecoverable (see
+                # backfill_discovered_via_engine's own docstring).
+                from app.services.extended_model_catalog_service import ExtendedModelCatalog
+
+                await ExtendedModelCatalog(self._db).backfill_discovered_via_engine(name, registry.active().name)
+                extended_entry["discovered_via_engine"] = registry.active().name
             entries.append(self._auto_discovered_entry(name, installed_model, hidden_tags, support_set, extended_entry))
 
         entries.extend(
             InstalledProjectorCatalog.entries(installed_models, catalog_tags, hidden_tags, is_admin, support_set)
         )
-        return ModelCatalogResponse(entries=entries, hardware=hardware.hardware_summary())
+        return ModelCatalogResponse(
+            entries=entries,
+            hardware=hardware.hardware_summary(),
+            model_management=registry.active().capabilities.model_management,
+        )
 
     async def _extended_catalog_entries(self) -> dict[str, dict]:
         """Tag -> entry for everything the admin deliberately registered via "Browse more models". An

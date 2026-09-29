@@ -108,6 +108,11 @@ const hfRepoFilesStatusEl = document.getElementById("hf-repo-files-status");
 const paramSlidersEl = document.getElementById("param-sliders");
 const paramsSectionHintEl = document.getElementById("params-section-hint");
 const ragUnavailableEl = document.getElementById("rag-unavailable");
+const ragUnavailableReasonEl = document.getElementById("rag-unavailable-reason");
+// Set by loadRagAvailability, read by applyRagAvailabilityToKnowledgeTab (and renderDocumentRow's own Delete
+// button, rendered well after the initial load) — starts true so a not-yet-loaded page never flashes every
+// Knowledge control as disabled before the first real check comes back.
+let ragAvailable = true;
 const embeddingModelCatalogEl = document.getElementById("embedding-model-catalog");
 const ragTopKInput = document.getElementById("rag-top-k");
 const ragTopKValueEl = document.getElementById("rag-top-k-value");
@@ -410,6 +415,10 @@ function renderModelRow(entry, pairing = null) {
     "relative rounded-lg border px-3 py-2.5 text-sm " +
     (isSelected ? "border-brand-500 bg-[rgb(var(--color-brand-500)/0.1)]" : "border-slate-800 bg-slate-900") +
     (entry.hidden ? " opacity-60" : "");
+  // Looked up after a fresh add/pull (see addBtn's own click handler) to scroll straight to whichever row the
+  // action just affected, rather than leaving the page wherever hiding the search UI above it happened to
+  // land the scroll position.
+  if (entry.tag) row.dataset.tag = entry.tag;
 
   const top = document.createElement("div");
   top.className = "flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5";
@@ -486,6 +495,12 @@ function renderModelRow(entry, pairing = null) {
   const progressRow = document.createElement("p");
   progressRow.className = "mt-1.5 text-xs text-slate-500 hidden";
 
+  // False for a connector engine (RunPod) that manages its own model(s) remotely (see
+  // ModelCatalogResponse.model_management's own docstring) - Pull/Uninstall/Hide/Remove below would just fail
+  // or do nothing against it, so none of them render; Select still does, since switching which of the
+  // connector's own reported models is the default still means something.
+  const managementEnabled = currentCatalog?.model_management ?? true;
+
   if (!entry.hardware_ok) {
     const badge = document.createElement("span");
     badge.className = "text-xs font-medium text-amber-400";
@@ -514,7 +529,7 @@ function renderModelRow(entry, pairing = null) {
     // Uninstalling frees disk space but affects every user, so it's
     // gated the same way pulling is (admin-only server-side too — see
     // POST /api/settings/delete-model in app/routers/settings.py).
-    if (isAdmin) {
+    if (isAdmin && managementEnabled) {
       const uninstallBtn = document.createElement("button");
       uninstallBtn.type = "button";
       uninstallBtn.title = "Uninstall — removes this model from the engine for everyone";
@@ -524,13 +539,18 @@ function renderModelRow(entry, pairing = null) {
       uninstallBtn.addEventListener("click", () => uninstallModel(entry, uninstallBtn, progressRow));
       action.appendChild(uninstallBtn);
     }
-  } else if (isAdmin) {
+  } else if (isAdmin && managementEnabled) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 transition-colors";
     btn.textContent = "Pull";
     btn.addEventListener("click", () => pullModel(entry, btn, progressRow));
     action.appendChild(btn);
+  } else if (!managementEnabled) {
+    const note = document.createElement("span");
+    note.className = "text-xs text-slate-500";
+    note.textContent = "Not offered by this connector";
+    action.appendChild(note);
   } else {
     const note = document.createElement("span");
     note.className = "text-xs text-slate-500";
@@ -541,7 +561,7 @@ function renderModelRow(entry, pairing = null) {
   // Hide/Unhide: admin-only, independent of install state — an admin
   // can declutter the picker for regular users even for a model that
   // isn't installed yet.
-  if (isAdmin) {
+  if (isAdmin && managementEnabled) {
     const hideBtn = document.createElement("button");
     hideBtn.type = "button";
     hideBtn.title = entry.hidden
@@ -917,6 +937,16 @@ function renderHfRepoFiles(repo) {
         // refreshed the extended one. It correctly vanished from "Browse more models" (ExtendedModelCatalog.
         // build excludes installed tags) but never appeared in the upper list until a full page reload.
         await refreshCatalogs();
+        // Hiding the search results/file picker just above shrinks the page, which otherwise leaves the
+        // scroll position wherever that layout shift happened to land it — confirmed live, 2026-09-30: that
+        // read as "jumping to the wrong place." Scrolls to the row this exact add just affected instead (see
+        // renderModelRow's own data-tag), wherever it ended up — the main list if already installed, Browse
+        // more models' own list otherwise. Same build_tag as ExtendedModelCatalog.build_tag server-side.
+        const addedTag = `hf.co/${repo.repo_id}:${file.filename.replace(/\.gguf$/, "")}`;
+        document.querySelector(`[data-tag="${CSS.escape(addedTag)}"]`)?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
       } catch (err) {
         hfRepoFilesStatusEl.textContent = err.message;
         hfRepoFilesStatusEl.classList.add("text-red-400");
@@ -1028,11 +1058,15 @@ async function initModelTab() {
     selectedModelTag = (await api("/api/settings/default-model")).model;
     renderModelCatalog();
     modelsAvailable = true;
-    // "Browse more models" now starts open (see settings.html's own comment) - preload it here so the search
-    // box is actually usable right away, not just visible - own try/catch so a failure here (e.g. no internet)
-    // never blocks the main model picker above from rendering. Guarded by currentExtendedCatalog the same way
+    // Hidden entirely for a connector (RunPod) that manages its own model(s) remotely (see
+    // ModelCatalogResponse.model_management's own docstring) - nothing here to search Hugging Face for or pull.
+    const browseMoreModelsSection = document.getElementById("browse-more-models-section");
+    browseMoreModelsSection.classList.toggle("hidden", !(currentCatalog.model_management ?? true));
+    // "Browse more models" starts open (see settings.html's own comment) - preload it here so the search box is
+    // actually usable right away, not just visible - own try/catch so a failure here (e.g. no internet) never
+    // blocks the main model picker above from rendering. Guarded by currentExtendedCatalog the same way
     // toggleBrowseMoreModels's own lazy-load is, so re-activating this tab later never re-fetches for nothing.
-    if (!currentExtendedCatalog) {
+    if ((currentCatalog.model_management ?? true) && !currentExtendedCatalog) {
       try {
         await loadExtendedCatalog();
         renderExtendedModelCatalog();
@@ -1071,8 +1105,26 @@ async function initModelTab() {
 // exposed until that gets a proper management pass.
 
 async function loadRagAvailability() {
-  const { available } = await api("/api/settings/rag-availability");
+  const { available, reason } = await api("/api/settings/rag-availability");
+  ragAvailable = available;
   ragUnavailableEl.classList.toggle("hidden", available);
+  if (reason) ragUnavailableReasonEl.textContent = reason;
+  applyRagAvailabilityToKnowledgeTab();
+}
+
+/** Grays out (never hides — the banner above already explains why) every file-management control on the
+ * Knowledge tab once RAG is off: the Upload button, the top-k slider (moot with nothing to search), every
+ * already-rendered document's own Delete button (renderDocumentRow reads ragAvailable directly, so
+ * re-rendering the current page picks up a state change without a full reload), and the shared Save button
+ * — but only while actually on the Knowledge tab, since that same physical button also saves Behavior's own
+ * generation params, which have nothing to do with RAG. Called after every real availability check
+ * (loadRagAvailability) and every tab switch (activateTab), since either one can change which of those two
+ * is true. */
+function applyRagAvailabilityToKnowledgeTab() {
+  document.getElementById("my-docs-upload-btn").disabled = !ragAvailable;
+  document.getElementById("rag-top-k").disabled = !ragAvailable;
+  renderMyDocsPage();
+  document.getElementById("save-btn").disabled = activeTabName === "knowledge" && !ragAvailable;
 }
 
 async function loadEmbeddingCatalog() {
@@ -1129,6 +1181,9 @@ function renderEmbeddingCatalog() {
       await loadEmbeddingCatalog();
       await loadRagAvailability();
     };
+    // See renderModelRow's identical managementEnabled — same reasoning, same field (the active
+    // engine, not the catalog type, is what decides this).
+    const managementEnabled = currentCatalog?.model_management ?? true;
 
     if (entry.installed) {
       const badge = document.createElement("span");
@@ -1138,7 +1193,7 @@ function renderEmbeddingCatalog() {
 
       // Uninstalling frees disk space but affects every user, so it's gated the same way
       // pulling is (admin-only server-side too — see POST /api/settings/delete-model).
-      if (isAdmin) {
+      if (isAdmin && managementEnabled) {
         const uninstallBtn = document.createElement("button");
         uninstallBtn.type = "button";
         uninstallBtn.title = "Uninstall — removes this model from the engine for everyone";
@@ -1148,13 +1203,18 @@ function renderEmbeddingCatalog() {
         uninstallBtn.addEventListener("click", () => uninstallModel(entry, uninstallBtn, progressRow, refreshEmbedding));
         action.appendChild(uninstallBtn);
       }
-    } else if (isAdmin) {
+    } else if (isAdmin && managementEnabled) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 transition-colors";
       btn.textContent = "Pull";
       btn.addEventListener("click", () => pullModel(entry, btn, progressRow, refreshEmbedding));
       action.appendChild(btn);
+    } else if (!managementEnabled) {
+      const note = document.createElement("span");
+      note.className = "text-xs text-slate-500";
+      note.textContent = "Not offered by this connector";
+      action.appendChild(note);
     } else {
       const note = document.createElement("span");
       note.className = "text-xs text-slate-500";
@@ -1213,7 +1273,10 @@ function renderDocumentRow(doc, canDelete) {
     const delBtn = document.createElement("button");
     delBtn.type = "button";
     delBtn.className =
-      "shrink-0 rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:border-red-500 hover:text-red-400 transition-colors";
+      "shrink-0 rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:border-red-500 hover:text-red-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-slate-700 disabled:hover:text-slate-400";
+    // Still rendered when RAG is off (see applyRagAvailabilityToKnowledgeTab) — just disabled, not hidden,
+    // same "grey out, don't remove" treatment as the Upload button/top-k slider/Save button.
+    delBtn.disabled = !ragAvailable;
     delBtn.textContent = "Delete";
     delBtn.addEventListener("click", async () => {
       if (!confirm(`Delete "${doc.filename}"?`)) return;
@@ -1656,6 +1719,7 @@ function activateTab(name) {
   }
   activeTabName = name;
   updateSaveBarVisibility();
+  applyRagAvailabilityToKnowledgeTab();
 }
 
 // Extracted from the click handler below so the same per-tab data load
@@ -3284,33 +3348,70 @@ document.getElementById("default-notes-enabled-toggle").addEventListener("change
 // DOM at all for a non-admin user, same as the rest of the System tab) ----
 
 const ragLimitsSaveBtn = document.getElementById("rag-limits-save-btn");
+const ragEnabledToggle = document.getElementById("rag-enabled");
 
 async function loadRagLimitsIntoEditor() {
   if (!ragLimitsSaveBtn) return;
   const limits = await api("/api/settings/rag-limits");
+  ragEnabledToggle.checked = limits.enabled;
   document.getElementById("rag-limit-max-file").value = limits.max_file_mb;
   document.getElementById("rag-limit-max-space").value = limits.max_user_space_mb;
+}
+
+// PUT /api/settings/rag-limits always takes the full RagLimits object (unlike default-notes-enabled's own
+// dedicated single-field endpoint above), so both the toggle's own immediate auto-save and the numeric
+// limits' own Save button below go through this one shared function, each sending whatever's currently in
+// all three fields rather than just the one that actually changed.
+async function saveRagLimits(statusEl) {
+  const enabled = ragEnabledToggle.checked;
+  const max_file_mb = parseFloat(document.getElementById("rag-limit-max-file").value);
+  const max_user_space_mb = parseFloat(document.getElementById("rag-limit-max-space").value);
+  if (!(max_file_mb > 0) || !(max_user_space_mb > 0)) {
+    statusEl.textContent = "Both limits must be positive numbers.";
+    return false;
+  }
+  await api("/api/settings/rag-limits", {
+    method: "PUT",
+    body: JSON.stringify({ enabled, max_file_mb, max_user_space_mb }),
+  });
+  currentUploadLimits = null; // stale — the Knowledge tab will refetch next time it loads
+  // Reflects the new on/off state immediately if the Knowledge tab happens to already be open in this
+  // same page load, same as every other cross-tab refresh this file already does after a save.
+  await loadRagAvailability();
+  return true;
+}
+
+if (ragEnabledToggle) {
+  // A plain on/off toggle, not tied to the Save button below (see default-notes-enabled-toggle's own
+  // identical convention) — flipping it saves immediately, the way a real hardware switch would, rather
+  // than silently doing nothing until the numeric limits happen to get saved too.
+  ragEnabledToggle.addEventListener("change", async () => {
+    const statusEl = document.getElementById("rag-limits-status");
+    const wasChecked = !ragEnabledToggle.checked;
+    ragEnabledToggle.disabled = true;
+    statusEl.textContent = "Saving…";
+    try {
+      const ok = await saveRagLimits(statusEl);
+      statusEl.textContent = ok ? "Saved." : statusEl.textContent;
+      if (!ok) ragEnabledToggle.checked = wasChecked; // limits were invalid - revert, nothing was sent
+    } catch (err) {
+      ragEnabledToggle.checked = wasChecked; // the save didn't actually take effect
+      statusEl.textContent = `Failed to save: ${err.message}`;
+    } finally {
+      ragEnabledToggle.disabled = false;
+      setTimeout(() => (statusEl.textContent = ""), 2500);
+    }
+  });
 }
 
 if (ragLimitsSaveBtn) {
   ragLimitsSaveBtn.addEventListener("click", async () => {
     const statusEl = document.getElementById("rag-limits-status");
-    const max_file_mb = parseFloat(document.getElementById("rag-limit-max-file").value);
-    const max_user_space_mb = parseFloat(document.getElementById("rag-limit-max-space").value);
-    if (!(max_file_mb > 0) || !(max_user_space_mb > 0)) {
-      statusEl.textContent = "Both limits must be positive numbers.";
-      return;
-    }
-
     ragLimitsSaveBtn.disabled = true;
     statusEl.textContent = "Saving…";
     try {
-      await api("/api/settings/rag-limits", {
-        method: "PUT",
-        body: JSON.stringify({ max_file_mb, max_user_space_mb }),
-      });
-      statusEl.textContent = "Saved.";
-      currentUploadLimits = null; // stale — the Knowledge tab will refetch next time it loads
+      const ok = await saveRagLimits(statusEl);
+      if (ok) statusEl.textContent = "Saved.";
     } catch (err) {
       statusEl.textContent = `Failed to save: ${err.message}`;
     } finally {

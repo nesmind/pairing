@@ -6,10 +6,18 @@ happens here."""
 
 import pytest
 
-from app.services import extended_model_catalog_service as svc, gguf_probe
+from app.services import engine_service, extended_model_catalog_service as svc, gguf_probe
 from app.services.extended_model_catalog_service import ExtendedModelCatalog
 from app.services.huggingface_client import HuggingFaceCatalogSearch, HuggingFaceLookupError
 from app.services.model_catalog_service import HiddenModelTags
+
+
+@pytest.fixture(autouse=True)
+def _reset_engine_cache():
+    engine_service._cached_engine = engine_service.DEFAULT_ENGINE
+    yield
+    engine_service._cached_engine = engine_service.DEFAULT_ENGINE
+
 
 _REPO = {
     "repo_id": "Qwen/Qwen2.5-14B-Instruct-GGUF",
@@ -76,6 +84,7 @@ async def test_list_defaults_to_empty(db):
 async def test_add_verifies_and_stores_a_new_entry(db, monkeypatch):
     monkeypatch.setattr(svc, "list_models", lambda: _async_return([]))
     _stub_repo_files(monkeypatch, _REPO)
+    engine_service._cached_engine = "ollama"
     catalog = ExtendedModelCatalog(db)
 
     entry = await catalog.add(_REPO["repo_id"], _REPO["files"][0]["filename"], proxy_url=None)
@@ -98,6 +107,9 @@ async def test_add_verifies_and_stores_a_new_entry(db, monkeypatch):
         "architecture": None,
         "quantizations": ["Q4_K"],
         "note": None,
+        # Whichever engine was active at add() time (see its own docstring) - every entry gets this now,
+        # including a real admin-initiated Hugging Face search/add like this one, not just an auto-discovery.
+        "discovered_via_engine": "ollama",
     }
     assert await catalog.list() == [entry]
 
@@ -363,7 +375,8 @@ async def test_build_omits_an_installed_entry_entirely(db, admin_user, monkeypat
     catalog" branch already surfaces it in the *default* list once pulled, so showing it here too would
     duplicate the same row across both lists (see build's own docstring)."""
     tag = ExtendedModelCatalog.build_tag("org/a", "x.gguf")
-    monkeypatch.setattr(svc, "list_models", lambda: _async_return([{"name": tag, "capabilities": ["completion"]}]))
+    installed = [{"name": tag, "capabilities": ["completion"]}]
+    monkeypatch.setattr(svc, "list_models", lambda: _async_return(installed))
     catalog = ExtendedModelCatalog(db)
 
     _stub_repo_files(monkeypatch, {**_REPO, "repo_id": "org/a", "files": [{"filename": "x.gguf", "download_gb": 1.0}]})
@@ -388,7 +401,8 @@ async def test_build_omits_an_installed_entry_with_no_completion_capability(db, 
     whatever repo-level family/parameter_size Hugging Face reported for the repo's main (different) GGUF file,
     plus the hardcoded matricxon_supported=False every not-yet-installed entry gets."""
     tag = ExtendedModelCatalog.build_tag("org/a", "mmproj.gguf")
-    monkeypatch.setattr(svc, "list_models", lambda: _async_return([{"name": tag, "capabilities": []}]))
+    installed = [{"name": tag, "capabilities": []}]
+    monkeypatch.setattr(svc, "list_models", lambda: _async_return(installed))
     catalog = ExtendedModelCatalog(db)
 
     _stub_repo_files(
@@ -399,6 +413,39 @@ async def test_build_omits_an_installed_entry_with_no_completion_capability(db, 
     entries = await catalog.build(admin_user)
 
     assert entries == []
+
+
+@pytest.mark.asyncio
+async def test_build_omits_an_entry_added_while_a_different_engine_was_active(db, admin_user, monkeypatch):
+    """Every entry (self-registered or a real manual Hugging Face search/add - add() no longer treats those
+    two differently, see its own docstring) records which engine was active when it was added. A tag added
+    while Matricxon was active must not resurface as a fresh "Browse more models" suggestion once Ollama
+    becomes active - real, confirmed live bug, 2026-09-30, reported twice: once for an auto-discovered
+    install, once for a model an admin had manually searched for and added."""
+    monkeypatch.setattr(svc, "list_models", lambda: _async_return([]))
+    engine_service._cached_engine = "matricxon"
+    _stub_repo_files(monkeypatch, {**_REPO, "repo_id": "org/a", "files": [{"filename": "x.gguf", "download_gb": 1.0}]})
+    catalog = ExtendedModelCatalog(db)
+    await catalog.add("org/a", "x.gguf", proxy_url=None)  # discovered_via_engine="matricxon"
+
+    engine_service._cached_engine = "ollama"
+    entries = await catalog.build(admin_user)
+
+    assert entries == []
+
+
+@pytest.mark.asyncio
+async def test_build_keeps_an_entry_once_the_engine_that_added_it_is_active_again(db, admin_user, monkeypatch):
+    tag = ExtendedModelCatalog.build_tag("org/a", "x.gguf")
+    monkeypatch.setattr(svc, "list_models", lambda: _async_return([]))
+    engine_service._cached_engine = "matricxon"
+    _stub_repo_files(monkeypatch, {**_REPO, "repo_id": "org/a", "files": [{"filename": "x.gguf", "download_gb": 1.0}]})
+    catalog = ExtendedModelCatalog(db)
+    await catalog.add("org/a", "x.gguf", proxy_url=None)  # discovered_via_engine="matricxon"
+
+    entries = await catalog.build(admin_user)  # still matricxon - never switched away in this test
+
+    assert [e.tag for e in entries] == [tag]
 
 
 @pytest.mark.asyncio

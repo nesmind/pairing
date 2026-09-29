@@ -22,9 +22,14 @@ class HardwareSummary(BaseModel):
 
 class RagAvailability(BaseModel):
     """Whether the embedding model the knowledge base needs is actually
-    installed (see GET /api/settings/rag-availability)."""
+    installed AND the active engine can actually serve embeddings at all
+    (see GET /api/settings/rag-availability) - a connector like RunPod
+    can't, regardless of what's "installed", so `reason` names whichever
+    of the two is actually the problem rather than a single generic
+    message that would be misleading for the other case."""
 
     available: bool
+    reason: str | None = None
 
 
 class DefaultModel(BaseModel):

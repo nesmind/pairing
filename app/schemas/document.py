@@ -16,12 +16,15 @@ class ScopeSummary(BaseModel):
 
 
 class RagLimits(BaseModel):
-    """Admin-configured caps on RAG uploads (see Settings > System):
-    the biggest single file anyone may upload, and the most storage one
-    user's own private documents may add up to. Enforced in
-    app/routers/documents.py's upload handler. Not applied to the
-    shared/global scope, which only admin can add to anyway."""
+    """Admin-configured RAG settings (see Settings > System): whether the knowledge base is turned on for
+    users at all, the biggest single file anyone may upload, and the most storage one user's own private
+    documents may add up to. `enabled` is checked by GET /api/settings/rag-availability before anything
+    else (see its own docstring) — a system-wide override independent of which inference engine is active
+    or whether an embedding model happens to be installed; `max_file_mb`/`max_user_space_mb` are enforced in
+    app/routers/documents.py's upload handler and aren't applied to the shared/global scope, which only
+    admin can add to anyway."""
 
+    enabled: bool = True
     max_file_mb: float = Field(..., gt=0)
     max_user_space_mb: float = Field(..., gt=0)
 

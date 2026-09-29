@@ -59,7 +59,17 @@ def _headers(config: dict[str, str]) -> dict[str, str]:
 async def list_models() -> list[dict]:
     """The model(s) the configured endpoint currently serves. Falls back to the
     admin's own configured `model` field if the live /models call fails — some vLLM
-    deployments restrict that route."""
+    deployments restrict that route.
+
+    Every entry gets a real "completion" capability tag even though RunPod's own
+    OpenAI-compatible /models route doesn't report one — app.services.model_catalog_
+    service's own installed_chat_models()/ChatModelCatalogBuilder.build() (and the
+    chat page's own model-switch picker, which calls the former) filter on
+    "completion" in capabilities before a model is even considered installed at all;
+    without this, a real, fully working RunPod endpoint would show as having no
+    installed models anywhere in the app. "completion" is always correct here since
+    RunPodEngine's own capabilities.embeddings is False - this app never asks a
+    RunPod-served model for anything else."""
     config = _live_config()
     async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
         try:
@@ -67,13 +77,13 @@ async def list_models() -> list[dict]:
             resp.raise_for_status()
             data = resp.json().get("data", [])
             if data:
-                return [{"name": entry["id"]} for entry in data]
+                return [{"name": entry["id"], "capabilities": ["completion"]} for entry in data]
         except httpx.HTTPError as exc:
             logger.warning("RunPod GET /models failed, falling back to the configured model name: %s", exc)
     model = config.get("model")
     if not model:
         raise RunPodError("Could not list RunPod's models and no fallback model name is configured.")
-    return [{"name": model}]
+    return [{"name": model, "capabilities": ["completion"]}]
 
 
 def _chat_payload(model: str, messages: list[dict], params: dict, *, stream: bool) -> dict:

@@ -45,6 +45,7 @@ from app.services import settings_service
 from app.services.auth_service import get_current_user, hash_password, require_admin, verify_password
 from app.services.duplicate_install_detector import DuplicateInstallDetector
 from app.services.embedding_model_catalog_service import EmbeddingModelCatalogService
+from app.services.engines.registry import registry
 from app.services.extended_model_catalog_service import ExtendedModelCatalog
 from app.services.inference_client import InferenceError, delete_model, pull_model_stream
 from app.services.model_catalog_service import ChatModelCatalogBuilder, HiddenModelTags, get_default_embedding_model
@@ -166,9 +167,32 @@ async def delete_model_endpoint(body: PullModelRequest, _admin: User = Depends(r
 
 @router.get("/rag-availability", response_model=RagAvailability)
 async def rag_availability(db: AsyncSession = Depends(get_db), _user: User = Depends(get_current_user)):
-    """Whether the embedding model the knowledge base needs is actually installed, so the Settings page can
-    explain itself instead of the knowledge base just silently doing nothing."""
-    return RagAvailability(available=(await get_default_embedding_model(db)) is not None)
+    """Whether RAG is admin-enabled at all, the active engine can serve embeddings, and the embedding model
+    the knowledge base needs is actually installed — in that order, so the Settings page can explain itself
+    instead of the knowledge base just silently doing nothing.
+
+    The admin on/off switch (RagLimits.enabled, Settings > System) is a system-wide override independent of
+    engine/model state — checked first since it's the most deliberate, most final answer: an admin who's
+    turned this off doesn't want users poking at the knowledge base regardless of what's technically
+    possible right now. Engine capability comes next since a connector like RunPod (capabilities.embeddings
+    False) makes "is a model installed" the wrong question entirely — no embedding model would ever help
+    there, so that's the more useful, more accurate reason to surface before falling back to the plain
+    "nothing configured yet" case."""
+    limits = await settings_service.get_rag_limits(db)
+    if not limits.enabled:
+        return RagAvailability(available=False, reason="RAG is not enabled on this system, ask admin")
+    engine = registry.active()
+    if not engine.capabilities.embeddings:
+        return RagAvailability(
+            available=False,
+            reason=f"{engine.display_name} doesn't support embeddings — the knowledge base needs a different "
+            "active engine (see External servers/Connectors).",
+        )
+    if (await get_default_embedding_model(db)) is None:
+        return RagAvailability(
+            available=False, reason="No embedding model found yet — see Settings > Model to install one."
+        )
+    return RagAvailability(available=True)
 
 
 @router.get("/embedding-model-catalog", response_model=EmbeddingModelCatalogResponse)

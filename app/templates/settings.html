@@ -78,8 +78,10 @@
       <!-- Browse more models: the small hand-curated list below (app/model_catalog.py) stays fixed; this is the
            separate, admin-extensible catalog behind app/services/extended_model_catalog_service.py. Open by
            default (see settings.js: initModelTab preloads it, same as expanding it manually would) and placed
-           above the default-model picker - the search box is the first thing on the tab, not the last. -->
-      <section class="space-y-3">
+           above the default-model picker - the search box is the first thing on the tab, not the last. Hidden
+           entirely (see initModelTab) when the active engine's own capabilities.model_management is False - a
+           connector like RunPod manages its own model(s) remotely, with no Hugging Face catalog to browse. -->
+      <section id="browse-more-models-section" class="space-y-3">
         <button type="button" id="browse-more-models-toggle"
           class="flex w-full items-center justify-between text-sm font-semibold text-slate-200">
           <span>Browse more models</span>
@@ -133,8 +135,8 @@
       </section>
 
       <section class="space-y-4">
-        <h2 class="text-sm font-semibold text-slate-200">Models</h2>
-        <p class="text-xs text-slate-500 -mt-2">The model every new chat starts with by default.</p>
+        <h2 class="text-sm font-semibold text-slate-200">Common / installed models</h2>
+        <p class="text-xs text-slate-500 -mt-2">Models available for the active inference engine — the one you select on external servers tab becomes the default engine for the UI.</p>
 
         <div id="model-field">
           <div id="model-loading" class="flex items-center gap-2 text-xs text-slate-500 py-6">
@@ -272,7 +274,7 @@
         </p>
 
         <div id="rag-unavailable" class="hidden text-xs text-amber-400 bg-amber-950/40 border border-amber-900 rounded-lg px-3 py-2">
-          No embedding model found yet — see Settings &gt; Model to install one.
+          <span id="rag-unavailable-reason">No embedding model found yet — see Settings &gt; Model to install one.</span>
         </div>
 
         <!-- My documents: private, visible only to your own chats. Five
@@ -717,11 +719,22 @@
       </section>
 
       <section class="space-y-3">
-        <h2 class="text-sm font-semibold text-slate-200">RAG upload limits</h2>
+        <h2 class="text-sm font-semibold text-slate-200">RAG (Knowledge base)</h2>
         <p class="text-xs text-slate-500 -mt-2">
           Applies to every user's own document uploads (Settings > Knowledge). The per-file limit
           also applies to shared/global uploads; the storage quota doesn't.
         </p>
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-sm text-slate-200">Enable RAG (Knowledge base) for users</p>
+            <p class="text-xs text-slate-500">Off disables uploading/deleting documents on the Knowledge tab for every user and stops chats from searching it — affects every inference engine the same way, regardless of whether it could technically support embeddings. Remember to press Save below.</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer shrink-0" title="Enable RAG (Knowledge base) for users">
+            <input type="checkbox" id="rag-enabled" class="peer sr-only">
+            <div class="h-6 w-11 rounded-full bg-slate-700 transition-colors peer-checked:bg-brand-600 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-500"></div>
+            <div class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-5"></div>
+          </label>
+        </div>
         <div class="grid grid-cols-2 gap-3 rounded-lg bg-slate-900 border border-slate-800 px-4 py-3">
           <div>
             <label class="block text-xs font-medium text-slate-400 mb-1">Max file size (MB)</label>
@@ -737,7 +750,7 @@
         <div class="flex items-center gap-3">
           <button id="rag-limits-save-btn" type="button"
             class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
-            Save limits
+            Save
           </button>
           <span id="rag-limits-status" class="text-xs text-slate-500"></span>
         </div>
