@@ -49,8 +49,9 @@
 
 <!-- Template for one connector row, cloned and filled in by connectors.js. Kept in the DOM (hidden)
      rather than built as an HTML string in JS, so the toggle/inputs stay real, inspectable elements.
-     Collapsed by default (like Settings > Model's "Browse more models" panel) — clicking the row
-     reveals its config form; only one connector's form is open at a time (see connectors.js). -->
+     Collapsed by default (same hidden + rotating-chevron toggle idiom as Settings > Model's
+     "Browse more models" panel) — clicking the row reveals its config form; only one connector's
+     form is open at a time (see connectors.js). -->
 <template id="connector-card-template">
   <div class="connector-card rounded-lg bg-slate-900 border border-slate-800 overflow-hidden">
     <div class="flex items-center justify-between gap-3 px-4 py-3">

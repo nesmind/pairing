@@ -335,7 +335,7 @@ async function pullModel(entry, button, progressEl, onDone = refreshCatalogs, co
 }
 
 async function uninstallModel(entry, button, progressEl, onDone = refreshCatalogs) {
-  if (!confirm(`Uninstall ${entry.tag}? This removes it from Ollama for every user.`)) return;
+  if (!confirm(`Uninstall ${entry.tag}? This removes it from the engine for every user.`)) return;
 
   button.disabled = true;
   button.textContent = "Uninstalling…";
@@ -517,7 +517,7 @@ function renderModelRow(entry, pairing = null) {
     if (isAdmin) {
       const uninstallBtn = document.createElement("button");
       uninstallBtn.type = "button";
-      uninstallBtn.title = "Uninstall — removes this model from Ollama for everyone";
+      uninstallBtn.title = "Uninstall — removes this model from the engine for everyone";
       uninstallBtn.className =
         "rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:border-red-500 hover:text-red-400 transition-colors";
       uninstallBtn.textContent = "Uninstall";
@@ -732,9 +732,10 @@ function renderExtendedModelCatalog() {
   renderCatalogGroup(extendedModelCatalogEl, entries);
 }
 
-/** Lazily loads the extended catalog the first time it's opened (see currentExtendedCatalog's own comment) —
- * subsequent toggles just show/hide the already-rendered panel, no refetch, matching the plain accordion
- * pattern the rest of Settings doesn't otherwise need. */
+/** The panel starts open (see settings.html's own comment) and its catalog is already preloaded by
+ * initModelTab by the time anyone could click this — this only really does anything once the user
+ * collapses it and wants it back, or on the rare case the initial preload itself failed (still
+ * guarded by currentExtendedCatalog below, so it's never fetched twice for nothing). */
 async function toggleBrowseMoreModels() {
   const opening = browseMoreModelsPanelEl.classList.contains("hidden");
   browseMoreModelsPanelEl.classList.toggle("hidden", !opening);
@@ -744,10 +745,9 @@ async function toggleBrowseMoreModels() {
     renderExtendedModelCatalog();
   }
   if (opening) {
-    // The panel (search box + list) is hidden by default and sits at the bottom of a long tab — without this,
-    // expanding it leaves the newly-revealed content below the fold with no visual cue anything changed.
-    // Scrolling the toggle itself (not the panel) into view keeps the "Browse more models" heading visible at
-    // the top of the viewport with the panel's content right below it, whether the list ends up empty or not.
+    // Re-expanding after collapsing it - scrolls the toggle itself (not the panel) into view so the "Browse
+    // more models" heading is visible at the top of the viewport with the panel's content right below it,
+    // same as the very first, already-open render already has it.
     browseMoreModelsToggleEl.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 }
@@ -1028,6 +1028,18 @@ async function initModelTab() {
     selectedModelTag = (await api("/api/settings/default-model")).model;
     renderModelCatalog();
     modelsAvailable = true;
+    // "Browse more models" now starts open (see settings.html's own comment) - preload it here so the search
+    // box is actually usable right away, not just visible - own try/catch so a failure here (e.g. no internet)
+    // never blocks the main model picker above from rendering. Guarded by currentExtendedCatalog the same way
+    // toggleBrowseMoreModels's own lazy-load is, so re-activating this tab later never re-fetches for nothing.
+    if (!currentExtendedCatalog) {
+      try {
+        await loadExtendedCatalog();
+        renderExtendedModelCatalog();
+      } catch (err) {
+        console.error("Failed to preload the extended model catalog:", err);
+      }
+    }
   } catch (err) {
     modelsAvailable = false;
     // Real bug found live, 2026-09-22: this always showed the same "System is not configured for models yet,
@@ -1129,7 +1141,7 @@ function renderEmbeddingCatalog() {
       if (isAdmin) {
         const uninstallBtn = document.createElement("button");
         uninstallBtn.type = "button";
-        uninstallBtn.title = "Uninstall — removes this model from Ollama for everyone";
+        uninstallBtn.title = "Uninstall — removes this model from the engine for everyone";
         uninstallBtn.className =
           "rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:border-red-500 hover:text-red-400 transition-colors";
         uninstallBtn.textContent = "Uninstall";

@@ -27,7 +27,7 @@
     <nav class="mx-auto max-w-2xl flex gap-1 -mb-px">
       <button type="button" data-tab="model"
         class="settings-tab-btn border-b-2 border-brand-500 px-3 py-2.5 text-sm font-medium text-slate-100">
-        Model
+        Models
       </button>
       <button type="button" data-tab="behavior"
         class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
@@ -75,60 +75,19 @@
          its old blockedByModels check, since it doesn't touch the model
          at all anymore. -->
     <div id="tab-model" class="mx-auto max-w-2xl px-4 py-8 space-y-8">
-      <section class="space-y-4">
-        <h2 class="text-sm font-semibold text-slate-200">Model</h2>
-        <p class="text-xs text-slate-500 -mt-2">The model every new chat starts with by default.</p>
-
-        <div id="model-field">
-          <div id="model-loading" class="flex items-center gap-2 text-xs text-slate-500 py-6">
-            <svg class="h-4 w-4 animate-spin text-slate-400" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-            </svg>
-            Loading models — this can take a few seconds when Matricxon is the active engine…
-          </div>
-          <div id="model-unavailable" class="hidden text-xs text-amber-400 bg-amber-950/40 border border-amber-900 rounded-lg px-3 py-2">
-            <span id="model-unavailable-reason">System is not configured for models yet, ask your admin.</span>
-          </div>
-          <div id="model-field-normal" class="hidden">
-            <div class="flex items-center justify-between mb-3">
-              <label class="block text-xs font-medium text-slate-400">Default model for new chats</label>
-              <span id="hardware-summary" class="text-xs text-slate-500"></span>
-            </div>
-            <p class="text-xs text-slate-500 mb-4">Selecting a model saves it immediately — no need to press Save below.</p>
-            <div id="model-no-default-banner" class="hidden mb-4 text-xs text-amber-400 bg-amber-950/40 border border-amber-900 rounded-lg px-3 py-2">
-              No default model selected for the current engine — pick one below.
-            </div>
-            <div id="model-catalog" class="space-y-3"></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Embedding model: powers the Knowledge base (RAG) feature on the Knowledge tab, never used for chat —
-           kept as its own small section here rather than mixed into the chat-model catalog above (see
-           app.model_catalog.EMBEDDING_CATALOG's own docstring for why it's a wholly separate list). Visible to
-           every user (installed status isn't admin-secret, same as the #rag-unavailable banner on the Knowledge
-           tab this mirrors); only the Pull button itself is admin-gated. -->
-      <section class="space-y-3 border-t border-slate-800 pt-6">
-        <h2 class="text-sm font-semibold text-slate-200">Embedding model</h2>
-        <p class="text-xs text-slate-500 -mt-2">Powers the Knowledge base (RAG) feature on the Knowledge tab — not used for chat.</p>
-        <div id="embedding-model-catalog" class="space-y-2"></div>
-      </section>
-
-      <!-- Browse more models: the small hand-curated list above (app/model_catalog.py) stays fixed; this is the
-           separate, admin-extensible catalog behind app/services/extended_model_catalog_service.py. Collapsed by
-           default — most people never need more than the defaults above. pb-16: this is the last section on the
-           Model tab, and with the extended list empty (just the search box + "Nothing here yet.") the page
-           otherwise ends right at the search box with no breathing room below it. -->
-      <section class="space-y-3 border-t border-slate-800 pt-6 pb-16">
+      <!-- Browse more models: the small hand-curated list below (app/model_catalog.py) stays fixed; this is the
+           separate, admin-extensible catalog behind app/services/extended_model_catalog_service.py. Open by
+           default (see settings.js: initModelTab preloads it, same as expanding it manually would) and placed
+           above the default-model picker - the search box is the first thing on the tab, not the last. -->
+      <section class="space-y-3">
         <button type="button" id="browse-more-models-toggle"
           class="flex w-full items-center justify-between text-sm font-semibold text-slate-200">
           <span>Browse more models</span>
-          <svg id="browse-more-models-chevron" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 transition-transform"
+          <svg id="browse-more-models-chevron" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 transition-transform rotate-180"
             viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
         </button>
 
-        <div id="browse-more-models-panel" class="hidden space-y-4">
+        <div id="browse-more-models-panel" class="space-y-4">
           <p class="text-xs text-slate-500">
             Searched live on Hugging Face — the largest public library of GGUF models.
           </p>
@@ -172,6 +131,47 @@
           <p id="extended-model-catalog-empty" class="hidden text-xs text-slate-500">Nothing here yet.</p>
         </div>
       </section>
+
+      <section class="space-y-4">
+        <h2 class="text-sm font-semibold text-slate-200">Models</h2>
+        <p class="text-xs text-slate-500 -mt-2">The model every new chat starts with by default.</p>
+
+        <div id="model-field">
+          <div id="model-loading" class="flex items-center gap-2 text-xs text-slate-500 py-6">
+            <svg class="h-4 w-4 animate-spin text-slate-400" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            Loading models — this can take a few seconds when Matricxon is the active engine…
+          </div>
+          <div id="model-unavailable" class="hidden text-xs text-amber-400 bg-amber-950/40 border border-amber-900 rounded-lg px-3 py-2">
+            <span id="model-unavailable-reason">System is not configured for models yet, ask your admin.</span>
+          </div>
+          <div id="model-field-normal" class="hidden">
+            <div class="flex items-center justify-between mb-3">
+              <label class="block text-xs font-medium text-slate-400">Default model for new chats</label>
+              <span id="hardware-summary" class="text-xs text-slate-500"></span>
+            </div>
+            <p class="text-xs text-slate-500 mb-4">Selecting a model saves it immediately — no need to press Save below.</p>
+            <div id="model-no-default-banner" class="hidden mb-4 text-xs text-amber-400 bg-amber-950/40 border border-amber-900 rounded-lg px-3 py-2">
+              No default model selected for the current engine — pick one below.
+            </div>
+            <div id="model-catalog" class="space-y-3"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Embedding model: powers the Knowledge base (RAG) feature on the Knowledge tab, never used for chat —
+           kept as its own small section here rather than mixed into the chat-model catalog above (see
+           app.model_catalog.EMBEDDING_CATALOG's own docstring for why it's a wholly separate list). Visible to
+           every user (installed status isn't admin-secret, same as the #rag-unavailable banner on the Knowledge
+           tab this mirrors); only the Pull button itself is admin-gated. -->
+      <section class="space-y-3 border-t border-slate-800 pt-6">
+        <h2 class="text-sm font-semibold text-slate-200">Embedding model</h2>
+        <p class="text-xs text-slate-500 -mt-2">Powers the Knowledge base (RAG) feature on the Knowledge tab — not used for chat.</p>
+        <div id="embedding-model-catalog" class="space-y-2"></div>
+      </section>
+
     </div>
 
     <!-- Behavior tab: generation parameters, per target (a specific
