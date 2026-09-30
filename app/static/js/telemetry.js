@@ -119,8 +119,11 @@ async function populateTelemetryEngineOptionsOnce() {
   const selectEl = document.getElementById("telemetry-source-select");
   if (selectEl.options.length > 0) return;
   const { engines } = await api("/api/settings/engine/options");
-  for (const { name, display_name: displayName } of engines) {
+  for (const { name, display_name: displayName, capabilities } of engines) {
     telemetryEngineDisplayNames[name] = displayName;
+    // Telemetry only exists for local engines (Ollama/Matricxon) — a remote/serverless connector-backed engine
+    // (e.g. RunPod) has nothing this app can instrument, so it's never offered here.
+    if (!capabilities.local_process) continue;
     const option = document.createElement("option");
     option.value = name;
     option.textContent = displayName;
@@ -143,8 +146,13 @@ async function applyDefaultTelemetryEngineOnce() {
   noteEl.textContent = `Currently on: ${telemetryEngineDisplayNames[activeEngine] || activeEngine}`;
   if (!telemetryDefaultEngineApplied) {
     telemetryDefaultEngineApplied = true;
-    currentTelemetrySource = activeEngine;
-    selectEl.value = activeEngine;
+    // A non-local active engine has no option here — keep the first local engine selected instead.
+    if ([...selectEl.options].some((o) => o.value === activeEngine)) {
+      currentTelemetrySource = activeEngine;
+      selectEl.value = activeEngine;
+    } else {
+      currentTelemetrySource = selectEl.value;
+    }
   }
   // Only revealed once it shows the real active engine — see stats.html's own comment on its `invisible` class.
   selectEl.classList.remove("invisible");

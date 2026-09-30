@@ -24,7 +24,7 @@
        chunk count, and password); System and Users are admin-only
        extras appended when is_admin. -->
   <div class="border-b border-slate-800 px-4">
-    <nav class="mx-auto max-w-2xl flex gap-1 -mb-px">
+    <nav class="mx-auto max-w-3xl flex gap-1 -mb-px">
       <button type="button" data-tab="model"
         class="settings-tab-btn border-b-2 border-brand-500 px-3 py-2.5 text-sm font-medium text-slate-100">
         Models
@@ -74,13 +74,16 @@
          behavior" tab — Behavior's own shared save-bar no longer needs
          its old blockedByModels check, since it doesn't touch the model
          at all anymore. -->
-    <div id="tab-model" class="mx-auto max-w-2xl px-4 py-8 space-y-8">
+    <div id="tab-model" class="mx-auto max-w-3xl px-4 py-8 space-y-8">
       <!-- Browse more models: the small hand-curated list below (app/model_catalog.py) stays fixed; this is the
            separate, admin-extensible catalog behind app/services/extended_model_catalog_service.py. Open by
            default (see settings.js: initModelTab preloads it, same as expanding it manually would) and placed
            above the default-model picker - the search box is the first thing on the tab, not the last. Hidden
            entirely (see initModelTab) when the active engine's own capabilities.model_management is False - a
            connector like RunPod manages its own model(s) remotely, with no Hugging Face catalog to browse. -->
+      <!-- Admin-only: hidden for regular users via a wrapper div rather than removed from the DOM, since
+           settings.js binds listeners to these elements unconditionally at load. -->
+      <div{% if not is_admin %} class="hidden"{% endif %}>
       <section id="browse-more-models-section" class="space-y-3">
         <button type="button" id="browse-more-models-toggle"
           class="flex w-full items-center justify-between text-sm font-semibold text-slate-200">
@@ -91,7 +94,7 @@
 
         <div id="browse-more-models-panel" class="space-y-4">
           <p class="text-xs text-slate-500">
-            Searched live on Hugging Face — the largest public library of GGUF models.
+            Search live on Hugging Face — the largest public library of GGUF models.
           </p>
 
           {% if is_admin %}
@@ -133,10 +136,11 @@
           <p id="extended-model-catalog-empty" class="hidden text-xs text-slate-500">Nothing here yet.</p>
         </div>
       </section>
+      </div>
 
       <section class="space-y-4">
-        <h2 class="text-sm font-semibold text-slate-200">Common / installed models</h2>
-        <p class="text-xs text-slate-500 -mt-2">Models available for the active inference engine — the one you select on external servers tab becomes the default engine for the UI.</p>
+        <h2 class="text-sm font-semibold text-slate-200">Installed models</h2>
+        <p class="text-xs text-slate-500 -mt-2">Models available for the active inference engine — the one you select on external servers tab becomes the default engine for the UI. Please note that each inference engine has its own separate models repository.</p>
 
         <div id="model-field">
           <div id="model-loading" class="flex items-center gap-2 text-xs text-slate-500 py-6">
@@ -154,10 +158,17 @@
               <label class="block text-xs font-medium text-slate-400">Default model for new chats</label>
               <span id="hardware-summary" class="text-xs text-slate-500"></span>
             </div>
-            <p class="text-xs text-slate-500 mb-4">Selecting a model saves it immediately — no need to press Save below.</p>
+            <p class="text-xs text-slate-500 mb-4">Selecting a model saves it immediately.</p>
             <div id="model-no-default-banner" class="hidden mb-4 text-xs text-amber-400 bg-amber-950/40 border border-amber-900 rounded-lg px-3 py-2">
-              No default model selected for the current engine — pick one below.
+              {% if is_admin %}No model installed yet — pull one below or from the upper HF searchbox.{% else %}No model installed yet, ask admin{% endif %}
             </div>
+            <div id="installed-model-catalog-section" class="hidden mb-10">
+              <div id="model-no-default-selected-banner" class="hidden mb-3 text-xs text-amber-400 bg-amber-950/40 border border-amber-900 rounded-lg px-3 py-2">
+                No default model selected — select one from the models below.
+              </div>
+              <div id="installed-model-catalog" class="space-y-3"></div>
+            </div>
+            <h2 id="recommended-models-heading" class="text-sm font-semibold text-slate-200 mb-3">Recommended models (not installed)</h2>
             <div id="model-catalog" class="space-y-3"></div>
           </div>
         </div>
@@ -168,11 +179,13 @@
            app.model_catalog.EMBEDDING_CATALOG's own docstring for why it's a wholly separate list). Visible to
            every user (installed status isn't admin-secret, same as the #rag-unavailable banner on the Knowledge
            tab this mirrors); only the Pull button itself is admin-gated. -->
+      <div{% if not is_admin %} class="hidden"{% endif %}>
       <section class="space-y-3 border-t border-slate-800 pt-6">
         <h2 class="text-sm font-semibold text-slate-200">Embedding model</h2>
         <p class="text-xs text-slate-500 -mt-2">Powers the Knowledge base (RAG) feature on the Knowledge tab — not used for chat.</p>
         <div id="embedding-model-catalog" class="space-y-2"></div>
       </section>
+      </div>
 
     </div>
 
@@ -185,7 +198,7 @@
          that point on (see settings.js: loadTarget's per-target hint
          text). Shares its save-bar with Knowledge below (both edit the
          same currentParams for the target picked here). -->
-    <div id="tab-behavior" class="hidden mx-auto max-w-2xl px-4 py-8 space-y-10">
+    <div id="tab-behavior" class="hidden mx-auto max-w-3xl px-4 py-8 space-y-10">
 
       <!-- Same "no models installed at all" banner as the Model tab's own #model-unavailable, and the same
            reasoning: generation parameters here mean nothing without a model to actually apply them to (the
@@ -221,7 +234,7 @@
            physically relocates this same element to just above the
            "Knowledge base" section while that tab is active, and back
            here otherwise — see activateTab(). It deliberately has no
-           mx-auto/max-w-2xl/px-4 of its own: it's always a direct child
+           mx-auto/max-w-3xl/px-4 of its own: it's always a direct child
            of whichever tab div is currently showing it, and that tab
            div already provides all of that — adding it again here would
            double up the left padding and misalign it from the tab's own
@@ -238,7 +251,7 @@
          Available to every user, not just admin — everyone can tune how
          many chunks their own chats retrieve. Operates on the same
          conversation/defaults target picked on the Behavior tab. -->
-    <div id="tab-knowledge" class="hidden mx-auto max-w-2xl px-4 py-8 space-y-8">
+    <div id="tab-knowledge" class="hidden mx-auto max-w-3xl px-4 py-8 space-y-8">
       <section class="space-y-3">
         <h2 class="text-sm font-semibold text-slate-200">Document knowledge (RAG)</h2>
         <p class="text-xs text-slate-500 -mt-2">
@@ -340,7 +353,7 @@
          your own password; a natural place for more personal-account
          preferences later. Saves inline (its own status text), no use
          for the shared save-bar. -->
-    <div id="tab-account" class="hidden mx-auto max-w-2xl px-4 py-8 space-y-8">
+    <div id="tab-account" class="hidden mx-auto max-w-3xl px-4 py-8 space-y-8">
       <section class="space-y-3">
         <h2 class="text-sm font-semibold text-slate-200">Profile</h2>
         <p class="text-xs text-slate-500 -mt-2">
@@ -503,7 +516,7 @@
          model catalog's Pull/Uninstall/Hide actions live on the Model
          tab's own picker itself (visible to admin there too) — this
          tab is just environment context. -->
-    <div id="tab-system" class="hidden mx-auto max-w-2xl px-4 py-8 space-y-8">
+    <div id="tab-system" class="hidden mx-auto max-w-3xl px-4 py-8 space-y-8">
       <section class="space-y-3">
         <h2 class="text-sm font-semibold text-slate-200">Environment</h2>
         <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm rounded-lg bg-slate-900 border border-slate-800 px-4 py-3">
@@ -953,7 +966,7 @@
          start/stop + a few important tunable parameters) or remote (up
          to 12 external hosts, load-balanced). See
          app/routers/ollama_admin.py / comfyui_admin.py. -->
-    <div id="tab-external-servers" class="hidden mx-auto max-w-2xl px-4 py-8 space-y-8">
+    <div id="tab-external-servers" class="hidden mx-auto max-w-3xl px-4 py-8 space-y-8">
       <!-- Which engine (below) actually serves chat/embedding requests right now — see
            app.services.engine_service. Each engine below is still independently configurable/startable
            regardless of this choice; only this picker decides which one is live. -->
@@ -1130,11 +1143,10 @@
       <section class="space-y-3" data-server="matricxon">
         <h2 class="text-sm font-semibold text-slate-200">Matricxon</h2>
         <p class="text-xs text-slate-500 -mt-2">
-          A from-scratch, Ollama-API-compatible local runtime. <span class="font-mono">Local</span> lets this app
-          start/stop it via its own <span class="font-mono">scripts/start.sh</span> /
-          <span class="font-mono">scripts/stop.sh</span> — Matricxon has no standalone binary, just a project
-          checkout; <span class="font-mono">Remote</span> points at a Matricxon server running elsewhere. Not
-          every model in the Model tab is supported yet — see each model's own note there.
+          A from-scratch inference server, Ollama-API-compatible local runtime. <span class="font-mono">Local</span>
+          mode lets this app manage important tuning and start/stop Matricxon from here — Matricxon has no
+          standalone binary, just a project checkout; <span class="font-mono">Remote</span> mode points at
+          server/s running elsewhere using internal load balancer.
         </p>
         <div data-field="fetch-panel" class="relative rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
           <div>
@@ -1421,7 +1433,7 @@
 
     <!-- Users tab: admin-only account management (moved out of System
          into its own tab since it's a distinct concern). -->
-    <div id="tab-users" class="hidden mx-auto max-w-2xl px-4 py-8 space-y-3">
+    <div id="tab-users" class="hidden mx-auto max-w-3xl px-4 py-8 space-y-3">
       <div class="flex items-center justify-between">
         <h2 class="text-sm font-semibold text-slate-200">Users</h2>
         <button id="add-user-btn" type="button"
@@ -1487,7 +1499,7 @@
          member/manager picker is built entirely in JS (see settings.js:
          buildChannelForm) since it needs to stay usable with a large
          (1000+) user list, which a plain hardcoded <select> doesn't. -->
-    <div id="tab-channels" class="hidden mx-auto max-w-2xl px-4 py-8 space-y-3">
+    <div id="tab-channels" class="hidden mx-auto max-w-3xl px-4 py-8 space-y-3">
       <div class="flex items-center justify-between">
         <h2 class="text-sm font-semibold text-slate-200">Channels</h2>
         <button id="add-channel-btn" type="button"

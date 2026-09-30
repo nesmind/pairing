@@ -23,6 +23,14 @@ const SPINNER_SVG_HTML =
 const CHEVRON_DOWN_SVG_HTML =
   '<svg class="h-2.5 w-2.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" ' +
   'd="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>';
+// Sideways ones are drawn as a longer stroked arrow (shaft + head) rather than a bare chevron, so they read
+// clearly at the corner of a compact card.
+const CHEVRON_RIGHT_SVG_HTML =
+  '<svg class="h-[0.36rem] w-[0.72rem]" viewBox="0 0 24 12" fill="none" stroke="currentColor" stroke-width="1.75" ' +
+  'stroke-linecap="round" stroke-linejoin="round"><path d="M1 6h21M17 1.5 22 6l-5 4.5"/></svg>';
+const CHEVRON_LEFT_SVG_HTML =
+  '<svg class="h-[0.36rem] w-[0.72rem]" viewBox="0 0 24 12" fill="none" stroke="currentColor" stroke-width="1.75" ' +
+  'stroke-linecap="round" stroke-linejoin="round"><path d="M23 6H2M7 1.5 2 6l5 4.5"/></svg>';
 const CHEVRON_UP_SVG_HTML =
   '<svg class="h-2.5 w-2.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" ' +
   'd="M14.77 12.79a.75.75 0 01-1.06-.02L10 8.832l-3.71 3.938a.75.75 0 11-1.08-1.04l4.25-4.5a.75.75 0 011.08 0l4.25 4.5a.75.75 0 01-.02 1.06z"/></svg>';
@@ -93,6 +101,8 @@ const isAdmin = document.body.dataset.isAdmin === "true";
 
 const conversationSelect = document.getElementById("conversation-select");
 const modelCatalogEl = document.getElementById("model-catalog");
+const installedModelCatalogEl = document.getElementById("installed-model-catalog");
+const recommendedModelsHeadingEl = document.getElementById("recommended-models-heading");
 const hardwareSummaryEl = document.getElementById("hardware-summary");
 const extendedModelCatalogEl = document.getElementById("extended-model-catalog");
 const extendedModelCatalogEmptyEl = document.getElementById("extended-model-catalog-empty");
@@ -408,11 +418,12 @@ async function removeExtendedModel(entry, button, progressEl) {
  * flex layout rather than a fixed-column grid, so it can't overflow its
  * container no matter how many action buttons a row ends up with
  * (Select, Pull, Uninstall, Hide, Remove — not every row has all of them). */
-function renderModelRow(entry, pairing = null) {
+function renderModelRow(entry, pairing = null, compact = false) {
   const isSelected = entry.tag !== null && entry.tag === selectedModelTag;
   const row = document.createElement("div");
   row.className =
-    "relative rounded-lg border px-3 py-2.5 text-sm " +
+    "relative rounded-lg border px-3 text-sm " +
+    (compact ? "py-2 flex flex-col justify-between gap-1.5 " : "py-2.5 ") +
     (isSelected ? "border-brand-500 bg-[rgb(var(--color-brand-500)/0.1)]" : "border-slate-800 bg-slate-900") +
     (entry.hidden ? " opacity-60" : "");
   // Looked up after a fresh add/pull (see addBtn's own click handler) to scroll straight to whichever row the
@@ -421,7 +432,9 @@ function renderModelRow(entry, pairing = null) {
   if (entry.tag) row.dataset.tag = entry.tag;
 
   const top = document.createElement("div");
-  top.className = "flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5";
+  top.className = compact
+    ? "flex flex-col gap-1.5"
+    : "flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5";
 
   const label = document.createElement("div");
   label.className = "min-w-0";
@@ -480,9 +493,7 @@ function renderModelRow(entry, pairing = null) {
     `<span class="block truncate font-medium text-slate-100">${escapeHtml(modelName || entry.tag)}` +
     (entry.hidden ? ` <span class="text-xs font-normal text-slate-500">(hidden from users)</span>` : "") +
     visionBadge +
-    matricxonBadge +
-    notInCatalogBadge +
-    chatFormatUnverifiedBadge +
+    (compact ? "" : matricxonBadge + notInCatalogBadge + chatFormatUnverifiedBadge) +
     `</span>` +
     `<span class="block truncate text-xs text-slate-500">${escapeHtml(metaParts.join(" · "))}</span>`;
 
@@ -490,7 +501,7 @@ function renderModelRow(entry, pairing = null) {
   // one line, the extras drop to a second line instead of overflowing
   // past the card's edge.
   const action = document.createElement("div");
-  action.className = "flex flex-wrap items-center justify-end gap-1.5 shrink-0";
+  action.className = compact ? "flex flex-wrap items-center gap-1.5" : "flex flex-wrap items-center justify-end gap-1.5 shrink-0";
 
   const progressRow = document.createElement("p");
   progressRow.className = "mt-1.5 text-xs text-slate-500 hidden";
@@ -561,7 +572,8 @@ function renderModelRow(entry, pairing = null) {
   // Hide/Unhide: admin-only, independent of install state — an admin
   // can declutter the picker for regular users even for a model that
   // isn't installed yet.
-  if (isAdmin && managementEnabled) {
+  // Only for an installed model - the not-installed "Recommended" list has no Hide/Unhide.
+  if (isAdmin && managementEnabled && entry.installed) {
     const hideBtn = document.createElement("button");
     hideBtn.type = "button";
     hideBtn.title = entry.hidden
@@ -595,7 +607,23 @@ function renderModelRow(entry, pairing = null) {
   // The real pull path, below the title/buttons row so its own length never competes with them for space (see
   // modelName's own comment above) — truncated with the full value in a native title="" tooltip on hover rather
   // than just cut off with no way to see the rest.
-  if (entry.tag) {
+  if (compact) {
+    // Compact card: only name + sizes are visible; the full path and the details the full row prints inline
+    // (support/catalog/chat-format notes, unavailable reason) live in the card's hover tooltip instead.
+    row.title = [
+      entry.tag,
+      activeSupport && !activeSupport.supported && !entry.is_projector
+        ? `Not supported by the active engine${activeSupport.reason ? `: ${activeSupport.reason}` : ""}`
+        : null,
+      entry.installed && entry.is_auto_discovered && !entry.is_projector
+        ? "Installed, but not part of the hand-curated model list"
+        : null,
+      entry.chat_format_unverified ? "Chat format unverified — best-effort guess, may not follow instructions reliably" : null,
+      !entry.hardware_ok ? entry.unavailable_reason : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  } else if (entry.tag) {
     const pathLine = document.createElement("p");
     pathLine.className = "mt-1 truncate font-mono text-[11px] text-slate-600";
     pathLine.textContent = entry.tag;
@@ -603,7 +631,7 @@ function renderModelRow(entry, pairing = null) {
     row.appendChild(pathLine);
   }
 
-  if (!entry.hardware_ok) {
+  if (!entry.hardware_ok && !compact) {
     const reason = document.createElement("p");
     reason.className = "mt-1.5 text-xs text-amber-400";
     reason.textContent = entry.unavailable_reason
@@ -621,10 +649,21 @@ function renderModelRow(entry, pairing = null) {
   // top of the Hide button there.
   if (pairing) {
     const badge = document.createElement("span");
-    badge.className =
-      "absolute right-2 text-brand-500 " + (pairing.direction === "down" ? "bottom-0.5" : "top-0.5");
+    const sideways = pairing.direction === "right" || pairing.direction === "left";
+    // Compact two-per-row cards: the model card points right at its projector's card, which points back left,
+    // tucked into the upper corner on each card's side edge, clear of the text. Only shown from the two-column breakpoint up -
+    // in a single column the projector sits below its model, so a sideways arrow would point at nothing.
+    badge.className = sideways
+      ? "absolute top-0.5 hidden sm:block text-brand-500 " +
+        (pairing.direction === "right" ? "right-0.5" : "left-0.5")
+      : "absolute right-2 text-brand-500 " + (pairing.direction === "down" ? "bottom-0.5" : "top-0.5");
     badge.title = pairing.tooltip;
-    badge.innerHTML = pairing.direction === "down" ? CHEVRON_DOWN_SVG_HTML : CHEVRON_UP_SVG_HTML;
+    badge.innerHTML = {
+      down: CHEVRON_DOWN_SVG_HTML,
+      up: CHEVRON_UP_SVG_HTML,
+      right: CHEVRON_RIGHT_SVG_HTML,
+      left: CHEVRON_LEFT_SVG_HTML,
+    }[pairing.direction];
     row.appendChild(badge);
   }
 
@@ -682,9 +721,28 @@ function reorderProjectorsNextToTheirModel(vendorEntries) {
  * heading, defeating the entire point of grouping by vendor. Entries are still sorted by family within a
  * vendor, so same-family variants (e.g. Gemma 4's e2b/e4b/12b sizes) stay visually adjacent even without their
  * own heading. */
-function renderCatalogGroup(containerEl, entries) {
+function renderCatalogGroup(containerEl, entries, compact = false) {
   containerEl.innerHTML = "";
   const vendors = [...new Set(entries.map((entry) => entry.vendor))];
+  // Compact list where every vendor has just one model: a heading + single card per vendor would leave every
+  // row half empty, so lay all of them out in one shared two-per-row grid, each card keeping its own vendor
+  // heading above it. As soon as any vendor has 2+ models, the normal per-vendor grouping below applies.
+  if (compact && vendors.length > 1 && vendors.every((v) => entries.filter((e) => e.vendor === v).length === 1)) {
+    const grid = document.createElement("div");
+    grid.className = "grid grid-cols-1 sm:grid-cols-2 gap-x-2 gap-y-3";
+    for (const entry of entries) {
+      const cell = document.createElement("div");
+      cell.className = "space-y-1.5";
+      const heading = document.createElement("p");
+      heading.className = "text-xs font-semibold text-slate-300";
+      heading.textContent = entry.vendor;
+      cell.appendChild(heading);
+      cell.appendChild(renderModelRow(entry, null, true));
+      grid.appendChild(cell);
+    }
+    containerEl.appendChild(grid);
+    return;
+  }
   for (const vendor of vendors) {
     const sortedEntries = [...entries.filter((e) => e.vendor === vendor)].sort((a, b) =>
       a.family.localeCompare(b.family)
@@ -693,6 +751,9 @@ function renderCatalogGroup(containerEl, entries) {
 
     const group = document.createElement("div");
     group.className = "space-y-1.5";
+    // Compact (installed) cards sit two to a row under the vendor heading.
+    const grid = compact ? document.createElement("div") : group;
+    if (compact) grid.className = "grid grid-cols-1 sm:grid-cols-2 gap-2";
 
     const heading = document.createElement("p");
     heading.className = "text-xs font-semibold text-slate-300";
@@ -719,8 +780,19 @@ function renderCatalogGroup(containerEl, entries) {
       ) {
         pairing = { direction: "up", tooltip: `Linked with its model, right above (${prev.family})` };
       }
-      group.appendChild(renderModelRow(entry, pairing));
+      // Compact grid: "down"/"up" become "right"/"left", and a model that has a projector is pinned to the left
+      // column so its projector always lands right beside it in the same row, never wrapped onto the next one.
+      if (compact && pairing) {
+        pairing = {
+          direction: pairing.direction === "down" ? "right" : "left",
+          tooltip: pairing.tooltip.replace("right below", "next to it").replace("right above", "next to it"),
+        };
+      }
+      const row = renderModelRow(entry, pairing, compact);
+      if (compact && pairing?.direction === "right") row.classList.add("sm:col-start-1");
+      grid.appendChild(row);
     }
+    if (compact) group.appendChild(grid);
     containerEl.appendChild(group);
   }
 }
@@ -730,7 +802,14 @@ function renderModelCatalog() {
   hardwareSummaryEl.textContent = hardware.vram_gb > 0
     ? `${hardware.ram_gb}GB RAM + ${hardware.vram_gb}GB VRAM`
     : `${hardware.ram_gb}GB RAM, no GPU detected`;
-  renderCatalogGroup(modelCatalogEl, entries);
+  // Installed models on top as compact two-per-row cards, everything else (recommended, not yet installed)
+  // below in the regular one-per-row list.
+  renderCatalogGroup(installedModelCatalogEl, entries.filter((e) => e.installed), true);
+  document.getElementById("installed-model-catalog-section").classList.toggle("hidden", !entries.some((e) => e.installed));
+  // The not-installed "Recommended" list is admin-only - regular users only ever see installed models.
+  const showRecommended = isAdmin && entries.some((e) => !e.installed);
+  renderCatalogGroup(modelCatalogEl, isAdmin ? entries.filter((e) => !e.installed) : []);
+  recommendedModelsHeadingEl.classList.toggle("hidden", !showRecommended);
   // Catches every way the stored default can end up pointing at nothing real — cleared out from under it by an
   // engine switch (see app.services.engine_switch_service.clear_stale_default_models), the model being
   // uninstalled, or nothing ever having been chosen at all — not just the engine-switch case specifically,
@@ -743,7 +822,11 @@ function renderModelCatalog() {
   // would otherwise still be found in the catalog and silently pass as "valid".
   const defaultEntry = selectedModelTag !== null ? findCatalogEntry(selectedModelTag) : null;
   const hasValidDefault = Boolean(defaultEntry?.installed);
-  document.getElementById("model-no-default-banner").classList.toggle("hidden", hasValidDefault);
+  // Two distinct cases: nothing installed at all (banner above the lists) vs. models installed but none chosen
+  // as the default (banner at the top of the installed list).
+  const anyInstalled = entries.some((e) => e.installed);
+  document.getElementById("model-no-default-banner").classList.toggle("hidden", anyInstalled);
+  document.getElementById("model-no-default-selected-banner").classList.toggle("hidden", !anyInstalled || hasValidDefault);
 }
 
 function renderExtendedModelCatalog() {
