@@ -73,6 +73,8 @@ class CuratedModel:
     unavailable_reason: str | None = None
     # Only ever set on an embedding_models entry — no chat-model entry has an embedding dimensionality.
     embedding_dim: int | None = None
+    # A vision-projector (mmproj) sidecar, not a chat model — see InstalledProjectorCatalog.
+    is_projector: bool = False
 
 
 class CuratedCatalog:
@@ -121,6 +123,7 @@ class _CuratedModelJSON(BaseModel):
     vision: bool = False
     unavailable_reason: str | None = None
     embedding_dim: int | None = None
+    is_projector: bool = False
     note: str | None = None
 
 

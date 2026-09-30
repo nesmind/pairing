@@ -504,3 +504,20 @@ async def test_remove_if_auto_registered_drops_an_auto_registered_entry(db, monk
     await catalog.remove_if_auto_registered(tag)
 
     assert await catalog.list() == []
+
+
+@pytest.mark.asyncio
+async def test_clear_drops_manual_entries_but_keeps_the_installed_model_metadata_cache(db, monkeypatch):
+    """Clearing on an engine switch must not force a Hugging Face re-lookup of every installed model."""
+    installed = ExtendedModelCatalog.build_tag("org/a", "x.gguf")
+    monkeypatch.setattr(svc, "list_models", lambda: _async_return([{"name": installed}]))
+    _stub_repo_files(monkeypatch, {**_REPO, "repo_id": "org/a", "files": [{"filename": "x.gguf", "download_gb": 1.0}]})
+    catalog = ExtendedModelCatalog(db)
+    await catalog.add("org/a", "x.gguf", proxy_url=None)  # auto-registered (installed)
+    monkeypatch.setattr(svc, "list_models", lambda: _async_return([]))
+    _stub_repo_files(monkeypatch, {**_REPO, "repo_id": "org/b", "files": [{"filename": "y.gguf", "download_gb": 1.0}]})
+    await catalog.add("org/b", "y.gguf", proxy_url=None)  # manual suggestion
+
+    await catalog.clear()
+
+    assert [e["tag"] for e in await catalog.list()] == [installed]

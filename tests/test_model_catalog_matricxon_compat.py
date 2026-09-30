@@ -433,8 +433,7 @@ async def test_build_model_catalog_treats_matricxons_literal_unknown_as_missing_
 async def test_build_model_catalog_falls_back_to_the_tags_own_quant_before_a_bare_question_mark(
     db, admin_user, monkeypatch
 ):
-    """A genuinely stray install whose self-heal (see ChatModelCatalogBuilder._self_register) can't find real
-    data either — the Hugging Face lookup itself fails here, same as it failing for any other reason — still
+    """A genuinely stray install (no real data to show, and no Hugging Face lookup is made on a catalog view) still
     has one real, useful thing to show: the exact quantization already sitting in its own tag (see
     ChatModelCatalogBuilder._quant_from_tag) — more informative than a bare "?" for a real difference the user
     can see (a Q3_K_M vs. a Q8_0 of the same model), and it costs nothing to derive."""
@@ -457,34 +456,18 @@ async def test_build_model_catalog_falls_back_to_the_tags_own_quant_before_a_bar
 
     entry = {e.tag: e for e in response.entries}[tag]
     assert entry.parameter_size == "Q3_K_M"
-    assert entry.is_auto_discovered is True  # the self-heal's own lookup failed too — badge correctly stays
+    assert entry.is_auto_discovered is True  # never looked up, so the badge stays
 
 
 @pytest.mark.asyncio
-async def test_build_model_catalog_self_heals_a_stray_install_for_an_admin(db, admin_user, monkeypatch):
-    """The durable fix for "I keep seeing this bug every new model/engine switch" (reported live, 2026-09-22):
-    rather than requiring a one-off manual ExtendedModelCatalog.add() every time some install bypasses the
-    app's own "Browse more models" flow (a direct Ollama/Matricxon pull outside the UI, say), an admin's own
-    catalog view now registers it automatically the first time it's seen — real family/parameter_size and all,
-    on this exact same render, not just "next time"."""
-    monkeypatch.setattr(extended_svc, "list_models", lambda: _async_return([]))
-    monkeypatch.setattr(
-        HuggingFaceCatalogSearch,
-        "repo_files",
-        staticmethod(
-            lambda repo_id, proxy_url: _async_return(
-                {
-                    "repo_id": repo_id,
-                    "family": "llama",
-                    "parameter_size": "3.2B",
-                    "context_length": 131072,
-                    "gated": False,
-                    "license": None,
-                    "files": [{"filename": "Llama-3.2-3B-Instruct-Q3_K_M.gguf", "download_gb": 1.7}],
-                }
-            )
-        ),
-    )
+async def test_build_model_catalog_never_calls_hugging_face_for_a_stray_install(db, admin_user, monkeypatch):
+    """Metadata is captured when a model is added/installed, never on a catalog view: a stray install (e.g.
+    pulled on the terminal) renders with the engine-reported fallback, with no Hugging Face call and no write."""
+
+    def _fail_if_called(*_a, **_kw):
+        raise AssertionError("repo_files must not be called while building the catalog")
+
+    monkeypatch.setattr(HuggingFaceCatalogSearch, "repo_files", staticmethod(_fail_if_called))
     tag = "hf.co/unsloth/Llama-3.2-3B-Instruct-GGUF:Llama-3.2-3B-Instruct-Q3_K_M"
     monkeypatch.setattr(
         svc,
@@ -497,13 +480,8 @@ async def test_build_model_catalog_self_heals_a_stray_install_for_an_admin(db, a
     response = await ChatModelCatalogBuilder(db, admin_user).build()
 
     entry = {e.tag: e for e in response.entries}[tag]
-    assert entry.is_auto_discovered is False
-    # The repo's own real display name (see ExtendedModelCatalog._repo_display_name), not Matricxon's generic
-    # engine-reported "Llama" (details.family above) — the whole point of this self-heal.
-    assert entry.family == "Llama-3.2-3B-Instruct"
-    assert entry.parameter_size == "3.2B"
-    stored = await ExtendedModelCatalog(db).list()
-    assert [e["tag"] for e in stored] == [tag]  # persisted — a future view won't need to look it up again
+    assert entry.is_auto_discovered is True
+    assert await ExtendedModelCatalog(db).list() == []
 
 
 @pytest.mark.asyncio
@@ -534,9 +512,9 @@ async def test_build_model_catalog_backfills_discovered_via_engine_for_pre_exist
 
 
 @pytest.mark.asyncio
-async def test_build_model_catalog_never_self_heals_for_a_non_admin(db, user, monkeypatch):
+async def test_build_model_catalog_never_writes_for_a_non_admin(db, user, monkeypatch):
     """A regular user's own catalog view must never write to the admin-curated extended catalog — see
-    ChatModelCatalogBuilder.build's is_admin gate around _self_register."""
+    ChatModelCatalogBuilder.build."""
     monkeypatch.setattr(extended_svc, "list_models", lambda: _async_return([]))
 
     def _fail_if_called(*_a, **_kw):
@@ -677,3 +655,21 @@ async def test_build_extended_catalog_gives_a_real_verdict_once_the_gguf_probe_f
     # combination, unlike the always-False every admin-added entry used to get regardless.
     assert entries[0].matricxon_supported is True
     assert entries[0].matricxon_unsupported_reason is None
+
+
+@pytest.mark.asyncio
+async def test_build_marks_a_curated_projector_installed_despite_having_no_completion_capability(
+    db, admin_user, monkeypatch
+):
+    """default_models.json's SmolVLM2 mmproj entry: a projector never reports "completion", so it must be
+    looked up among all installed tags, not just chat-capable ones, and be flagged is_projector."""
+    tag = "hf.co/ggml-org/SmolVLM2-2.2B-Instruct-GGUF:mmproj-SmolVLM2-2.2B-Instruct-Q8_0"
+    monkeypatch.setattr(
+        svc, "list_models", lambda: _async_return([{"name": tag, "capabilities": [], "details": {"family": "clip"}}])
+    )
+
+    response = await ChatModelCatalogBuilder(db, admin_user).build()
+
+    projector = next(e for e in response.entries if e.tag == tag)
+    assert projector.installed and projector.is_projector and not projector.text_capable
+    assert len([e for e in response.entries if e.tag == tag]) == 1  # not duplicated by the auto-discovered path

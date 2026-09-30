@@ -95,6 +95,44 @@
       "unavailable_reason": null,
       "embedding_dim": null,
       "note": "Mistral AI's own official GGUF repo (not a community re-quant) — confirmed live via the Hugging Face API: mistralai/Ministral-3-3B-Instruct-2512-GGUF, arch \"mistral3\" (the same decoder architecture this app's own from-scratch runtime, matricxon, already implements), 3,429,006,336 total params, 262144 ctx. The Q4_K_M file is a real, verified sibling of the repo (2.15GB via a HEAD request's Content-Length) — not assumed from the repo name alone. The repo also carries a BF16-only vision mmproj file, but with no quantized counterpart for Q4_K_M, so vision pairing isn't claimed here (unlike the gemma4:12b/LLaVA entries, which had that verified end-to-end)."
+    },
+    {
+      "family": "SmolVLM2-2.2B-Instruct",
+      "vendor": "ggml-org",
+      "tag": "hf.co/ggml-org/SmolVLM2-2.2B-Instruct-GGUF:SmolVLM2-2.2B-Instruct-Q8_0",
+      "parameter_size": "2.2B",
+      "context_length": 8192,
+      "download_gb": 1.9,
+      "min_ram_gb": 2.5,
+      "locally_runnable": true,
+      "architecture": "llama",
+      "quantizations": [
+        "Q8_0"
+      ],
+      "vision": true,
+      "is_projector": false,
+      "unavailable_reason": null,
+      "embedding_dim": null,
+      "note": "ggml-org's official SmolVLM2 GGUF repo — installed and verified live in Matricxon (arch \"llama\", 1,927,933,984 bytes, completion capability). Needs its mmproj projector entry below for vision."
+    },
+    {
+      "family": "SmolVLM2-2.2B-Instruct-GGUF",
+      "vendor": "ggml-org",
+      "tag": "hf.co/ggml-org/SmolVLM2-2.2B-Instruct-GGUF:mmproj-SmolVLM2-2.2B-Instruct-Q8_0",
+      "parameter_size": "",
+      "context_length": 8192,
+      "download_gb": 0.6,
+      "min_ram_gb": 0,
+      "locally_runnable": true,
+      "architecture": "clip",
+      "quantizations": [
+        "Q8_0"
+      ],
+      "vision": false,
+      "is_projector": true,
+      "unavailable_reason": null,
+      "embedding_dim": null,
+      "note": "Vision projector (mmproj) paired with the SmolVLM2-2.2B-Instruct model above — same repo, arch \"clip\", 592,523,200 bytes; not a standalone chat model."
     }
   ],
   "embedding_models": [

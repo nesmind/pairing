@@ -242,6 +242,7 @@ async def test_update_config_clears_browse_more_models_only_when_the_mode_change
         return []
 
     monkeypatch.setattr(server_pool_broadcast, "broadcast_refresh", fake_broadcast)
+    monkeypatch.setattr(matricxon_pool, "refresh_from_config", lambda _config: None)  # keep the shared pool intact
     catalog = ExtendedModelCatalog(db)
     await catalog._save([{"tag": "hf.co/a/b:c"}])
 

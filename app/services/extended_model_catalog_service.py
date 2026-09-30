@@ -104,7 +104,7 @@ class ExtendedModelCatalog:
 
         Every entry records `discovered_via_engine` (whichever engine is active right now), no exception for a
         real admin-initiated Hugging Face search/add - real, confirmed gap (2026-09-30, two rounds: first for
-        ChatModelCatalogBuilder._self_register's own auto-discovered entries, then again for a manually
+        auto-discovered entries (since removed), then again for a manually
         searched-and-added one behaving no differently): this searchbox has to stay engine-specific the same
         way the installed-models list above it already is, full stop - an entry an admin found and added while
         Ollama was active has no business resurfacing as a fresh suggestion the moment Matricxon becomes
@@ -171,9 +171,12 @@ class ExtendedModelCatalog:
         await self._save(entries)
 
     async def clear(self) -> None:
-        """Empties "Browse more models" entirely — called on any engine change or Ollama/Matricxon mode switch or
-        restart, since the list of suggestions belongs to whatever the engine looked like before."""
-        await self._save([])
+        """Empties the "Browse more models" suggestions — called on any engine change or Ollama/Matricxon mode
+        switch or restart. Auto-registered entries (ALREADY_INSTALLED_NOTE) are kept: they're never shown as
+        suggestions (see build), but they cache an installed model's real name/size, and dropping them made the
+        next Model tab load re-look-up every installed model on Hugging Face (~30s, confirmed live)."""
+        kept = [e for e in await self.list() if e.get("note") == self.ALREADY_INSTALLED_NOTE]
+        await self._save(kept)
 
     async def remove_if_auto_registered(self, tag: str) -> None:
         """Drops `tag`'s entry when it was registered only because it was installed (see

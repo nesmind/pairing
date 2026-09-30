@@ -149,6 +149,7 @@ class ChatModelCatalogBuilder:
         self._db = db
         self._user = user
         self._hidden_tags = HiddenModelTags(db)
+        self._installed_by_name: dict[str, dict] = {}
 
     async def installed_tags(self) -> list[str]:
         """Installed chat-capable model tags this user is allowed to switch a conversation to — used by the
@@ -165,6 +166,7 @@ class ChatModelCatalogBuilder:
         is_admin = self._user.role == "admin"
         hidden_tags = await self._hidden_tags.get()
         installed_by_tag = {m["name"]: m for m in installed_models if "completion" in m.get("capabilities", [])}
+        self._installed_by_name = {m["name"]: m for m in installed_models}
         capacity_gb = hardware.available_capacity_gb()
         support_set = await EngineSupportSet.load(installed_models)
 
@@ -180,9 +182,7 @@ class ChatModelCatalogBuilder:
             if name in catalog_tags or (name in hidden_tags and not is_admin):
                 continue
             extended_entry = extended_catalog_entries.get(name)
-            if extended_entry is None and is_admin:
-                extended_entry = await self._self_register(name)
-            elif extended_entry is not None and is_admin and "discovered_via_engine" not in extended_entry:
+            if extended_entry is not None and is_admin and "discovered_via_engine" not in extended_entry:
                 # Pre-2026-09-30 data: self-registered before this field existed at all, so it's never been
                 # engine-scoped - `name` is positively confirmed installed under the active engine right
                 # here (that's exactly how it ended up in installed_by_tag), the one chance to backfill it
@@ -215,27 +215,6 @@ class ChatModelCatalogBuilder:
         from app.services.extended_model_catalog_service import ExtendedModelCatalog
 
         return {entry["tag"]: entry for entry in await ExtendedModelCatalog(self._db).list()}
-
-    async def _self_register(self, tag: str) -> dict | None:
-        """Auto-heals the exact gap _extended_catalog_entries' own docstring describes, instead of leaving an
-        installed-but-never-added model stuck showing a generic engine-reported name and the "Not in catalog"
-        badge until an admin happens to notice and manually re-add it (confirmed live, 2026-09-22: the same
-        handful of models kept resurfacing this exact bug across engine switches and new pulls, each needing a
-        one-off manual fix). Runs on every admin's own catalog view (see build's is_admin gate — a regular
-        user's view never writes to the admin-curated catalog) for any not-yet-registered hf.co/ tag; a plain
-        Ollama-library tag (no "hf.co/" prefix) is skipped outright since there's no Hugging Face repo to look
-        up at all. Best-effort: any failure (network down, repo gone, rate-limited, an unexpected response
-        shape) is swallowed so a catalog page load never breaks over this — the tag still renders with today's
-        existing fallback and gets another chance to self-heal on the next load."""
-        if not tag.startswith("hf.co/") or ":" not in tag:
-            return None
-        repo_id, _, suffix = tag.removeprefix("hf.co/").partition(":")
-        from app.services.extended_model_catalog_service import ExtendedModelCatalog
-
-        try:
-            return await ExtendedModelCatalog(self._db).add(repo_id, f"{suffix}.gguf", proxy_url=None)
-        except Exception:  # noqa: BLE001 - best-effort self-heal, see this method's own docstring
-            return None
 
     @staticmethod
     def _vendor_from_tag(tag: str) -> str:
@@ -274,7 +253,9 @@ class ChatModelCatalogBuilder:
         self, entry, installed_by_tag: dict, hidden_tags: set[str], capacity_gb: float, support_set: EngineSupportSet
     ):
         tag = entry.tag
-        installed_model = installed_by_tag.get(tag) if tag else None
+        # A projector has no "completion" capability, so it's never in installed_by_tag.
+        lookup = self._installed_by_name if entry.is_projector else installed_by_tag
+        installed_model = lookup.get(tag) if tag else None
         installed = installed_model is not None
         # Once a tag is actually installed, the active engine's own live report is the only source of truth for
         # architecture — not a merge/fallback with the curated static guess. A curated entry's architecture is
@@ -290,6 +271,7 @@ class ChatModelCatalogBuilder:
             tag=tag,
             architecture=architecture,
             quantizations=entry.quantizations,
+            is_projector=entry.is_projector,
             download_gb=entry.download_gb,
             min_ram_gb=entry.min_ram_gb,
         )
@@ -322,7 +304,8 @@ class ChatModelCatalogBuilder:
             ),
             # Every CATALOG entry is a normal chat model by definition (this whole list is curated as one) —
             # see CatalogEntry.text_capable's own docstring for why this is never actually False here today.
-            text_capable=True,
+            text_capable=not entry.is_projector,
+            is_projector=entry.is_projector,
             # No pre-install guess is possible for this one (see CatalogEntry.chat_format_unverified's own
             # docstring) — only ever read live, and only False (the field's own default) until installed.
             chat_format_unverified=(
