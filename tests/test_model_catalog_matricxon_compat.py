@@ -495,6 +495,23 @@ async def test_build_model_catalog_backfills_discovered_via_engine_for_pre_exist
     once uninstalled)."""
     tag = "hf.co/unsloth/Llama-3.2-3B-Instruct-GGUF:Llama-3.2-3B-Instruct-Q3_K_M"
     monkeypatch.setattr(extended_svc, "list_models", lambda: _async_return([]))
+    monkeypatch.setattr(
+        HuggingFaceCatalogSearch,
+        "repo_files",
+        staticmethod(
+            lambda repo_id, proxy_url: _async_return(
+                {
+                    "repo_id": repo_id,
+                    "family": "llama",
+                    "parameter_size": "3.2B",
+                    "context_length": 131072,
+                    "gated": False,
+                    "license": None,
+                    "files": [{"filename": "Llama-3.2-3B-Instruct-Q3_K_M.gguf", "download_gb": 1.7}],
+                }
+            )
+        ),
+    )
     catalog = ExtendedModelCatalog(db)
     await catalog.add("unsloth/Llama-3.2-3B-Instruct-GGUF", "Llama-3.2-3B-Instruct-Q3_K_M.gguf", proxy_url=None)
     # Simulates real pre-2026-09-30 data: the key never existed at all, not merely set to None.

@@ -164,7 +164,7 @@ async def delete_model_endpoint(
         await delete_model(body.tag)
     except InferenceError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    await ExtendedModelCatalog(db).remove_if_auto_registered(body.tag)
+    await ExtendedModelCatalog(db).remove(body.tag)  # an uninstalled model must not come back as a suggestion
     return DeleteModelResponse(deleted=body.tag)
 
 

@@ -178,15 +178,6 @@ class ExtendedModelCatalog:
         kept = [e for e in await self.list() if e.get("note") == self.ALREADY_INSTALLED_NOTE]
         await self._save(kept)
 
-    async def remove_if_auto_registered(self, tag: str) -> None:
-        """Drops `tag`'s entry when it was registered only because it was installed (see
-        ALREADY_INSTALLED_NOTE) — called on uninstall so it doesn't linger in "Browse more models". An entry
-        an admin deliberately searched for and added (no such note) is left alone."""
-        entries = await self.list()
-        kept = [e for e in entries if not (e["tag"] == tag and e.get("note") == self.ALREADY_INSTALLED_NOTE)]
-        if len(kept) != len(entries):
-            await self._save(kept)
-
     async def backfill_discovered_via_engine(self, tag: str, engine_name: str) -> None:
         """Stamps `discovered_via_engine` onto an already-registered entry that predates this field entirely
         (added before 2026-09-30, back when add() never recorded it at all) - called only while `tag` is
