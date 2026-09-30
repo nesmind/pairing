@@ -170,6 +170,20 @@ class ExtendedModelCatalog:
         entries = [e for e in await self.list() if e["tag"] != tag]
         await self._save(entries)
 
+    async def clear(self) -> None:
+        """Empties "Browse more models" entirely — called on any engine change or Ollama/Matricxon mode switch or
+        restart, since the list of suggestions belongs to whatever the engine looked like before."""
+        await self._save([])
+
+    async def remove_if_auto_registered(self, tag: str) -> None:
+        """Drops `tag`'s entry when it was registered only because it was installed (see
+        ALREADY_INSTALLED_NOTE) — called on uninstall so it doesn't linger in "Browse more models". An entry
+        an admin deliberately searched for and added (no such note) is left alone."""
+        entries = await self.list()
+        kept = [e for e in entries if not (e["tag"] == tag and e.get("note") == self.ALREADY_INSTALLED_NOTE)]
+        if len(kept) != len(entries):
+            await self._save(kept)
+
     async def backfill_discovered_via_engine(self, tag: str, engine_name: str) -> None:
         """Stamps `discovered_via_engine` onto an already-registered entry that predates this field entirely
         (added before 2026-09-30, back when add() never recorded it at all) - called only while `tag` is
@@ -216,6 +230,10 @@ class ExtendedModelCatalog:
             if tag in hidden_tags and not is_admin:
                 continue
             if tag in installed_tags:
+                continue
+            if entry.get("note") == self.ALREADY_INSTALLED_NOTE:
+                # Registered only because it was installed (auto-discovery); once uninstalled it's not a
+                # suggestion, just a leftover.
                 continue
             discovered_via_engine = entry.get("discovered_via_engine")
             if discovered_via_engine is not None and discovered_via_engine != active_engine_name:

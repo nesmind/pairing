@@ -152,7 +152,9 @@ async def pull_model(body: PullModelRequest, db: AsyncSession = Depends(get_db),
 
 
 @router.post("/delete-model", response_model=DeleteModelResponse)
-async def delete_model_endpoint(body: PullModelRequest, _admin: User = Depends(require_admin)):
+async def delete_model_endpoint(
+    body: PullModelRequest, db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)
+):
     """Removes a pulled model from the ML engine, freeing its disk space. Admin-only for the same reason pulling is:
     it's a system-wide action affecting every user, not a per-conversation preference. Deleting a model someone's
     conversation is still set to isn't blocked here — that conversation just gets a normal "model not found" chat
@@ -162,6 +164,7 @@ async def delete_model_endpoint(body: PullModelRequest, _admin: User = Depends(r
         await delete_model(body.tag)
     except InferenceError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    await ExtendedModelCatalog(db).remove_if_auto_registered(body.tag)
     return DeleteModelResponse(deleted=body.tag)
 
 

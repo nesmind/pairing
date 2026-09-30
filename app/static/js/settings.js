@@ -808,7 +808,7 @@ function renderModelCatalog() {
   document.getElementById("installed-model-catalog-section").classList.toggle("hidden", !entries.some((e) => e.installed));
   // The not-installed "Recommended" list is admin-only - regular users only ever see installed models.
   const showRecommended = isAdmin && entries.some((e) => !e.installed);
-  renderCatalogGroup(modelCatalogEl, isAdmin ? entries.filter((e) => !e.installed) : []);
+  renderCatalogGroup(modelCatalogEl, isAdmin ? entries.filter((e) => !e.installed) : [], true);
   recommendedModelsHeadingEl.classList.toggle("hidden", !showRecommended);
   // Catches every way the stored default can end up pointing at nothing real — cleared out from under it by an
   // engine switch (see app.services.engine_switch_service.clear_stale_default_models), the model being
@@ -1228,10 +1228,10 @@ function renderEmbeddingCatalog() {
   for (const entry of currentEmbeddingCatalog.entries) {
     const isDefault = entry.tag === currentEmbeddingCatalog.default_tag;
     const row = document.createElement("div");
-    row.className = "rounded-lg border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm";
+    row.className = "rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm flex flex-col justify-between gap-1.5";
 
     const top = document.createElement("div");
-    top.className = "flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5";
+    top.className = "flex flex-col gap-1.5";
 
     const label = document.createElement("div");
     label.className = "min-w-0";
@@ -1254,7 +1254,7 @@ function renderEmbeddingCatalog() {
       `<span class="block truncate text-xs text-slate-500">${escapeHtml(metaParts.join(" · "))}</span>`;
 
     const action = document.createElement("div");
-    action.className = "flex flex-wrap items-center justify-end gap-1.5 shrink-0";
+    action.className = "flex flex-wrap items-center gap-1.5";
     const progressRow = document.createElement("p");
     progressRow.className = "mt-1.5 text-xs text-slate-500 hidden";
 
@@ -1309,11 +1309,7 @@ function renderEmbeddingCatalog() {
     top.appendChild(action);
     row.appendChild(top);
 
-    const pathLine = document.createElement("p");
-    pathLine.className = "mt-1 truncate font-mono text-[11px] text-slate-600";
-    pathLine.textContent = entry.tag;
-    pathLine.title = entry.tag;
-    row.appendChild(pathLine);
+    row.title = entry.tag; // full path in the hover tooltip, same as the compact chat-model cards
     row.appendChild(progressRow);
 
     embeddingModelCatalogEl.appendChild(row);
@@ -2312,11 +2308,15 @@ function collectServerConfig(server, section) {
   // silently reapplies if the admin later switches back to local. Remote mode has no local
   // process/path of its own, so these are nulled/defaulted instead of read once mode is "remote".
   const isRemote = base.mode === "remote";
+  // models_path is the one exception: the remote engine's own storage location is managed by that engine
+  // (downloads go through its API, not this app's disk), but the saved local path is kept so switching back
+  // to local mode still finds the existing models.
+  const keptModelsPath = () => section.querySelector('[data-field="models_path"]').dataset.loadedValue || null;
   if (server === "ollama") {
     return {
       ...base,
       binary_path: isRemote ? null : section.querySelector('[data-field="binary_path"]').value.trim() || null,
-      models_path: isRemote ? null : section.querySelector('[data-field="models_path"]').value.trim() || null,
+      models_path: isRemote ? keptModelsPath() : section.querySelector('[data-field="models_path"]').value.trim() || null,
       num_parallel: isRemote ? null : intFieldOrNull(section, "num_parallel"),
       keep_alive: isRemote ? null : section.querySelector('[data-field="keep_alive"]').value.trim() || null,
       max_loaded_models: isRemote ? null : intFieldOrNull(section, "max_loaded_models"),
@@ -2327,7 +2327,7 @@ function collectServerConfig(server, section) {
     return {
       ...base,
       project_dir: isRemote ? null : section.querySelector('[data-field="project_dir"]').value.trim() || null,
-      models_path: isRemote ? null : section.querySelector('[data-field="models_path"]').value.trim() || null,
+      models_path: isRemote ? keptModelsPath() : section.querySelector('[data-field="models_path"]').value.trim() || null,
       max_loaded_models: isRemote ? null : intFieldOrNull(section, "max_loaded_models"),
       memory_safety_margin: isRemote ? null : floatFieldOrNull(section, "memory_safety_margin"),
       log_level: isRemote ? 0 : parseInt(section.querySelector('[data-field="log_level"]').value, 10),
@@ -2369,6 +2369,7 @@ async function loadServerSection(server) {
     Promise.all([api(`/api/settings/${server}/config`), api(`/api/settings/${server}/install-defaults`)]),
   );
   section.querySelector('[data-field="mode"]').value = config.mode;
+  section.dataset.loadedMode = config.mode; // see the save handler's mode-change redirect
   renderInstallSource(section, config, installDefaults);
 
   if (server === "ollama") {
@@ -2574,6 +2575,21 @@ async function loadAvailableVersions(server, section) {
   }
 }
 
+/** Switching Ollama/Matricxon between local and remote changes which models exist (a remote server has its own
+ * storage, managed through its API) — every model-related cache on this page is stale, so reload onto the Model
+ * tab, same pattern as the active-engine switch. Returns true if it reloaded. */
+function redirectToModelsIfModeChanged(section, body, force = false) {
+  const server = section.dataset.server;
+  if (!["ollama", "matricxon"].includes(server) || (!force && body.mode === section.dataset.loadedMode)) return false;
+  try {
+    sessionStorage.setItem(SETTINGS_TAB_STORAGE_KEY, "model");
+  } catch (_err) {
+    // Storage blocked — reload still happens, just lands on the default tab.
+  }
+  window.location.reload();
+  return true;
+}
+
 for (const server of EXTERNAL_SERVERS) {
   const section = serverSectionEl(server);
   if (!section) continue;
@@ -2686,10 +2702,12 @@ for (const server of EXTERNAL_SERVERS) {
           await api(`/api/settings/${server}/apply`, { method: "POST", body: JSON.stringify(body) }),
         );
         statusEl.textContent = `Saved — ${engineLabel} restarted.`;
+        redirectToModelsIfModeChanged(section, body, true); // a restart also clears "Browse more models"
         return;
       }
       await api(`/api/settings/${server}/config`, { method: "PUT", body: JSON.stringify(body) });
       statusEl.textContent = "Saved.";
+      redirectToModelsIfModeChanged(section, body);
     } catch (err) {
       statusEl.textContent = `Failed to save: ${err.message}`;
     } finally {
@@ -2725,7 +2743,7 @@ for (const server of EXTERNAL_SERVERS) {
         // its own click) until manually re-clicked, which read as a
         // stuck/broken status rather than what it actually was. Same reload for Matricxon coming up, for the
         // identical reason — either one starting can newly make models available.
-        if ((server === "ollama" || server === "matricxon") && action === "start" && result.running) {
+        if ((server === "ollama" || server === "matricxon") && (action === "stop" || result.running)) {
           try {
             sessionStorage.setItem(SETTINGS_TAB_STORAGE_KEY, "external-servers");
           } catch (_err) {

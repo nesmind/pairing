@@ -39,6 +39,7 @@ from app.services import (
     settings_service,
 )
 from app.services.auth_service import require_admin
+from app.services.extended_model_catalog_service import ExtendedModelCatalog
 
 logger = logging.getLogger("llama_chat")
 
@@ -53,7 +54,10 @@ async def _save_and_broadcast(db: AsyncSession, body: MatricxonServerConfig) -> 
     local instance. Saving the *inactive* engine's config still does both of the above — it just has no live
     pool effect until an admin switches to it (see app/routers/engine_admin.py) — mirroring ollama_admin.py's own
     _save_and_broadcast, unconditional there only because Ollama has no sibling engine to defer to."""
+    previous = await settings_service.get_matricxon_server_config(db)
     await settings_service.set_matricxon_server_config(db, body)
+    if previous.mode != body.mode:
+        await ExtendedModelCatalog(db).clear()
     matricxon_process.write_env_file(body)
     if await engine_service.get_active_engine(db) == "matricxon":
         matricxon_pool.refresh_from_config(body)
@@ -96,6 +100,7 @@ async def apply_config(
     await _save_and_broadcast(db, body)
     proxy_config = await http_proxy_service.get_http_proxy_config(db)
     try:
+        await ExtendedModelCatalog(db).clear()
         return await matricxon_process.apply_local_config(body, proxy_url=proxy_config.proxy_url())
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -124,6 +129,7 @@ async def start(db: AsyncSession = Depends(get_db), _admin: User = Depends(requi
     config = await settings_service.get_matricxon_server_config(db)
     proxy_config = await http_proxy_service.get_http_proxy_config(db)
     try:
+        await ExtendedModelCatalog(db).clear()
         return await matricxon_process.start(config, proxy_url=proxy_config.proxy_url())
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -135,6 +141,7 @@ async def start(db: AsyncSession = Depends(get_db), _admin: User = Depends(requi
 async def stop(db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)):
     config = await settings_service.get_matricxon_server_config(db)
     try:
+        await ExtendedModelCatalog(db).clear()
         return await matricxon_process.stop(config.project_dir)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

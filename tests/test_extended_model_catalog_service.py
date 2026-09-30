@@ -463,3 +463,44 @@ async def test_build_hides_admin_hidden_tags_from_a_regular_user(db, user, admin
     assert regular_entries == []
     assert len(admin_entries) == 1
     assert admin_entries[0].hidden is True
+
+
+@pytest.mark.asyncio
+async def test_build_skips_an_auto_registered_entry_once_it_is_no_longer_installed(db, admin_user, monkeypatch):
+    """Auto-discovery registers an installed model with ALREADY_INSTALLED_NOTE; after an uninstall it must not
+    resurface as a "Browse more models" suggestion (the long stale list on an empty engine)."""
+    tag = ExtendedModelCatalog.build_tag("org/a", "x.gguf")
+    monkeypatch.setattr(svc, "list_models", lambda: _async_return([{"name": tag}]))
+    _stub_repo_files(monkeypatch, {**_REPO, "repo_id": "org/a", "files": [{"filename": "x.gguf", "download_gb": 1.0}]})
+    catalog = ExtendedModelCatalog(db)
+    await catalog.add("org/a", "x.gguf", proxy_url=None)
+
+    monkeypatch.setattr(svc, "list_models", lambda: _async_return([]))
+
+    assert await catalog.build(admin_user) == []
+
+
+@pytest.mark.asyncio
+async def test_remove_if_auto_registered_keeps_a_manually_added_entry(db, monkeypatch):
+    monkeypatch.setattr(svc, "list_models", lambda: _async_return([]))
+    _stub_repo_files(monkeypatch, {**_REPO, "repo_id": "org/a", "files": [{"filename": "x.gguf", "download_gb": 1.0}]})
+    catalog = ExtendedModelCatalog(db)
+    await catalog.add("org/a", "x.gguf", proxy_url=None)
+    tag = ExtendedModelCatalog.build_tag("org/a", "x.gguf")
+
+    await catalog.remove_if_auto_registered(tag)
+
+    assert [e["tag"] for e in await catalog.list()] == [tag]
+
+
+@pytest.mark.asyncio
+async def test_remove_if_auto_registered_drops_an_auto_registered_entry(db, monkeypatch):
+    tag = ExtendedModelCatalog.build_tag("org/a", "x.gguf")
+    monkeypatch.setattr(svc, "list_models", lambda: _async_return([{"name": tag}]))
+    _stub_repo_files(monkeypatch, {**_REPO, "repo_id": "org/a", "files": [{"filename": "x.gguf", "download_gb": 1.0}]})
+    catalog = ExtendedModelCatalog(db)
+    await catalog.add("org/a", "x.gguf", proxy_url=None)
+
+    await catalog.remove_if_auto_registered(tag)
+
+    assert await catalog.list() == []

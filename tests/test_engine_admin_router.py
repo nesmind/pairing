@@ -142,3 +142,23 @@ async def test_set_active_engine_allows_runpod_once_ready(db, monkeypatch):
         assert engine_service.current_engine() == "runpod"
     finally:
         connector_config_cache._cache = {}
+
+
+@pytest.mark.asyncio
+async def test_set_active_engine_clears_browse_more_models_only_on_a_real_change(db, monkeypatch):
+    from app.services.extended_model_catalog_service import ExtendedModelCatalog
+
+    async def fake_broadcast(_path):
+        return []
+
+    monkeypatch.setattr(server_pool_broadcast, "broadcast_refresh", fake_broadcast)
+    catalog = ExtendedModelCatalog(db)
+    await catalog._save([{"tag": "hf.co/a/b:c"}])
+
+    await engine_admin.set_active_engine(
+        ActiveEngineConfig(active_engine=engine_service.DEFAULT_ENGINE), db=db, _admin=None
+    )
+    assert len(await catalog.list()) == 1  # same engine — untouched
+
+    await engine_admin.set_active_engine(ActiveEngineConfig(active_engine="ollama"), db=db, _admin=None)
+    assert await catalog.list() == []

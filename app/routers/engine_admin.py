@@ -17,6 +17,7 @@ from app.schemas import ActiveEngineConfig, EngineCapabilitiesOut, EngineOption,
 from app.services import engine_service, server_pool_broadcast
 from app.services.auth_service import get_current_user, require_admin
 from app.services.engines.registry import registry
+from app.services.extended_model_catalog_service import ExtendedModelCatalog
 
 logger = logging.getLogger("llama_chat")
 
@@ -66,6 +67,8 @@ async def set_active_engine(
     # settings_service.default_model_key) — switching here never needs to touch it, unlike the old shared-key
     # design (confirmed live, 2026-09-22: that one had to explicitly wipe the stored default on every switch,
     # since a single value could otherwise point at a tag the *other* engine doesn't have).
+    if await engine_service.get_active_engine(db) != body.active_engine:
+        await ExtendedModelCatalog(db).clear()
     await engine_service.set_active_engine(db, body.active_engine)
     failures = await server_pool_broadcast.broadcast_refresh("/api/settings/engine/internal-refresh")
     if failures:

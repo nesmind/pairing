@@ -62,7 +62,7 @@
     </nav>
   </div>
 
-  <div class="flex-1 overflow-y-auto">
+  <div class="flex-1 overflow-y-auto [scrollbar-gutter:stable]">
     <!-- Model tab: picks the default model new chats start with — an
          existing conversation's model is changed from that chat's own
          model badge instead (see chat.html/chat.js), not from here, so
@@ -183,7 +183,7 @@
       <section class="space-y-3 border-t border-slate-800 pt-6">
         <h2 class="text-sm font-semibold text-slate-200">Embedding model</h2>
         <p class="text-xs text-slate-500 -mt-2">Powers the Knowledge base (RAG) feature on the Knowledge tab — not used for chat.</p>
-        <div id="embedding-model-catalog" class="space-y-2"></div>
+        <div id="embedding-model-catalog" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
       </section>
       </div>
 

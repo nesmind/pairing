@@ -232,3 +232,23 @@ async def test_auto_detected_path_reports_none_when_nothing_found(monkeypatch):
     result = await matricxon_admin.auto_detected_path(_admin=None)
     assert result.path is None
     assert result.models_path is None
+
+
+@pytest.mark.asyncio
+async def test_update_config_clears_browse_more_models_only_when_the_mode_changes(db, monkeypatch):
+    from app.services.extended_model_catalog_service import ExtendedModelCatalog
+
+    async def fake_broadcast(_path):
+        return []
+
+    monkeypatch.setattr(server_pool_broadcast, "broadcast_refresh", fake_broadcast)
+    catalog = ExtendedModelCatalog(db)
+    await catalog._save([{"tag": "hf.co/a/b:c"}])
+
+    await matricxon_admin.update_config(MatricxonServerConfig(max_loaded_models=2), db=db, _admin=None)
+    assert len(await catalog.list()) == 1
+
+    remote = MatricxonServerConfig(mode="remote", remote_hosts=["http://h:8420"], models_path="/data/m")
+    result = await matricxon_admin.update_config(remote, db=db, _admin=None)
+    assert await catalog.list() == []
+    assert result.models_path == "/data/m"  # storage path survives the switch

@@ -44,6 +44,7 @@ from app.services import (
     settings_service,
 )
 from app.services.auth_service import require_admin
+from app.services.extended_model_catalog_service import ExtendedModelCatalog
 
 logger = logging.getLogger("llama_chat")
 
@@ -61,7 +62,10 @@ async def _save_and_broadcast(db: AsyncSession, body: OllamaServerConfig) -> Non
     its next save or a restart — logged, not raised, since this
     process's own change (already applied above) is the one that
     matters most and did succeed."""
+    previous = await settings_service.get_ollama_server_config(db)
     await settings_service.set_ollama_server_config(db, body)
+    if previous.mode != body.mode:
+        await ExtendedModelCatalog(db).clear()
     ollama_pool.refresh_from_config(body)
     failures = await server_pool_broadcast.broadcast_refresh("/api/settings/ollama/internal-refresh")
     if failures:
@@ -122,6 +126,7 @@ async def apply_config(
     await _save_and_broadcast(db, body)
     proxy_config = await http_proxy_service.get_http_proxy_config(db)
     try:
+        await ExtendedModelCatalog(db).clear()
         return await ollama_process.apply_local_config(body, proxy_url=proxy_config.proxy_url())
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -158,6 +163,7 @@ async def start(db: AsyncSession = Depends(get_db), _admin: User = Depends(requi
     config = await settings_service.get_ollama_server_config(db)
     proxy_config = await http_proxy_service.get_http_proxy_config(db)
     try:
+        await ExtendedModelCatalog(db).clear()
         return await ollama_process.start(config, proxy_url=proxy_config.proxy_url())
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -169,6 +175,7 @@ async def start(db: AsyncSession = Depends(get_db), _admin: User = Depends(requi
 async def stop(db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)):
     config = await settings_service.get_ollama_server_config(db)
     try:
+        await ExtendedModelCatalog(db).clear()
         return await ollama_process.stop(config.binary_path)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
