@@ -16,6 +16,8 @@
  */
 
 const WORKFLOW_ARROW_MARKER_ID = "wf-arrow";
+const isMlStage = (category) => category.startsWith("ml_");
+const FIRST_ML_CATEGORY = Object.keys(WORKFLOW_CATEGORY_COLORS).find(isMlStage);
 
 /** A smooth cubic-bezier path between two nodes' centers, exiting/
  * entering whichever side faces the other node (left/right for a
@@ -23,14 +25,15 @@ const WORKFLOW_ARROW_MARKER_ID = "wf-arrow";
  * edge in WORKFLOW_EDGES is one of these two shapes, so one function
  * covers the whole diagram instead of hand-picking d3.linkHorizontal()
  * only for the strictly-horizontal main chain. */
-function workflowEdgePath(from, to) {
+function workflowEdgePath(from, to, dir) {
   const x1 = from.x + from.w / 2;
   const y1 = from.y + from.h / 2;
   const x2 = to.x + to.w / 2;
   const y2 = to.y + to.h / 2;
   const dx = x2 - x1;
   const dy = y2 - y1;
-  const horizontal = Math.abs(dx) >= Math.abs(dy);
+  // `dir` ('h'/'v') overrides the automatic pick for the few edges where it would run through a node.
+  const horizontal = dir ? dir === "h" : Math.abs(dx) >= Math.abs(dy);
 
   let sx, sy, ex, ey;
   if (horizontal) {
@@ -67,9 +70,12 @@ function renderWorkflowLegend() {
     `<p class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-0.5">Legend</p>` +
     Object.keys(WORKFLOW_CATEGORY_COLORS)
       .map((category) => {
+        const heading = category === FIRST_ML_CATEGORY
+          ? `<p class="mt-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Inside the ML engine (forward pass)</p>`
+          : "";
         const color = WORKFLOW_CATEGORY_COLORS[category];
         const label = escapeHtml(WORKFLOW_CATEGORY_LABELS[category] || category);
-        return `<div class="flex items-center gap-2">
+        return `${heading}<div class="flex items-center gap-2">
           <span class="h-3 w-3 shrink-0 rounded-sm border" style="border-color:${color};background:${color}22"></span>
           <span class="text-slate-300">${label}</span>
         </div>`;
@@ -163,7 +169,7 @@ function initWorkflowDiagram() {
     .data(WORKFLOW_EDGES)
     .join("path")
     .attr("class", (d) => "wf-edge" + (d.branch ? " wf-edge-branch" : ""))
-    .attr("d", (d) => workflowEdgePath(nodesById.get(d.from), nodesById.get(d.to)))
+    .attr("d", (d) => workflowEdgePath(nodesById.get(d.from), nodesById.get(d.to), d.dir))
     .attr("fill", "none")
     .attr("stroke", (d) => ThemeColors.get(d.branch ? "--color-slate-600" : "--color-slate-500"))
     .attr("stroke-width", (d) => (d.branch ? 1.5 : 2))
@@ -190,6 +196,27 @@ function initWorkflowDiagram() {
     .attr("fill", ThemeColors.get("--color-slate-900"))
     .attr("stroke", (d) => WORKFLOW_CATEGORY_COLORS[d.category] || ThemeColors.get("--color-slate-500"))
     .attr("stroke-width", 1.5);
+
+  // ML-engine stages get a tint of their group colour, so the forward-pass stages read apart at a glance.
+  nodeGroups
+    .filter((d) => isMlStage(d.category))
+    .select("rect")
+    .attr("fill", (d) => WORKFLOW_CATEGORY_COLORS[d.category])
+    .attr("fill-opacity", 0.14)
+    .attr("stroke-width", 2);
+
+  root
+    .append("g")
+    .selectAll("text")
+    .data(typeof WORKFLOW_ANNOTATIONS === "undefined" ? [] : WORKFLOW_ANNOTATIONS)
+    .join("text")
+    .attr("x", (d) => d.x)
+    .attr("y", (d) => d.y)
+    .attr("fill", (d) => WORKFLOW_CATEGORY_COLORS[d.group])
+    .attr("font-size", "11px")
+    .attr("font-weight", "700")
+    .attr("letter-spacing", "0.06em")
+    .text((d) => d.text);
 
   nodeGroups.each(function (d) {
     const lines = d.label.split("\n");

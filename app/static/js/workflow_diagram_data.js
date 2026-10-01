@@ -43,6 +43,15 @@ const WORKFLOW_CATEGORY_COLORS = {
   background_task: ThemeColors.chart(7),
   engine: ThemeColors.chart(8),
   broadcast: ThemeColors.chart(5),
+  // The ML engine's forward-pass stages (see workflow_diagram_ml.js): fixed hues, picked to stay apart from
+  // each other and readable on every theme's node background; each group is also tinted into its nodes.
+  ml_pre: "#38bdf8",
+  ml_norm: "#2dd4bf",
+  ml_attn: "#e879f9",
+  ml_ffn: "#facc15",
+  ml_loop: "#fb923c",
+  ml_post: "#4ade80",
+  ml_support: "#94a3b8",
 };
 
 const WORKFLOW_CATEGORY_LABELS = {
@@ -52,6 +61,13 @@ const WORKFLOW_CATEGORY_LABELS = {
   background_task: "Detached background task",
   engine: "ML engine server (models)",
   broadcast: `Pub/sub broadcast (${APP_NAME})`,
+  ml_pre: "Before the layers: prepare the input",
+  ml_norm: "Normalize / residual add",
+  ml_attn: "Attention: tokens look at each other",
+  ml_ffn: "Feed-forward (FFN): per-token knowledge",
+  ml_loop: "Loops: layers ×N, one token at a time",
+  ml_post: "After the layers: logits → token → text",
+  ml_support: "Supporting: matmul kernels, caches",
 };
 
 const WORKFLOW_NODES = [
@@ -178,7 +194,7 @@ const WORKFLOW_NODES = [
   },
   {
     id: "ml_engine_server",
-    label: "ML engine",
+    label: "ML engine\n(inference stages below)",
     category: "engine",
     x: 560,
     y: 920,
@@ -196,7 +212,7 @@ const WORKFLOW_NODES = [
     label: "publish_chunk()",
     category: "broadcast",
     x: 560,
-    y: 1030,
+    y: 1600,
     w: 200,
     h: 64,
     detail: {
@@ -211,7 +227,7 @@ const WORKFLOW_NODES = [
     label: "relay loop re-yields",
     category: "service",
     x: 560,
-    y: 1140,
+    y: 1710,
     w: 210,
     h: 64,
     detail: {
@@ -226,7 +242,7 @@ const WORKFLOW_NODES = [
     label: "chat.js renders incrementally",
     category: "frontend",
     x: 560,
-    y: 1250,
+    y: 1820,
     w: 220,
     h: 64,
     detail: {
@@ -241,7 +257,7 @@ const WORKFLOW_NODES = [
     label: "status=\"complete\" + publish_done",
     category: "service",
     x: 560,
-    y: 1360,
+    y: 1930,
     w: 230,
     h: 64,
     detail: {
@@ -303,7 +319,7 @@ const WORKFLOW_NODES = [
     label: "cosine-similarity ranking",
     category: "service",
     x: 1100,
-    y: 575,
+    y: 725,
     w: 200,
     h: 60,
     detail: {
@@ -318,7 +334,7 @@ const WORKFLOW_NODES = [
     label: "build_augmented_system_prompt()",
     category: "service",
     x: 860,
-    y: 575,
+    y: 725,
     w: 200,
     h: 60,
     detail: {
@@ -382,7 +398,7 @@ const WORKFLOW_NODES = [
     label: "reply_termination_service",
     category: "service",
     x: 860,
-    y: 700,
+    y: 850,
     w: 230,
     h: 64,
     detail: {
@@ -399,7 +415,7 @@ const WORKFLOW_NODES = [
     label: "GET /{id}/subscribe",
     category: "router",
     x: 860,
-    y: 1010,
+    y: 1580,
     w: 220,
     h: 60,
     detail: {
@@ -414,7 +430,7 @@ const WORKFLOW_NODES = [
     label: "reply_cross_instance_service",
     category: "service",
     x: 860,
-    y: 1140,
+    y: 1710,
     w: 220,
     h: 60,
     detail: {
@@ -446,7 +462,7 @@ const WORKFLOW_NODES = [
     label: "channel delivery mode",
     category: "service",
     x: 240,
-    y: 1030,
+    y: 1600,
     w: 220,
     h: 60,
     detail: {
@@ -463,7 +479,7 @@ const WORKFLOW_NODES = [
     label: "schedule_smart_title_generation()",
     category: "background_task",
     x: 860,
-    y: 1360,
+    y: 1930,
     w: 250,
     h: 64,
     detail: {
@@ -485,7 +501,6 @@ const WORKFLOW_EDGES = [
   { from: "reply_gen_service", to: "run_generation_task", branch: false },
   { from: "run_generation_task", to: "inference_client_stream", branch: false },
   { from: "inference_client_stream", to: "ml_engine_server", branch: false },
-  { from: "ml_engine_server", to: "broadcast_publish", branch: false },
   { from: "broadcast_publish", to: "relay_back", branch: false },
   { from: "relay_back", to: "chat_js_render", branch: false },
   { from: "chat_js_render", to: "stream_done", branch: false },
@@ -494,7 +509,6 @@ const WORKFLOW_EDGES = [
   { from: "chat_prompt_service", to: "rag_retrieve", branch: true },
   { from: "rag_retrieve", to: "rag_embed", branch: true },
   { from: "rag_embed", to: "rag_embed_ml_engine", branch: true },
-  { from: "rag_embed_ml_engine", to: "rag_rank", branch: true },
   { from: "rag_rank", to: "rag_augment", branch: true },
   { from: "rag_augment", to: "chat_prompt_service", branch: true },
 
