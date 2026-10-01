@@ -159,6 +159,10 @@ async def chat_stream(model: str, messages: list[dict], params: dict) -> AsyncGe
         options["seed"] = params["seed"]
 
     payload = {"model": model, "messages": messages, "options": options, "stream": True}
+    # The reply's id (set by reply_generation_service): lets stop_model cancel just this reply later, without
+    # unloading the model for everyone else - see stop_model below.
+    if params.get("request_id"):
+        payload["request_id"] = params["request_id"]
 
     # Populated by _raw_content_chunks_from below (overwritten on every attempt, since stream_with_failover can
     # call it more than once) and read back once the stream finishes, to attach telemetry to the span below —
@@ -234,14 +238,18 @@ async def chat_once(model: str, messages: list[dict], params: dict | None = None
     return text
 
 
-async def stop_model(model: str) -> None:
-    """Forces Matricxon to unload `model` right now — `keep_alive: 0` with no messages, which
-    ../matricxon/app/schemas/chat.py's ChatRequest.is_unload_call() recognizes as an explicit unload, the exact
-    same wire shape app.services.ollama_client.stop_model already sends to Ollama. Sent to every configured host;
-    see that function's own docstring for the full reasoning, identical here."""
+async def stop_model(model: str, request_id: str | None = None) -> None:
+    """Stops a reply on Matricxon: an empty `keep_alive: 0` call, which ../matricxon/app/schemas/chat.py's
+    ChatRequest.is_unload_call() recognizes. With `request_id` (the id chat_stream sent) Matricxon cancels only
+    that reply — the model stays loaded and other users' replies are untouched. Without one it is the old
+    "unload this model now" (the same wire shape app.services.ollama_client.stop_model sends to Ollama). Sent to
+    every configured host; see that function's own docstring for the full reasoning, identical here."""
+    body: dict = {"model": model, "messages": [], "keep_alive": 0}
+    if request_id is not None:
+        body["request_id"] = request_id
     for host in matricxon_pool.get_effective_hosts():
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=2.0)) as client:
-                await client.post(f"{host}/api/chat", json={"model": model, "messages": [], "keep_alive": 0})
+                await client.post(f"{host}/api/chat", json=body)
         except httpx.HTTPError:
             pass

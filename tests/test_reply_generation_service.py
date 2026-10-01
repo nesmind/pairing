@@ -270,7 +270,7 @@ async def test_cancel_on_disconnect_stops_generation_and_marks_it_errored(monkey
     # _persist_cancelled_reply), not reply_generation_service directly.
     stopped_models: list[str] = []
 
-    async def fake_stop_model(model):
+    async def fake_stop_model(model, request_id=None):
         stopped_models.append(model)
 
     monkeypatch.setattr(reply_termination_service, "stop_model", fake_stop_model)
@@ -338,7 +338,7 @@ async def test_cancel_generation_stops_an_in_progress_reply_and_marks_it_errored
 
     stopped_models: list[str] = []
 
-    async def fake_stop_model(model):
+    async def fake_stop_model(model, request_id=None):
         stopped_models.append(model)
 
     monkeypatch.setattr(reply_termination_service, "stop_model", fake_stop_model)
@@ -477,9 +477,11 @@ async def test_cross_instance_deletion_detected_mid_stream_also_stops_the_model(
     monkeypatch.setattr(reply_generation_service, "chat_stream", fake_chat_stream)
 
     stopped_models: list[str] = []
+    stopped_request_ids: list[str | None] = []
 
-    async def fake_stop_model(model):
+    async def fake_stop_model(model, request_id=None):
         stopped_models.append(model)
+        stopped_request_ids.append(request_id)
 
     monkeypatch.setattr(reply_generation_service, "stop_model", fake_stop_model)
 
@@ -505,6 +507,8 @@ async def test_cross_instance_deletion_detected_mid_stream_also_stops_the_model(
     await _drain_background_tasks()
 
     assert stopped_models == ["fake-model"]
+    # Stops only this reply (its message id), never the whole model for other users.
+    assert stopped_request_ids == [message_id]
 
     async with session_factory() as verify_db:
         message = await verify_db.get(Message, message_id)
@@ -644,9 +648,11 @@ async def test_generation_times_out_and_marks_it_errored(monkeypatch):
     # compute phase on its own. Faked here rather than hitting a real
     # Ollama host from a unit test.
     stopped_models: list[str] = []
+    stopped_request_ids: list[str | None] = []
 
-    async def fake_stop_model(model):
+    async def fake_stop_model(model, request_id=None):
         stopped_models.append(model)
+        stopped_request_ids.append(request_id)
 
     monkeypatch.setattr(reply_generation_service, "stop_model", fake_stop_model)
 
@@ -661,6 +667,8 @@ async def test_generation_times_out_and_marks_it_errored(monkeypatch):
 
     assert "timed out" in events[-1]["error"]
     message_id = events[0]["message_id"]
+    # Only this reply is stopped (by its message id) - never the whole model for other users.
+    assert stopped_request_ids == [message_id]
 
     async with session_factory() as verify_db:
         message = await verify_db.get(Message, message_id)
@@ -701,7 +709,7 @@ async def test_has_image_uses_the_separate_vision_timeout_setting(monkeypatch):
         yield "unreachable"  # pragma: no cover
 
     monkeypatch.setattr(reply_generation_service, "chat_stream", fake_chat_stream)
-    monkeypatch.setattr(reply_generation_service, "stop_model", lambda _model: asyncio.sleep(0))
+    monkeypatch.setattr(reply_generation_service, "stop_model", lambda _model, request_id=None: asyncio.sleep(0))
 
     async with session_factory() as db:
         conversation = await db.get(Conversation, conversation_id)

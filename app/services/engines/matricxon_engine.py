@@ -40,8 +40,8 @@ class MatricxonEngine(InferenceEngine):
     async def embed(self, text: str, model: str) -> list[float]:
         return await matricxon_client.embed(text, model)
 
-    async def stop_model(self, model: str) -> None:
-        await matricxon_client.stop_model(model)
+    async def stop_model(self, model: str, request_id: str | None = None) -> None:
+        await matricxon_client.stop_model(model, request_id)
 
     def pull_model_stream(self, tag: str) -> AsyncGenerator[dict, None]:
         return matricxon_admin.pull_model_stream(tag)

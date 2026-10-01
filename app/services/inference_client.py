@@ -63,8 +63,8 @@ async def chat_once(model: str, messages: list[dict], params: dict | None = None
         raise InferenceError(str(exc)) from exc
 
 
-async def stop_model(model: str) -> None:
-    await registry.active().stop_model(model)
+async def stop_model(model: str, request_id: str | None = None) -> None:
+    await registry.active().stop_model(model, request_id)
 
 
 async def pull_model_stream(tag: str):

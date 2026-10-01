@@ -183,7 +183,7 @@ async def _run_generation(
             last_flush = time.monotonic()
             try:
                 async with asyncio.timeout(effective_timeout):
-                    async for chunk in chat_stream(model, ollama_messages, params):
+                    async for chunk in chat_stream(model, ollama_messages, {**(params or {}), "request_id": message_id}):
                         full_reply += chunk
                         unflushed += chunk
                         reply_broadcast_service.publish_chunk(conversation_id, chunk)
@@ -198,7 +198,7 @@ async def _run_generation(
                             # stop_model (same as TimeoutError below): a bare `return` alone never stops the engine.
                             fresh = await reply_cross_instance_service.refresh_or_none(db, message)
                             if fresh is None or fresh.status == "deleted":
-                                await stop_model(model)
+                                await stop_model(model, request_id=message_id)
                                 return
             except InferenceError as exc:
                 # Keeps whatever was generated before the failure — true
@@ -217,7 +217,7 @@ async def _run_generation(
                 # See ollama_client.stop_model's own docstring: closing
                 # our side of the connection above doesn't reliably stop
                 # an in-progress llama.cpp compute phase on its own.
-                await stop_model(model)
+                await stop_model(model, request_id=message_id)
                 return
             except asyncio.CancelledError:
                 # cancel_on_disconnect or cancel_generation. Cancellation

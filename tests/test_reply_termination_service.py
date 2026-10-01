@@ -44,7 +44,7 @@ async def test_persist_cancelled_reply_stops_the_model_when_the_message_row_is_g
     monkeypatch.setattr(reply_termination_service, "AsyncSessionLocal", session_factory)
     stopped_models = []
 
-    async def fake_stop_model(model):
+    async def fake_stop_model(model, request_id=None):
         stopped_models.append(model)
 
     monkeypatch.setattr(reply_termination_service, "stop_model", fake_stop_model)
@@ -66,7 +66,7 @@ async def test_persist_cancelled_reply_writes_the_message_and_stops_the_model(mo
     conversation_id, message_id = await _make_streaming_message(session_factory)
     stopped_models = []
 
-    async def fake_stop_model(model):
+    async def fake_stop_model(model, request_id=None):
         stopped_models.append(model)
 
     monkeypatch.setattr(reply_termination_service, "stop_model", fake_stop_model)

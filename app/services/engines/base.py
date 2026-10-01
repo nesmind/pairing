@@ -112,7 +112,9 @@ class InferenceEngine(ABC):
     async def embed(self, text: str, model: str) -> list[float]:
         raise EngineCapabilityError(f"{self.display_name} does not support embeddings.")
 
-    async def stop_model(self, model: str) -> None:  # noqa: B027 - deliberate no-op default, not abstract
+    async def stop_model(  # noqa: B027 - deliberate no-op default, not abstract
+        self, model: str, request_id: str | None = None
+    ) -> None:
         """Best-effort cleanup, not a real operation for every engine — defaults to
         a no-op rather than raising, matching how every existing caller already
         treats this (see app.services.ollama_client.stop_model's own docstring:

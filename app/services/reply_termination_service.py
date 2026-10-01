@@ -45,4 +45,4 @@ async def _persist_cancelled_reply(message_id: str, model: str, full_reply: str,
             await mark_error(
                 db, message, full_reply, conversation_id, "Cancelled: left the chat before this reply finished."
             )
-    await stop_model(model)
+    await stop_model(model, request_id=message_id)

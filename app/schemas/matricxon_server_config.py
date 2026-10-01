@@ -44,6 +44,21 @@ class MatricxonServerConfig(BaseModel):
     # vars, which still work if set on the process directly) — device has nothing but "cpu" to meaningfully choose
     # between today (matricxon has no GPU support yet), and keep_alive tuning wasn't worth the extra form field.
     max_loaded_models: int | None = None
+    # Local-mode only — how many minutes an idle model stays in RAM before Matricxon unloads it (sent as
+    # MATRICXON_DEFAULT_KEEP_ALIVE_SECONDS, minutes * 60). None means "use matricxon's own default"
+    # (Settings.default_keep_alive_seconds, 5 minutes). Unloading also drops the chat's prompt cache, so the next
+    # message reloads the model and re-processes the whole conversation — a longer value avoids that at the cost
+    # of holding the model's RAM while idle. Bounded to 1 minute - 24 hours.
+    keep_alive_minutes: int | None = Field(default=None, ge=1, le=1440)
+    # Local-mode only — concurrent-user tuning, each None meaning "use matricxon's own default" (see
+    # ../matricxon/app/config.py): how many conversations' caches each loaded model keeps so users sharing a model
+    # don't overwrite each other's (MATRICXON_PROMPT_CACHE_SLOTS, default 4), the memory those caches may use
+    # together in MB (MATRICXON_PROMPT_CACHE_BUDGET_MB, default 2048; whichever limit is hit first evicts the least
+    # recently used conversation), and how many replies run at once on one model, their decode steps batched into
+    # one forward pass (MATRICXON_MAX_DECODE_BATCH, default 8; more users than this wait in line).
+    prompt_cache_slots: int | None = Field(default=None, ge=1, le=64)
+    prompt_cache_budget_mb: int | None = Field(default=None, ge=64, le=1_048_576)
+    max_decode_batch: int | None = Field(default=None, ge=1, le=64)
     # Local-mode only — passed as MATRICXON_MEMORY_SAFETY_MARGIN. Defaults to 1.2, matching matricxon's own
     # Settings.memory_safety_margin (1.2x — see ../matricxon/app/config.py); None (a blank form field) means "use
     # matricxon's own built-in default". Bounded to the same 1.1-1.8 range matricxon's own Settings field

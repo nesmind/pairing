@@ -42,7 +42,8 @@ class OllamaEngine(InferenceEngine):
     async def embed(self, text: str, model: str) -> list[float]:
         return await ollama_client.embed(text, model)
 
-    async def stop_model(self, model: str) -> None:
+    async def stop_model(self, model: str, request_id: str | None = None) -> None:
+        # Ollama can only unload the whole model (no per-request cancel), so the id is unused here.
         await ollama_client.stop_model(model)
 
     def pull_model_stream(self, tag: str) -> AsyncGenerator[dict, None]:

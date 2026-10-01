@@ -1230,7 +1230,7 @@
               <div class="grid grid-cols-2 gap-3">
                 <div>
                   <label class="block text-xs font-medium text-slate-400 mb-1">Max loaded models</label>
-                  <input data-field="max_loaded_models" type="number" min="0" placeholder="auto" title="Maximum number of models Matricxon keeps loaded in memory at the same time. Leave blank for Matricxon's own default."
+                  <input data-field="max_loaded_models" type="number" min="0" placeholder="2" title="Maximum number of models Matricxon keeps loaded in memory at the same time (default 2: the chat model plus the small embedding model used for document search, so searching documents doesn't unload the chat model). Leave blank for Matricxon's own default."
                     class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
                 </div>
                 <div>
@@ -1270,6 +1270,26 @@
                 <div>
                   <label class="block text-xs font-medium text-slate-400 mb-1">CPU threads (optional)</label>
                   <input data-field="torch_threads" type="number" min="1" max="256" placeholder="all cores" title="How many CPU threads Matricxon uses for generation — both PyTorch and the native C kernels (MATRICXON_TORCH_THREADS). Fewer threads run cooler and leave the machine more responsive, at some cost in speed. Leave blank to use every core (Matricxon's own default)."
+                    class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-400 mb-1">Keep model loaded for (minutes)</label>
+                  <input data-field="keep_alive_minutes" type="number" min="1" max="1440" placeholder="5" title="How long an idle model stays in memory before Matricxon unloads it. After that the next message reloads the model and re-processes the whole conversation (no cache). Longer keeps chats fast but holds the model's RAM while idle. 1 to 1440 (24 hours); leave blank for Matricxon's own default (5)."
+                    class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-400 mb-1">Cached conversations per model</label>
+                  <input data-field="prompt_cache_slots" type="number" min="1" max="64" placeholder="4" title="How many conversations' caches each loaded model keeps, so users sharing a model don't make each other re-read their whole chat history. Whichever of this or the memory budget is hit first drops the least recently used conversation. Leave blank for Matricxon's own default (4)."
+                    class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-400 mb-1">Cache memory budget (MB)</label>
+                  <input data-field="prompt_cache_budget_mb" type="number" min="64" max="1048576" placeholder="2048" title="Memory the cached conversations of one model may use together. Each cached conversation grows with its context length. Leave blank for Matricxon's own default (2048)."
+                    class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-400 mb-1">Concurrent replies per model</label>
+                  <input data-field="max_decode_batch" type="number" min="1" max="64" placeholder="8" title="How many replies run at the same time on one loaded model. Their generation steps are batched into one pass, so several users cost little more than one; more users than this wait in line. Leave blank for Matricxon's own default (8)."
                     class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
                 </div>
               </div>

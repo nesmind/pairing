@@ -456,3 +456,75 @@ def test_write_env_file_preserves_unrelated_lines(tmp_path):
 def test_write_env_file_is_a_noop_when_the_project_dir_cannot_be_resolved(tmp_path, monkeypatch):
     monkeypatch.setattr(matricxon_process, "_DEFAULT_PROJECT_DIR", tmp_path / "nowhere")
     matricxon_process.write_env_file(_config())  # must not raise
+
+
+@pytest.mark.parametrize("value", [0, 1441])
+def test_keep_alive_minutes_rejects_out_of_range_values(value):
+    with pytest.raises(ValidationError):
+        MatricxonServerConfig(keep_alive_minutes=value)
+
+
+def test_keep_alive_minutes_is_sent_to_matricxon_as_seconds():
+    env = matricxon_process._build_env(_config(keep_alive_minutes=30))
+    assert env["MATRICXON_DEFAULT_KEEP_ALIVE_SECONDS"] == "1800"
+
+
+def test_a_blank_keep_alive_is_not_sent_so_matricxon_keeps_its_own_default():
+    assert "MATRICXON_DEFAULT_KEEP_ALIVE_SECONDS" not in matricxon_process._build_env(_config())
+
+
+def test_write_env_file_persists_and_clears_keep_alive(tmp_path):
+    checkout = _make_checkout(tmp_path)
+    matricxon_process.write_env_file(_config(project_dir=str(checkout), keep_alive_minutes=60))
+    assert "MATRICXON_DEFAULT_KEEP_ALIVE_SECONDS=3600" in (checkout / ".env").read_text()
+
+    matricxon_process.write_env_file(_config(project_dir=str(checkout), keep_alive_minutes=None))
+    assert "MATRICXON_DEFAULT_KEEP_ALIVE_SECONDS" not in (checkout / ".env").read_text()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("prompt_cache_slots", 0),
+        ("prompt_cache_slots", 65),
+        ("prompt_cache_budget_mb", 63),
+        ("max_decode_batch", 0),
+        ("max_decode_batch", 65),
+    ],
+)
+def test_concurrency_tuning_rejects_out_of_range_values(field, value):
+    with pytest.raises(ValidationError):
+        MatricxonServerConfig(**{field: value})
+
+
+def test_concurrency_tuning_is_sent_to_matricxon_only_when_set():
+    assert not any(
+        key in matricxon_process._build_env(_config())
+        for key in (
+            "MATRICXON_PROMPT_CACHE_SLOTS",
+            "MATRICXON_PROMPT_CACHE_BUDGET_MB",
+            "MATRICXON_MAX_DECODE_BATCH",
+        )
+    )
+
+    env = matricxon_process._build_env(
+        _config(prompt_cache_slots=6, prompt_cache_budget_mb=4096, max_decode_batch=4)
+    )
+
+    assert env["MATRICXON_PROMPT_CACHE_SLOTS"] == "6"
+    assert env["MATRICXON_PROMPT_CACHE_BUDGET_MB"] == "4096"
+    assert env["MATRICXON_MAX_DECODE_BATCH"] == "4"
+
+
+def test_write_env_file_persists_and_clears_concurrency_tuning(tmp_path):
+    checkout = _make_checkout(tmp_path)
+    matricxon_process.write_env_file(
+        _config(project_dir=str(checkout), prompt_cache_slots=6, max_decode_batch=4)
+    )
+    text = (checkout / ".env").read_text()
+    assert "MATRICXON_PROMPT_CACHE_SLOTS=6" in text and "MATRICXON_MAX_DECODE_BATCH=4" in text
+    assert "MATRICXON_PROMPT_CACHE_BUDGET_MB" not in text
+
+    matricxon_process.write_env_file(_config(project_dir=str(checkout)))
+    text = (checkout / ".env").read_text()
+    assert "MATRICXON_PROMPT_CACHE_SLOTS" not in text and "MATRICXON_MAX_DECODE_BATCH" not in text

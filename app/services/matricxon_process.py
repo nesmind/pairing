@@ -104,12 +104,30 @@ def _is_running(project_dir: Path) -> bool:
     return True
 
 
+def _concurrency_env_values(config: MatricxonServerConfig) -> dict[str, str | None]:
+    """The concurrent-user tuning fields as env values (None = unset, matricxon's own default)."""
+    return {
+        "MATRICXON_PROMPT_CACHE_SLOTS": _int_or_none(config.prompt_cache_slots),
+        "MATRICXON_PROMPT_CACHE_BUDGET_MB": _int_or_none(config.prompt_cache_budget_mb),
+        "MATRICXON_MAX_DECODE_BATCH": _int_or_none(config.max_decode_batch),
+    }
+
+
+def _int_or_none(value: int | None) -> str | None:
+    return str(value) if value is not None else None
+
+
 def _build_env(config: MatricxonServerConfig, proxy_url: str | None = None) -> dict[str, str]:
     env = {**os.environ}
     if config.models_path is not None:
         env["MATRICXON_MODELS_DIR"] = config.models_path
     if config.max_loaded_models is not None:
         env["MATRICXON_MAX_LOADED_MODELS"] = str(config.max_loaded_models)
+    if config.keep_alive_minutes is not None:
+        env["MATRICXON_DEFAULT_KEEP_ALIVE_SECONDS"] = str(config.keep_alive_minutes * 60)
+    for variable, value in _concurrency_env_values(config).items():
+        if value is not None:
+            env[variable] = value
     if config.memory_safety_margin is not None:
         env["MATRICXON_MEMORY_SAFETY_MARGIN"] = str(config.memory_safety_margin)
     if config.torch_threads is not None:
@@ -148,6 +166,10 @@ def write_env_file(config: MatricxonServerConfig) -> None:
             "MATRICXON_MAX_LOADED_MODELS": (
                 str(config.max_loaded_models) if config.max_loaded_models is not None else None
             ),
+            "MATRICXON_DEFAULT_KEEP_ALIVE_SECONDS": (
+                str(config.keep_alive_minutes * 60) if config.keep_alive_minutes is not None else None
+            ),
+            **_concurrency_env_values(config),
             "MATRICXON_MEMORY_SAFETY_MARGIN": (
                 str(config.memory_safety_margin) if config.memory_safety_margin is not None else None
             ),

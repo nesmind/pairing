@@ -2329,6 +2329,10 @@ function collectServerConfig(server, section) {
       project_dir: isRemote ? null : section.querySelector('[data-field="project_dir"]').value.trim() || null,
       models_path: isRemote ? keptModelsPath() : section.querySelector('[data-field="models_path"]').value.trim() || null,
       max_loaded_models: isRemote ? null : intFieldOrNull(section, "max_loaded_models"),
+      keep_alive_minutes: isRemote ? null : intFieldOrNull(section, "keep_alive_minutes"),
+      prompt_cache_slots: isRemote ? null : intFieldOrNull(section, "prompt_cache_slots"),
+      prompt_cache_budget_mb: isRemote ? null : intFieldOrNull(section, "prompt_cache_budget_mb"),
+      max_decode_batch: isRemote ? null : intFieldOrNull(section, "max_decode_batch"),
       memory_safety_margin: isRemote ? null : floatFieldOrNull(section, "memory_safety_margin"),
       log_level: isRemote ? 0 : parseInt(section.querySelector('[data-field="log_level"]').value, 10),
       enable_quantized_native_compute:
@@ -2400,6 +2404,10 @@ async function loadServerSection(server) {
     modelsPathInput.dataset.loadedValue = config.models_path ?? ""; // see the save handler's own confirm check
     modelsPathInput.placeholder = autoDetected.models_path || "/var/lib/models";
     section.querySelector('[data-field="max_loaded_models"]').value = config.max_loaded_models ?? "";
+    section.querySelector('[data-field="keep_alive_minutes"]').value = config.keep_alive_minutes ?? "";
+    for (const field of ["prompt_cache_slots", "prompt_cache_budget_mb", "max_decode_batch"]) {
+      section.querySelector(`[data-field="${field}"]`).value = config[field] ?? "";
+    }
     section.querySelector('[data-field="memory_safety_margin"]').value = config.memory_safety_margin ?? "";
     section.querySelector('[data-field="log_level"]').value = String(config.log_level ?? 0);
     section.querySelector('[data-field="enable_quantized_native_compute"]').checked =

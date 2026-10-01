@@ -197,6 +197,7 @@ def _chat_params():
 @pytest.mark.asyncio
 async def test_chat_stream_routes_the_actual_http_call_through_stream_with_failover(monkeypatch):
     seen_hosts: list[str] = []
+    sent_payloads: list[dict] = []
 
     async def fake_stream_with_failover(make_stream):
         async for chunk in make_stream("http://chosen-by-pool:8420"):
@@ -231,6 +232,7 @@ async def test_chat_stream_routes_the_actual_http_call_through_stream_with_failo
             return False
 
         def stream(self, _method, url, json):
+            sent_payloads.append(json)
             return _FakeStreamCtx(url)
 
     monkeypatch.setattr(httpx, "AsyncClient", lambda **_kw: _FakeStreamClient())
@@ -239,6 +241,11 @@ async def test_chat_stream_routes_the_actual_http_call_through_stream_with_failo
 
     assert result == ["hi"]
     assert seen_hosts == ["http://chosen-by-pool:8420/api/chat"]
+    assert "request_id" not in sent_payloads[0]  # no id given -> none sent
+
+    with_id = {**_chat_params(), "request_id": "msg-1"}
+    _ = [c async for c in matricxon_client.chat_stream("fake-model", [], with_id)]
+    assert sent_payloads[1]["request_id"] == "msg-1"
 
 
 @pytest.mark.asyncio
@@ -389,6 +396,22 @@ async def test_stop_model_sends_keep_alive_zero_to_every_configured_host(monkeyp
     assert calls == [
         ("http://host-a:8420/api/chat", {"model": "mistral3:latest", "messages": [], "keep_alive": 0}),
         ("http://host-b:8420/api/chat", {"model": "mistral3:latest", "messages": [], "keep_alive": 0}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_stop_model_with_a_request_id_cancels_only_that_reply(monkeypatch):
+    calls: list[tuple[str, dict]] = []
+    monkeypatch.setattr(matricxon_pool, "get_effective_hosts", lambda: ["http://host-a:8420"])
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kw: _RecordingPostClient(calls))
+
+    await matricxon_client.stop_model("mistral3:latest", "msg-1")
+
+    assert calls == [
+        (
+            "http://host-a:8420/api/chat",
+            {"model": "mistral3:latest", "messages": [], "keep_alive": 0, "request_id": "msg-1"},
+        )
     ]
 
 
