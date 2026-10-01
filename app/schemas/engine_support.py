@@ -12,4 +12,5 @@ class EngineSupportResponse(BaseModel):
     architectures: list[str] = []
     quantizations: list[str] = []
     moe_architectures: list[str] = []
+    vision_architectures: list[str] = []
     error: str | None = None

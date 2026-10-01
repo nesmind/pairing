@@ -34,7 +34,7 @@ async def test_ollama_is_reported_unavailable_without_asking_matricxon(monkeypat
     assert result.active_engine == "ollama"
     assert result.available is False
     assert result.architectures == [] and result.quantizations == []
-    assert result.moe_architectures == []
+    assert result.moe_architectures == [] and result.vision_architectures == []
 
 
 @pytest.mark.asyncio
@@ -46,6 +46,7 @@ async def test_matricxon_returns_its_real_capability_lists(monkeypatch):
             "supported_architectures": ["llama", "phi2"],
             "supported_quantizations": ["F16", "Q4_K"],
             "moe_supported_architectures": ["llama"],
+            "vision_supported_architectures": ["llama", "phi2"],
         }
 
     monkeypatch.setattr(matricxon_client, "get_capabilities", capabilities)
@@ -56,6 +57,7 @@ async def test_matricxon_returns_its_real_capability_lists(monkeypatch):
     assert result.architectures == ["llama", "phi2"]
     assert result.quantizations == ["F16", "Q4_K"]
     assert result.moe_architectures == ["llama"]
+    assert result.vision_architectures == ["llama", "phi2"]
     assert result.error is None
 
 

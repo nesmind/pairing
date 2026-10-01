@@ -16,6 +16,7 @@ const ARCHITECTURE_LABELS = {
   phi2: "Phi-2 (moondream2)",
   qwen2: "Qwen 2 / 2.5",
   qwen3: "Qwen 3",
+  qwen35: "Qwen 3.5 (hybrid Gated DeltaNet)",
   granite: "IBM Granite",
   granitemoe: "IBM Granite MoE",
   nemotron_h: "NVIDIA Nemotron-H (hybrid Mamba)",
@@ -39,8 +40,9 @@ function _engineSupportChip(text, extraClass = "") {
   return `<span class="inline-flex items-center rounded-md border border-slate-700 bg-slate-800/60 px-2 py-0.5 font-mono text-xs text-slate-200 ${extraClass}">${escapeHtml(text)}</span>`;
 }
 
-function _renderArchitectures(architectures, moeArchitectures = []) {
+function _renderArchitectures(architectures, moeArchitectures = [], visionArchitectures = []) {
   const moeSet = new Set(moeArchitectures);
+  const visionSet = new Set(visionArchitectures);
   const section = document.createElement("div");
   const cards = [...architectures]
     .sort((a, b) => Number(EMBEDDING_ARCHITECTURES.has(a)) - Number(EMBEDDING_ARCHITECTURES.has(b)) || a.localeCompare(b))
@@ -49,11 +51,14 @@ function _renderArchitectures(architectures, moeArchitectures = []) {
       const moeBadge = moeSet.has(name)
         ? '<span class="text-[10px] uppercase tracking-wide text-amber-400">MoE</span>'
         : "";
+      const visionBadge = visionSet.has(name)
+        ? '<span class="text-[10px] uppercase tracking-wide text-sky-400">+Vision</span>'
+        : "";
       return (
         `<div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3">` +
         `<p class="text-sm font-medium text-slate-100">${escapeHtml(ARCHITECTURE_LABELS[name] || name)}</p>` +
         `<p class="mt-1 flex items-center gap-2">${_engineSupportChip(name)}` +
-        `<span class="text-[10px] uppercase tracking-wide text-slate-500">${kind}</span>${moeBadge}</p></div>`
+        `<span class="text-[10px] uppercase tracking-wide text-slate-500">${kind}</span>${moeBadge}${visionBadge}</p></div>`
       );
     });
   section.innerHTML =
@@ -95,7 +100,7 @@ async function loadEngineSupport() {
       throw new Error(support.error);
     } else {
       contentEl.replaceChildren(
-        _renderArchitectures(support.architectures, support.moe_architectures),
+        _renderArchitectures(support.architectures, support.moe_architectures, support.vision_architectures),
         _renderQuantizations(support.quantizations)
       );
     }
