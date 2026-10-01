@@ -95,7 +95,6 @@ def test_is_running_false_when_process_lookup_fails(tmp_path, monkeypatch):
 def test_build_env_omits_unset_fields():
     env = matricxon_process._build_env(_config())
     assert "MATRICXON_MAX_LOADED_MODELS" not in env
-    assert "MATRICXON_MEMORY_SAFETY_MARGIN" not in env
     assert "MATRICXON_MODELS_DIR" not in env
     assert "MATRICXON_TORCH_THREADS" not in env
 
@@ -149,22 +148,28 @@ def test_memory_safety_margin_rejects_values_outside_the_matricxon_supported_ran
         MatricxonServerConfig(memory_safety_margin=value)
 
 
-def test_build_env_defaults_quantized_native_compute_and_log_level_off():
-    """Unlike max_loaded_models/memory_safety_margin, these two are never omitted — they're always concrete
-    (bool/int, not Optional), and their defaults already match matricxon's own (see
-    ../matricxon/app/config.py's Settings.enable_quantized_native_compute/log_level)."""
+def test_build_env_fresh_install_defaults():
+    """A fresh install's defaults, which match matricxon's own (see ../matricxon/app/config.py's Settings):
+    memory safety margin 1.2, quantized native compute on with the native C kernels, log level 0."""
     env = matricxon_process._build_env(_config())
-    assert env["MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE"] == "false"
-    assert env["MATRICXON_GEMV_BACKEND"] == "numba"
+    assert env["MATRICXON_MEMORY_SAFETY_MARGIN"] == "1.2"
+    assert env["MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE"] == "true"
+    assert env["MATRICXON_GEMV_BACKEND"] == "native"
     assert env["MATRICXON_LOG_LEVEL"] == "0"
+
+
+def test_a_blank_memory_safety_margin_is_not_passed_so_matricxon_uses_its_own_default():
+    assert "MATRICXON_MEMORY_SAFETY_MARGIN" not in matricxon_process._build_env(
+        _config(memory_safety_margin=None)
+    )
 
 
 def test_build_env_passes_through_quantized_native_compute_and_log_level():
     env = matricxon_process._build_env(
-        _config(enable_quantized_native_compute=True, gemv_backend="native", log_level=2)
+        _config(enable_quantized_native_compute=False, gemv_backend="numba", log_level=2)
     )
-    assert env["MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE"] == "true"
-    assert env["MATRICXON_GEMV_BACKEND"] == "native"
+    assert env["MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE"] == "false"
+    assert env["MATRICXON_GEMV_BACKEND"] == "numba"
     assert env["MATRICXON_LOG_LEVEL"] == "2"
 
 
@@ -413,10 +418,11 @@ def test_write_env_file_omits_unset_optional_fields(tmp_path):
     env_text = (checkout / ".env").read_text()
     assert "MATRICXON_MODELS_DIR" not in env_text
     assert "MATRICXON_MAX_LOADED_MODELS" not in env_text
-    assert "MATRICXON_MEMORY_SAFETY_MARGIN" not in env_text
     assert "MATRICXON_TORCH_THREADS" not in env_text
-    # These two are never Optional (see MatricxonServerConfig) — always written, real defaults.
-    assert "MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE=false" in env_text
+    # Never Optional (see MatricxonServerConfig) — always written, with the fresh-install defaults.
+    assert "MATRICXON_MEMORY_SAFETY_MARGIN=1.2" in env_text
+    assert "MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE=true" in env_text
+    assert "MATRICXON_GEMV_BACKEND=native" in env_text
     assert "MATRICXON_LOG_LEVEL=0" in env_text
 
 

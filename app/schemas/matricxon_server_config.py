@@ -44,23 +44,23 @@ class MatricxonServerConfig(BaseModel):
     # vars, which still work if set on the process directly) — device has nothing but "cpu" to meaningfully choose
     # between today (matricxon has no GPU support yet), and keep_alive tuning wasn't worth the extra form field.
     max_loaded_models: int | None = None
-    # Local-mode only — passed as MATRICXON_MEMORY_SAFETY_MARGIN. None means "use matricxon's own built-in
-    # default" (Settings.memory_safety_margin, 1.5x — see ../matricxon/app/config.py). Bounded to the same
-    # 1.1-1.8 range matricxon's own Settings field enforces server-side (below 1.1 stops meaning anything as a
-    # *safety* margin; above 1.8 has no evidence behind it and risks the exact OOM-kill the check exists to
-    # avoid) — validated here too so a bad value is rejected at Save time with a clear message instead of
+    # Local-mode only — passed as MATRICXON_MEMORY_SAFETY_MARGIN. Defaults to 1.2, matching matricxon's own
+    # Settings.memory_safety_margin (1.2x — see ../matricxon/app/config.py); None (a blank form field) means "use
+    # matricxon's own built-in default". Bounded to the same 1.1-1.8 range matricxon's own Settings field
+    # enforces server-side (below 1.1 stops meaning anything as a *safety* margin; above 1.8 has no evidence
+    # behind it) — validated here too so a bad value is rejected at Save time with a clear message instead of
     # silently failing matricxon's own env-var validation on the next restart.
-    memory_safety_margin: float | None = Field(default=None, ge=1.1, le=1.8)
+    memory_safety_margin: float | None = Field(default=1.2, ge=1.1, le=1.8)
     # Local-mode only — passed as MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE. Mirrors matricxon's own
-    # Settings.enable_quantized_native_compute (../matricxon/app/config.py) default of False — see that
+    # Settings.enable_quantized_native_compute (../matricxon/app/config.py) default of True — see that
     # field's own docstring for what it trades off (real quantized-native compute, never materializing a full
-    # dequantized weight, at the cost of slower decode).
-    enable_quantized_native_compute: bool = False
+    # dequantized weight; fast with the native C kernels below, much slower with the Numba ones).
+    enable_quantized_native_compute: bool = True
     # Local-mode only — passed as MATRICXON_GEMV_BACKEND. Mirrors matricxon's own Settings.gemv_backend: which
-    # kernels run those quantized weights — "numba" (matricxon's default) or "native", its own C integer kernels
-    # (compiled with the machine's gcc on first start, falling back to numba if that fails). Only has an effect
-    # with enable_quantized_native_compute on.
-    gemv_backend: Literal["numba", "native"] = "numba"
+    # kernels run those quantized weights — "native" (the default), matricxon's own C integer kernels (compiled
+    # with the machine's gcc on first start, falling back to numba if that fails), or "numba". Only has an
+    # effect with enable_quantized_native_compute on.
+    gemv_backend: Literal["numba", "native"] = "native"
     # Local-mode only — passed as MATRICXON_TORCH_THREADS: CPU threads for both PyTorch and the native C kernels
     # (matricxon's own Settings.torch_threads). None means "every core" (matricxon's own default). Fewer threads
     # also means less heat - this project's own laptop runs at 2 for exactly that reason.

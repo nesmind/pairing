@@ -1235,7 +1235,7 @@
                 </div>
                 <div>
                   <label class="block text-xs font-medium text-slate-400 mb-1">Memory safety margin (optional)</label>
-                  <input data-field="memory_safety_margin" type="number" min="1.1" max="1.8" step="0.1" placeholder="1.5" title="How much headroom Matricxon requires beyond a model's exact memory footprint before allowing it to load (e.g. 1.5 = needs 1.5x the model's size free). Lower values allow loading larger models but risk swapping/OOM; must be between 1.1 and 1.8. Leave blank for Matricxon's own default (1.5)."
+                  <input data-field="memory_safety_margin" type="number" min="1.1" max="1.8" step="0.1" placeholder="1.2" title="How much headroom Matricxon requires beyond a model's exact memory footprint before allowing it to load (e.g. 1.2 = needs 1.2x the model's size free). Lower values allow loading larger models but risk swapping/OOM; must be between 1.1 and 1.8. Default 1.2 — leave blank for Matricxon's own default (also 1.2)."
                     class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
                 </div>
                 <!-- One combined control: the kernels choice only means anything with quantized native compute on,
@@ -1244,7 +1244,7 @@
                 <div class="col-span-2">
                   <label class="block text-xs font-medium text-slate-400 mb-1">Quantized native compute</label>
                   <div class="flex items-center gap-3 rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5">
-                    <label for="matricxon-quantized-native-compute" class="flex shrink-0 items-center gap-2 text-sm text-slate-300 cursor-pointer" title="Keeps quantized weights packed during generation instead of dequantizing them to bf16/float32 once at load time — much lower memory use. With the Numba kernels decode is slower (roughly 1.9-4x); with the native C kernels below it runs about as fast as the dequantized path. Off by default, same as Matricxon's own MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE.">
+                    <label for="matricxon-quantized-native-compute" class="flex shrink-0 items-center gap-2 text-sm text-slate-300 cursor-pointer" title="Keeps quantized weights packed during generation instead of dequantizing them to bf16/float32 once at load time — much lower memory use. With the Numba kernels decode is much slower; with the native C kernels below (the default) it runs about as fast as the dequantized path. On by default, same as Matricxon's own MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE.">
                       <input data-field="enable_quantized_native_compute" type="checkbox" id="matricxon-quantized-native-compute"
                         class="rounded border-slate-700 bg-slate-950 text-brand-600 focus:ring-brand-500">
                       Enabled
@@ -1253,8 +1253,8 @@
                     <span class="shrink-0 text-xs text-slate-500">Kernels</span>
                     <select data-field="gemv_backend" title="Which kernels run the packed weights (only with quantized native compute on). Native: Matricxon's own C integer kernels, compiled with this machine's gcc on first start — about 5-10x faster than Numba per layer. Falls back to Numba automatically if there's no C compiler."
                       class="min-w-0 flex-1 bg-transparent text-sm text-slate-100 focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed">
-                      <option value="numba">Numba (default)</option>
-                      <option value="native">Native C (faster, needs gcc)</option>
+                      <option value="native">Native C (default, needs gcc)</option>
+                      <option value="numba">Numba (slower, no compiler needed)</option>
                     </select>
                   </div>
                 </div>

@@ -2332,8 +2332,8 @@ function collectServerConfig(server, section) {
       memory_safety_margin: isRemote ? null : floatFieldOrNull(section, "memory_safety_margin"),
       log_level: isRemote ? 0 : parseInt(section.querySelector('[data-field="log_level"]').value, 10),
       enable_quantized_native_compute:
-        !isRemote && section.querySelector('[data-field="enable_quantized_native_compute"]').checked,
-      gemv_backend: isRemote ? "numba" : section.querySelector('[data-field="gemv_backend"]').value,
+        isRemote || section.querySelector('[data-field="enable_quantized_native_compute"]').checked,
+      gemv_backend: isRemote ? "native" : section.querySelector('[data-field="gemv_backend"]').value,
       torch_threads: isRemote ? null : intFieldOrNull(section, "torch_threads"),
     };
   }
@@ -2403,8 +2403,8 @@ async function loadServerSection(server) {
     section.querySelector('[data-field="memory_safety_margin"]').value = config.memory_safety_margin ?? "";
     section.querySelector('[data-field="log_level"]').value = String(config.log_level ?? 0);
     section.querySelector('[data-field="enable_quantized_native_compute"]').checked =
-      config.enable_quantized_native_compute ?? false;
-    section.querySelector('[data-field="gemv_backend"]').value = config.gemv_backend ?? "numba";
+      config.enable_quantized_native_compute ?? true;
+    section.querySelector('[data-field="gemv_backend"]').value = config.gemv_backend ?? "native";
     section.querySelector('[data-field="torch_threads"]').value = config.torch_threads ?? "";
     syncMatricxonKernelSelect(section);
   } else {

@@ -14,6 +14,7 @@ from app.models import User
 from app.services import (
     conversation_service,
     image_generation_service,
+    matricxon_process,
     matricxon_ps_poller,
     model_catalog_service,
     ollama_ps_poller,
@@ -24,6 +25,17 @@ from app.services import (
     system_metrics_poller,
 )
 from app.services.auth_service import hash_password
+
+
+@pytest.fixture(autouse=True)
+def _tests_never_resolve_the_real_matricxon_checkout(monkeypatch, tmp_path):
+    """matricxon_process falls back to the sibling ../matricxon checkout when no project_dir override is given,
+    and saving a Matricxon config (the admin router tests do) writes that checkout's own .env
+    (matricxon_process.write_env_file). Without this, a full test run silently overwrote a developer's real
+    matricxon .env with test values (found 2026-10-01: MATRICXON_MODELS_DIR=/data/m, a changed margin, which
+    then crashed matricxon's own startup validation). Pointing the default at an empty directory makes every
+    test that doesn't pass its own project_dir (or patch this itself) see "not installed" instead."""
+    monkeypatch.setattr(matricxon_process, "_DEFAULT_PROJECT_DIR", tmp_path / "no-matricxon-checkout")
 
 
 @pytest.fixture(autouse=True)
