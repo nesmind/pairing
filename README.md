@@ -42,9 +42,9 @@ Supports MySQL migration and multi-server deployment.
 
 **Advanced model management**
 - A model management system that lets you:
-  1. Search, browse and download models directly from Hugging Face repositories, with advanced search and visual indexing to make choosing the right model simple.
-  2. Pull recommended default models right away and get started.
-  3. Manage installed models simply and efficiently, and get started with a few recommended models through a simple pull request.
+  - Search, browse and download models directly from Hugging Face repositories, with advanced search and visual indexing to make choosing the right model simple.
+  - Pull recommended default models right away and get started.
+  - Manage installed models simply and efficiently, and get started with a few recommended models through a simple pull request.
 
 **Behavior tuning**
 - Supports all the generation parameters (Temperature, Top-P, Top-K, Context window (tokens), and others).
