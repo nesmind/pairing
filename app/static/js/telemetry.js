@@ -82,14 +82,27 @@ function renderLoadedModels(summary) {
     el.innerHTML = '<p class="px-4 py-2 text-xs text-slate-500">Nothing currently loaded.</p>';
     return;
   }
+  let totalRam = 0;
+  let totalVram = 0;
   for (const m of summary.loaded_models) {
-    // != null (not a plain truthy check) — 0 is a real, meaningful value here (no VRAM used, e.g. a CPU-only
-    // model), not the same as Ollama never having reported a size at all.
-    const vram = m.size_vram_bytes != null ? `${(m.size_vram_bytes / 1e9).toFixed(1)} GB VRAM` : "size unknown";
+    // size_bytes is the model's whole footprint, size_vram_bytes the part of it on the GPU — the rest is RAM.
+    // A CPU-only engine (Matricxon) reports 0 VRAM, so RAM is the figure that actually matters there.
+    // != null checks, not truthiness: 0 is a real value, distinct from "never reported".
+    const hasSize = m.size_bytes != null;
+    const vramBytes = m.size_vram_bytes || 0;
+    const ramBytes = hasSize ? Math.max(m.size_bytes - vramBytes, 0) : 0;
+    totalRam += ramBytes;
+    totalVram += vramBytes;
+    const mem = hasSize ? `${formatGb(ramBytes)} RAM · ${formatGb(vramBytes)} VRAM` : "size unknown";
     const expires = m.expires_at ? `expires ${new Date(m.expires_at).toLocaleTimeString()}` : "no expiry set";
     const left = `${escapeHtml(m.model_name)} <span class="text-slate-500">on ${escapeHtml(new URL(m.host).host)}</span>`;
-    el.appendChild(telemetryRow(left, `${vram} · ${expires}`));
+    el.appendChild(telemetryRow(left, `${mem} · ${expires}`));
   }
+  el.appendChild(telemetryRow("Total loaded", `${formatGb(totalRam)} RAM · ${formatGb(totalVram)} VRAM`));
+}
+
+function formatGb(bytes) {
+  return `${(bytes / 1e9).toFixed(1)} GB`;
 }
 
 function renderTelemetry(summary) {

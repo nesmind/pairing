@@ -72,7 +72,7 @@
   <link rel="stylesheet" href="/static/css/style.css?v={{ static_version }}">
   {% block head %}{% endblock %}
 </head>
-<body class="h-full bg-slate-950 text-slate-100 antialiased" data-app-name="{{ app_name }}" data-is-admin="{{ 'true' if is_admin else 'false' }}" data-user-id="{{ user_id or '' }}" data-username="{{ username or '' }}" data-first-name="{{ first_name or '' }}" data-last-name="{{ last_name or '' }}" data-avatar-url="{{ avatar_url or '' }}">
+<body class="h-full bg-slate-950 text-slate-100 antialiased" data-app-name="{{ app_name }}" data-is-admin="{{ 'true' if is_admin else 'false' }}" data-user-id="{{ user_id or '' }}" data-username="{{ username or '' }}" data-first-name="{{ first_name or '' }}" data-last-name="{{ last_name or '' }}" data-avatar-url="{{ avatar_url or '' }}" data-timezone="{{ timezone or 'UTC' }}">
   {% block body %}{% endblock %}
 </body>
 </html>

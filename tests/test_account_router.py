@@ -111,3 +111,24 @@ async def test_get_public_profile_404s_for_an_unknown_user_id(db):
     with pytest.raises(HTTPException) as exc_info:
         await account.get_public_profile(user_id="does-not-exist", db=db, _user=None)
     assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_new_user_defaults_to_utc_timezone(user):
+    profile = await account.get_profile(user=user)
+    assert profile.timezone == "UTC"
+
+
+@pytest.mark.asyncio
+async def test_update_profile_sets_timezone_and_name_only_save_keeps_it(db, user):
+    profile = await account.update_profile(AccountProfileUpdate(timezone="Asia/Jerusalem"), db=db, user=user)
+    assert profile.timezone == "Asia/Jerusalem"
+    profile = await account.update_profile(AccountProfileUpdate(first_name="Al"), db=db, user=user)
+    assert profile.timezone == "Asia/Jerusalem"
+
+
+def test_profile_update_rejects_unknown_timezone():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        AccountProfileUpdate(timezone="Mars/Olympus_Mons")

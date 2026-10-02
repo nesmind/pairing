@@ -7,6 +7,8 @@ from sqlalchemy import Column, DateTime, String
 from app.database import Base
 from app.models._base import ID_LEN, new_id, utcnow
 
+DEFAULT_TIMEZONE = "UTC"
+
 
 class User(Base):
     """A login account. Every conversation and per-user setting belongs
@@ -48,6 +50,10 @@ class User(Base):
     # Deliberately a soft deactivation rather than a delete: it keeps the
     # account's conversation history intact and reversible.
     status = Column(String(20), nullable=False, default="active")
+    # IANA name (e.g. "Asia/Jerusalem") the UI renders this user's message
+    # timestamps in — see app/static/js/timezone.js. New accounts start on
+    # DEFAULT_TIMEZONE; the user changes it in Settings > Account.
+    timezone = Column(String(64), nullable=False, default=DEFAULT_TIMEZONE, server_default=DEFAULT_TIMEZONE)
     created_at = Column(DateTime, default=utcnow)
 
     @property

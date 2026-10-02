@@ -30,6 +30,7 @@ async def _profile_context(db: AsyncSession, user: User) -> dict:
         "first_name": user.first_name,
         "last_name": user.last_name,
         "avatar_url": user.avatar_url,
+        "timezone": user.timezone,
         "theme": await get_ui_theme(db, user),
         "ui_themes": UI_THEMES,
     }

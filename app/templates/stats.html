@@ -82,11 +82,11 @@
         <!-- Legend: which border color means which layer of the app — see workflow_diagram.js: renderWorkflowLegend.
              Fixed in the corner (outside the scrolling canvas above) so it stays visible at any scroll position. -->
         <div id="workflow-legend"
-          class="absolute top-4 left-4 z-10 rounded-lg border border-slate-800 bg-slate-900/90 backdrop-blur px-3 py-2.5 space-y-1.5 text-xs">
+          class="absolute top-4 right-6 z-10 rounded-lg border border-slate-800 bg-slate-900/90 backdrop-blur px-3 py-2.5 space-y-1.5 text-xs">
         </div>
         <!-- Detail panel: plain DOM (not D3-rendered), opened by clicking a node — see workflow_diagram.js: showDetail. -->
         <aside id="workflow-detail-panel"
-          class="hidden absolute top-0 right-0 h-full w-96 border-l border-slate-800 bg-slate-900/95 backdrop-blur overflow-y-auto p-5">
+          class="hidden absolute top-0 right-0 z-20 h-full w-96 border-l border-slate-800 bg-slate-900/95 backdrop-blur overflow-y-auto p-5">
           <button id="workflow-detail-close" type="button"
             class="absolute top-3 right-3 text-slate-500 hover:text-slate-300 transition-colors" aria-label="Close">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

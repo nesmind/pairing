@@ -495,7 +495,19 @@ function bubbleFor(role, senderLabel, avatarUrl, initials, senderId) {
   } else {
     wrapper.appendChild(bubble);
   }
+  // Starts at "now" (right for a just-sent/streaming bubble); setBubbleTime overwrites it with the stored
+  // created_at wherever a persisted message is being rendered.
+  const time = document.createElement("span");
+  time.className = "message-time mt-0.5 px-1 text-[10px] text-slate-500";
+  time.textContent = formatShortDateTime();
+  wrapper.appendChild(time);
   return { wrapper, bubble };
+}
+
+/** Sets a bubble's timestamp from a message's server `created_at` (no-op when unknown). */
+function setBubbleTime(wrapper, createdAt) {
+  const time = wrapper && wrapper.querySelector(".message-time");
+  if (time && createdAt) time.textContent = formatShortDateTime(createdAt);
 }
 
 /** Adds a small delete affordance to `wrapper`'s label row for a viewer
@@ -664,6 +676,7 @@ function addMessageBubble(
     wrapper.dataset.messageId = messageId;
     attachDeleteButtonIfEligible(wrapper, messageId);
   }
+  setBubbleTime(wrapper, attachmentSource && attachmentSource.created_at);
   renderReplyBody(bubble, content, status, sources, errorText);
   renderAttachment(bubble, attachmentSource);
   messagesEl.appendChild(wrapper);
@@ -941,6 +954,7 @@ async function runChannelPoll(conversationId) {
       message.sender_initials,
       senderId
     );
+    setBubbleTime(bubble.closest("[data-message-id]"), message.created_at);
     renderReplyBody(bubble, message.content, message.status, message.sources, message.error_message);
     renderAttachment(bubble, message);
     messagesEl.scrollTop = messagesEl.scrollHeight;

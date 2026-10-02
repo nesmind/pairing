@@ -3243,7 +3243,44 @@ async function loadAccountProfileIntoEditor() {
   document.getElementById("account-last-name").value = profile.last_name || "";
   renderAvatar(document.getElementById("account-avatar-preview"), profile.avatar_url, profile.initials);
   document.getElementById("account-avatar-remove-btn").classList.toggle("hidden", !profile.avatar_url);
+  fillTimezoneSelect(profile.timezone);
 }
+
+// Timezone: the browser's own IANA list (always includes UTC via the fallback) with the saved one selected.
+function fillTimezoneSelect(selected) {
+  const select = document.getElementById("account-timezone");
+  const zones = new Set(typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : []);
+  zones.add("UTC");
+  zones.add(selected);
+  select.replaceChildren(
+    ...[...zones].sort().map((zone) => Object.assign(document.createElement("option"), { value: zone, textContent: zone }))
+  );
+  select.value = selected;
+}
+
+document.getElementById("account-timezone-detect-btn").addEventListener("click", () => {
+  const select = document.getElementById("account-timezone");
+  const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (![...select.options].some((o) => o.value === detected)) fillTimezoneSelect(detected);
+  select.value = detected;
+});
+
+document.getElementById("account-timezone-save-btn").addEventListener("click", async () => {
+  const statusEl = document.getElementById("account-timezone-status");
+  const btn = document.getElementById("account-timezone-save-btn");
+  btn.disabled = true;
+  statusEl.textContent = "Saving…";
+  try {
+    const timezone = document.getElementById("account-timezone").value;
+    await api("/api/account/profile", { method: "PATCH", body: JSON.stringify({ timezone }) });
+    statusEl.textContent = "Saved.";
+  } catch (err) {
+    statusEl.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => (statusEl.textContent = ""), 2500);
+  }
+});
 
 document.getElementById("account-avatar-input").addEventListener("change", async (e) => {
   const file = e.target.files[0];

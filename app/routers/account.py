@@ -44,6 +44,8 @@ async def update_profile(
     # this form doesn't just store an empty string.
     user.first_name = body.first_name or None
     user.last_name = body.last_name or None
+    if body.timezone is not None:
+        user.timezone = body.timezone
     await db.commit()
     return user
 

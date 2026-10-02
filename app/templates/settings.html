@@ -405,6 +405,28 @@
       </section>
 
       <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Timezone</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          Message times in chats are shown in this timezone. New accounts start on UTC.
+        </p>
+        <div class="flex items-center gap-3 rounded-lg bg-slate-900 border border-slate-800 px-4 py-3">
+          <select id="account-timezone"
+            class="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500"></select>
+          <button id="account-timezone-detect-btn" type="button"
+            class="shrink-0 rounded-md border border-slate-700 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-800 transition-colors">
+            Use browser's
+          </button>
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="account-timezone-save-btn" type="button"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save timezone
+          </button>
+          <span id="account-timezone-status" class="text-xs text-slate-500"></span>
+        </div>
+      </section>
+
+      <section class="space-y-3">
         <h2 class="text-sm font-semibold text-slate-200">Password</h2>
         <p class="text-xs text-slate-500 -mt-2">Change the password for your own account, {{ username }}.</p>
 

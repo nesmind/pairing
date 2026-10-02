@@ -3,8 +3,9 @@ admin-only) and self-service account actions in app/routers/settings.py."""
 
 from datetime import datetime
 from typing import Literal
+from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class UserOut(BaseModel):
@@ -70,6 +71,7 @@ class AccountProfileOut(BaseModel):
     last_name: str | None = None
     avatar_url: str | None = None
     initials: str
+    timezone: str
 
 
 class AccountProfileUpdate(BaseModel):
@@ -80,6 +82,20 @@ class AccountProfileUpdate(BaseModel):
 
     first_name: str | None = Field(None, max_length=100)
     last_name: str | None = Field(None, max_length=100)
+    # Optional: omitted leaves the current timezone untouched.
+    timezone: str | None = Field(None, max_length=64)
+
+    @field_validator("timezone")
+    @classmethod
+    def _valid_timezone(cls, value: str | None) -> str | None:
+        """Must be a real IANA name — the UI feeds it to Intl.DateTimeFormat."""
+        if value is None:
+            return None
+        try:
+            ZoneInfo(value)
+        except (KeyError, ValueError, OSError) as exc:
+            raise ValueError("Unknown timezone.") from exc
+        return value
 
 
 class PublicProfileOut(BaseModel):
