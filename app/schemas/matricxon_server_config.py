@@ -39,10 +39,7 @@ class MatricxonServerConfig(BaseModel):
     # does not move already-downloaded models.
     models_path: str | None = None
     # Local-mode only, ignored in "remote" mode — passed to matricxon's own scripts/start.sh as
-    # MATRICXON_MAX_LOADED_MODELS (see app.services.matricxon_process._build_env). keep_alive_seconds/device were
-    # dropped from this form (not from matricxon's own MATRICXON_DEFAULT_KEEP_ALIVE_SECONDS/MATRICXON_DEVICE env
-    # vars, which still work if set on the process directly) — device has nothing but "cpu" to meaningfully choose
-    # between today (matricxon has no GPU support yet), and keep_alive tuning wasn't worth the extra form field.
+    # MATRICXON_MAX_LOADED_MODELS (see app.services.matricxon_process._build_env).
     max_loaded_models: int | None = None
     # Local-mode only — how many minutes an idle model stays in RAM before Matricxon unloads it (sent as
     # MATRICXON_DEFAULT_KEEP_ALIVE_SECONDS, minutes * 60). None means "use matricxon's own default"
@@ -80,6 +77,14 @@ class MatricxonServerConfig(BaseModel):
     # (matricxon's own Settings.torch_threads). None means "every core" (matricxon's own default). Fewer threads
     # also means less heat - this project's own laptop runs at 2 for exactly that reason.
     torch_threads: int | None = Field(default=None, ge=1, le=256)
+    # Local-mode only — passed as MATRICXON_DEVICE: "cpu" (default) or "cuda"/"cuda:N". Matricxon's GPU mode is
+    # EXPERIMENTAL (written without GPU hardware, never run on one — see ../matricxon/ROADMAP.md): a GPU that isn't
+    # there makes Matricxon fail at startup instead of silently running on the CPU.
+    device: str = Field(default="cpu", pattern=r"^(cpu|cuda(:\d+)?)$")
+    # Local-mode only — passed as MATRICXON_GPU_WEIGHT_MODE, only meaningful with a cuda device: "dequantized"
+    # (default; weights in bf16/fp16 in VRAM, fastest, ~2 bytes per parameter) or "packed" (supported quantized
+    # types stay quantized in VRAM and are dequantized per call — far less VRAM, slower per token).
+    gpu_weight_mode: Literal["dequantized", "packed"] = "dequantized"
     # Local-mode only — passed as MATRICXON_LOG_LEVEL. Mirrors matricxon's own Settings.log_level (same file):
     # 0 = warnings/errors only, 1 = coarse per-request pipeline milestones, 2 = adds a per-decoder-layer trace.
     log_level: int = Field(default=0, ge=0, le=2)

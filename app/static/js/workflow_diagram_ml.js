@@ -36,12 +36,22 @@ const ML_GROUP = {
 // the quantized matmuls, embedding-row dequant and the gated delta rule. Marked with a chip icon.
 const ML_NATIVE = new Set(["ml_embed", "ml_attention", "ml_linear_attn", "ml_ffn", "ml_lm_head", "ml_kernels"]);
 
+// Stages that can run on the GPU (Matricxon's experimental MATRICXON_DEVICE=cuda mode): the forward
+// pass proper. Tokenizing, sampling, the stop check, the vision tower and MoE routing stay on the CPU.
+// Marked "G"; a stage that is also in ML_NATIVE shows "GK" (GPU and the native C kernels, each on
+// the device it applies to).
+const ML_GPU = new Set([
+  "ml_embed", "ml_norm_attn", "ml_attention", "ml_linear_attn", "ml_norm_ffn", "ml_ffn",
+  "ml_final_norm", "ml_lm_head", "ml_kernels", "ml_kv", "ml_emb_pos", "ml_emb_enc",
+]);
+
 function mlNode(id, label, col, y, title, location, body, size = {}) {
   return {
     id,
     label,
     category: ML_GROUP[id],
     native: ML_NATIVE.has(id),
+    gpu: ML_GPU.has(id),
     x: size.x ?? ML_COL[col],
     y,
     w: size.w ?? ML_W,
@@ -174,7 +184,7 @@ const WORKFLOW_ML_NODES = [
     "ml_kernels", "Weight matmul kernels\n(dequant GEMV: C / Numba)", 0, ML_ROW.r4,
     "Where the arithmetic actually happens",
     "app/native/src/*.c · app/gguf/dequant/quantized_gemv*.py",
-    "Every projection above is a matrix multiplication against weights stored in a quantized GGUF format (4–8 bits per weight). Rather than expanding the whole model to 32-bit floats, fused kernels read the packed bytes and multiply directly: a native C library with OpenMP threads, or the slower Numba fallback. During decoding this is memory-bandwidth bound, which is why smaller quantizations run faster."
+    "Every projection above is a matrix multiplication against weights stored in a quantized GGUF format (4–8 bits per weight). Rather than expanding the whole model to 32-bit floats, fused kernels read the packed bytes and multiply directly: a native C library with OpenMP threads, or the slower Numba fallback. On a GPU (experimental) the weights are either dequantized to bf16 up front or kept packed in VRAM and dequantized per call with torch ops - there is no fused GPU kernel yet. During decoding this is memory-bandwidth bound, which is why smaller quantizations run faster."
   ),
   mlNode(
     "ml_kv", "KV cache + recurrent state\n(grows per token)", 1, ML_ROW.r4,

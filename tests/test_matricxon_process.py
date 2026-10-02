@@ -528,3 +528,66 @@ def test_write_env_file_persists_and_clears_concurrency_tuning(tmp_path):
     matricxon_process.write_env_file(_config(project_dir=str(checkout)))
     text = (checkout / ".env").read_text()
     assert "MATRICXON_PROMPT_CACHE_SLOTS" not in text and "MATRICXON_MAX_DECODE_BATCH" not in text
+
+
+def test_device_defaults_to_cpu_and_dequantized_weights():
+    env = matricxon_process._build_env(_config())
+    assert env["MATRICXON_DEVICE"] == "cpu"
+    assert env["MATRICXON_GPU_WEIGHT_MODE"] == "dequantized"
+
+
+def test_device_and_gpu_weight_mode_reach_the_env_and_the_env_file(tmp_path):
+    checkout = _make_checkout(tmp_path)
+    config = _config(project_dir=str(checkout), device="cuda:1", gpu_weight_mode="packed")
+
+    env = matricxon_process._build_env(config)
+    matricxon_process.write_env_file(config)
+
+    assert env["MATRICXON_DEVICE"] == "cuda:1" and env["MATRICXON_GPU_WEIGHT_MODE"] == "packed"
+    env_text = (checkout / ".env").read_text()
+    assert "MATRICXON_DEVICE=cuda:1" in env_text
+    assert "MATRICXON_GPU_WEIGHT_MODE=packed" in env_text
+
+
+@pytest.mark.parametrize("device", ["mps", "cuda:", "gpu", "cuda:x"])
+def test_device_rejects_anything_but_cpu_or_cuda(device):
+    with pytest.raises(ValidationError):
+        MatricxonServerConfig(device=device)
+
+
+def test_startup_failure_reason_picks_the_last_error_line_of_a_traceback():
+    log = (
+        "matricxon exited during startup - last lines of logs/matricxon.log:\n"
+        "  File \"app/main.py\", line 99, in _lifespan\n"
+        "app.server.errors.DeviceUnavailableError: device 'cuda' requested but PyTorch sees no CUDA GPU\n"
+        "\n"
+        "ERROR:    Application startup failed. Exiting.\n"
+    )
+    assert matricxon_process._startup_failure_reason(log) == (
+        "DeviceUnavailableError: device 'cuda' requested but PyTorch sees no CUDA GPU"
+    )
+    assert matricxon_process._startup_failure_reason("nothing recognisable here") is None
+
+
+def test_a_failed_start_raises_the_condensed_reason(tmp_path, monkeypatch):
+    checkout = _make_checkout(tmp_path)
+
+    class Failed:
+        returncode = 1
+        stderr = ""
+        stdout = "ValueError: boom\nDeviceUnavailableError: no GPU here"
+
+    monkeypatch.setattr(matricxon_process, "_run_script", lambda *a, **k: Failed())
+    with pytest.raises(RuntimeError, match="failed to start — DeviceUnavailableError: no GPU here"):
+        matricxon_process._start(checkout, _config(project_dir=str(checkout)))
+
+
+def test_startup_failure_reason_reads_matricxons_one_line_refusal():
+    log = (
+        "matricxon exited during startup - last lines of logs/matricxon.log:\n"
+        "2026-10-02 20:54:02,855 CRITICAL app.main: matricxon cannot start: device 'cuda' requested but "
+        "PyTorch sees no CUDA GPU (CPU-only build, missing driver, or no GPU)\n"
+    )
+    assert matricxon_process._startup_failure_reason(log) == (
+        "device 'cuda' requested but PyTorch sees no CUDA GPU (CPU-only build, missing driver, or no GPU)"
+    )

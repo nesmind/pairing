@@ -14,6 +14,7 @@ app/services/comfyui_service.py's identical guard.
 import asyncio
 import logging
 import os
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -134,6 +135,8 @@ def _build_env(config: MatricxonServerConfig, proxy_url: str | None = None) -> d
         env["MATRICXON_TORCH_THREADS"] = str(config.torch_threads)
     env["MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE"] = "true" if config.enable_quantized_native_compute else "false"
     env["MATRICXON_GEMV_BACKEND"] = config.gemv_backend
+    env["MATRICXON_DEVICE"] = config.device
+    env["MATRICXON_GPU_WEIGHT_MODE"] = config.gpu_weight_mode
     env["MATRICXON_LOG_LEVEL"] = str(config.log_level)
     # Matricxon's own model-pull downloader (a plain httpx client) honors these the same standard way Ollama's Go
     # binary does — see ollama_process._build_env.
@@ -176,6 +179,8 @@ def write_env_file(config: MatricxonServerConfig) -> None:
             "MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE": "true" if config.enable_quantized_native_compute else "false",
             "MATRICXON_GEMV_BACKEND": config.gemv_backend,
             "MATRICXON_TORCH_THREADS": str(config.torch_threads) if config.torch_threads is not None else None,
+            "MATRICXON_DEVICE": config.device,
+            "MATRICXON_GPU_WEIGHT_MODE": config.gpu_weight_mode,
             "MATRICXON_LOG_LEVEL": str(config.log_level),
         },
         path=project_dir / ".env",
@@ -193,10 +198,33 @@ def _run_script(project_dir: Path, script: str, env: dict[str, str]) -> subproce
     )
 
 
+# Matricxon's own one-line startup refusals (e.g. a GPU device that isn't there): "... matricxon cannot start: <why>".
+_CANNOT_START_LINE = re.compile(r"matricxon cannot start: (.+)$")
+_STARTUP_ERROR_LINE = re.compile(r"^(?:[\w.]+\.)?(\w*(?:Error|Exception)): (.+)$")
+
+
+def _startup_failure_reason(output: str) -> str | None:
+    """The cause of a failed start, from its log tail: matricxon's own one-line "matricxon cannot start: <why>"
+    (e.g. a CUDA device with no GPU), else the last "SomeError: message" line of a traceback — so the Settings page
+    shows the actual cause instead of a whole traceback. None if neither is there."""
+    for line in reversed(output.strip().splitlines()):
+        refusal = _CANNOT_START_LINE.search(line.strip())
+        if refusal:
+            return refusal.group(1)
+        match = _STARTUP_ERROR_LINE.match(line.strip())
+        if match:
+            return f"{match.group(1)}: {match.group(2)}"
+    return None
+
+
 def _start(project_dir: Path, config: MatricxonServerConfig, proxy_url: str | None = None) -> None:
     result = _run_script(project_dir, "start.sh", _build_env(config, proxy_url))
     if result.returncode != 0:
-        raise RuntimeError(f"scripts/start.sh failed: {(result.stderr or result.stdout).strip()}")
+        output = (result.stderr or result.stdout).strip()
+        reason = _startup_failure_reason(output)
+        if reason:
+            raise RuntimeError(f"Matricxon failed to start — {reason}")
+        raise RuntimeError(f"scripts/start.sh failed: {output}")
 
 
 def _stop(project_dir: Path) -> None:

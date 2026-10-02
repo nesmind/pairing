@@ -2283,6 +2283,14 @@ function renderServerStatus(section, status) {
   applyServerVisibility(server, section);
 }
 
+/** Styles a server section's status text as a persistent error (wrapping, red) or back to the plain one. */
+function setServerStatusError(statusEl, isError) {
+  statusEl.classList.toggle("text-red-400", isError);
+  statusEl.classList.toggle("text-slate-500", !isError);
+  statusEl.classList.toggle("min-w-0", isError);
+  statusEl.classList.toggle("break-words", isError);
+}
+
 function intFieldOrNull(section, field) {
   const raw = section.querySelector(`[data-field="${field}"]`).value.trim();
   return raw === "" ? null : parseInt(raw, 10);
@@ -2339,6 +2347,8 @@ function collectServerConfig(server, section) {
         isRemote || section.querySelector('[data-field="enable_quantized_native_compute"]').checked,
       gemv_backend: isRemote ? "native" : section.querySelector('[data-field="gemv_backend"]').value,
       torch_threads: isRemote ? null : intFieldOrNull(section, "torch_threads"),
+      device: isRemote ? "cpu" : matricxonDeviceValue(section),
+      gpu_weight_mode: isRemote ? "dequantized" : section.querySelector('[data-field="gpu_weight_mode"]').value,
     };
   }
   return {
@@ -2414,6 +2424,11 @@ async function loadServerSection(server) {
       config.enable_quantized_native_compute ?? true;
     section.querySelector('[data-field="gemv_backend"]').value = config.gemv_backend ?? "native";
     section.querySelector('[data-field="torch_threads"]').value = config.torch_threads ?? "";
+    // A saved "cuda:1" (set by hand) has no option of its own; show it as the generic CUDA choice
+    // and remember it (see matricxonDeviceValue) so saving doesn't silently change the GPU index.
+    section.dataset.savedDevice = config.device ?? "cpu";
+    section.querySelector('[data-field="device"]').value = (config.device ?? "cpu").startsWith("cuda") ? "cuda" : "cpu";
+    section.querySelector('[data-field="gpu_weight_mode"]').value = config.gpu_weight_mode ?? "dequantized";
     syncMatricxonKernelSelect(section);
   } else {
     section.querySelector('[data-field="python_path"]').value = config.python_path ?? "";
@@ -2688,6 +2703,9 @@ for (const server of EXTERNAL_SERVERS) {
       if (!confirmed) return;
     }
     statusEl.textContent = "Saving…";
+    setServerStatusError(statusEl, false);
+    let failed = false;
+    let failedPrefix = "Failed to save";
     try {
       // Ollama's (and Matricxon's — see app.services.matricxon_process.apply_local_config) local-mode parameters
       // can't apply live: both only read their env-based config at their own process startup, so if either is
@@ -2695,7 +2713,9 @@ for (const server of EXTERNAL_SERVERS) {
       // button already did.
       const restartableEngines = { ollama: "Ollama", matricxon: "Matricxon" };
       const engineLabel = restartableEngines[server];
-      if (engineLabel && body.mode === "local" && (await api(`/api/settings/${server}/status`)).running) {
+      const localStatus =
+        engineLabel && body.mode === "local" ? await api(`/api/settings/${server}/status`) : null;
+      if (localStatus?.running) {
         const confirmed = confirm(
           `Saving restarts ${engineLabel} — every reply currently being generated, on every local ` +
             "instance, will be interrupted. Continue?",
@@ -2715,11 +2735,39 @@ for (const server of EXTERNAL_SERVERS) {
       }
       await api(`/api/settings/${server}/config`, { method: "PUT", body: JSON.stringify(body) });
       statusEl.textContent = "Saved.";
+      // Not running (stopped by hand, or a previous restart failed - e.g. a GPU device that isn't there): saving
+      // alone changes nothing visible, which reads as "nothing happened" - offer to start it with the new settings.
+      if (localStatus && localStatus.installed && !localStatus.running) {
+        if (confirm(`${engineLabel} is not running. Start it now with the saved settings?`)) {
+          failedPrefix = "Saved, but failed to start";
+          statusEl.textContent = `Saved — starting ${engineLabel}…`;
+          const started = await api(`/api/settings/${server}/start`, { method: "POST" });
+          renderServerStatus(section, started);
+          statusEl.textContent = `Saved — ${engineLabel} started.`;
+          try {
+            sessionStorage.setItem(SETTINGS_TAB_STORAGE_KEY, "external-servers");
+          } catch (_err) {
+            // Storage blocked - the reload still happens, just lands on the default tab.
+          }
+          window.location.reload(); // the engine coming up can newly make models available, as with Start
+          return;
+        }
+      }
       redirectToModelsIfModeChanged(section, body);
     } catch (err) {
-      statusEl.textContent = `Failed to save: ${err.message}`;
+      // Stays put (no timeout, no redirect) so the admin can read why and fix the setting — e.g. a CUDA device
+      // chosen on a machine without a GPU makes the restart fail. The failed restart left the engine stopped,
+      // so refresh the status line to say so.
+      failed = true;
+      statusEl.textContent = `${failedPrefix}: ${err.message}`;
+      setServerStatusError(statusEl, true);
+      try {
+        renderServerStatus(section, await api(`/api/settings/${server}/status`));
+      } catch (_statusErr) {
+        // The error above is what matters; the status line just keeps its last value.
+      }
     } finally {
-      setTimeout(() => (statusEl.textContent = ""), 3000);
+      if (!failed) setTimeout(() => (statusEl.textContent = ""), 3000);
     }
   });
 
@@ -2732,6 +2780,8 @@ for (const server of EXTERNAL_SERVERS) {
       // in the same place next to the status line instead of jumping between the two.
       const saveBtn = section.querySelector('[data-action="save"]');
       statusEl.textContent = "Working…";
+      setServerStatusError(statusEl, false);
+      let failed = false;
       actionBtn.disabled = true;
       const spinner = addInlineSpinner(saveBtn);
       try {
@@ -2762,11 +2812,15 @@ for (const server of EXTERNAL_SERVERS) {
           return;
         }
       } catch (err) {
+        // Stays visible (see the Save handler) — e.g. Start failing because the saved device is a GPU that
+        // isn't there; the admin needs to read that and change the setting.
+        failed = true;
         statusEl.textContent = `Failed: ${err.message}`;
+        setServerStatusError(statusEl, true);
       } finally {
         spinner.remove();
         actionBtn.disabled = false;
-        setTimeout(() => (statusEl.textContent = ""), 2500);
+        if (!failed) setTimeout(() => (statusEl.textContent = ""), 2500);
       }
     });
   }
@@ -4310,16 +4364,26 @@ if (addChannelBtn) {
   }
 })();
 
+function matricxonDeviceValue(section) {
+  const chosen = section.querySelector('[data-field="device"]').value;
+  const saved = section.dataset.savedDevice ?? "";
+  return chosen === "cuda" && saved.startsWith("cuda") ? saved : chosen;
+}
+
 // Matricxon's "Kernels" choice only applies with quantized native compute on (see settings.html's combined
 // "Quantized native compute" row) — disabled, not hidden, while it's off so the saved choice stays visible.
 function syncMatricxonKernelSelect(section) {
   const checkbox = section.querySelector('[data-field="enable_quantized_native_compute"]');
   const select = section.querySelector('[data-field="gemv_backend"]');
   if (checkbox && select) select.disabled = !checkbox.checked;
+  // "GPU weights" only applies with a CUDA device selected.
+  const device = section.querySelector('[data-field="device"]');
+  const weights = section.querySelector('[data-field="gpu_weight_mode"]');
+  if (device && weights) weights.disabled = device.value === "cpu";
 }
 
 document.addEventListener("change", (event) => {
-  if (event.target.matches('[data-field="enable_quantized_native_compute"]')) {
+  if (event.target.matches('[data-field="enable_quantized_native_compute"], [data-field="device"]')) {
     syncMatricxonKernelSelect(event.target.closest("[data-server]") || document);
   }
 });

@@ -1281,6 +1281,23 @@
                   </div>
                 </div>
                 <div>
+                  <label class="block text-xs font-medium text-slate-400 mb-1">Compute device (experimental GPU)</label>
+                  <div class="flex items-center gap-3 rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5">
+                    <select data-field="device" title="Where Matricxon runs models. GPU mode is EXPERIMENTAL — it was written without GPU hardware and has not run on a real GPU yet. If no CUDA GPU is found Matricxon stops at startup (it never silently falls back to the CPU)."
+                      class="min-w-0 flex-1 bg-transparent text-sm text-slate-100 focus:outline-none">
+                      <option value="cpu">CPU (default)</option>
+                      <option value="cuda">CUDA GPU (experimental)</option>
+                    </select>
+                    <span class="h-5 w-px shrink-0 bg-slate-700"></span>
+                    <span class="shrink-0 text-xs text-slate-500">GPU weights</span>
+                    <select data-field="gpu_weight_mode" title="Dequantized: weights are expanded to bf16/fp16 in VRAM — fastest, about 2 bytes of VRAM per parameter. Packed: quantized weights stay quantized in VRAM and are dequantized on every use — roughly 3-4x less VRAM for a 4-bit model, slower per token. Only applies with a CUDA device."
+                      class="min-w-0 flex-1 bg-transparent text-sm text-slate-100 focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed">
+                      <option value="dequantized">Dequantized (fast, more VRAM)</option>
+                      <option value="packed">Packed (less VRAM, slower)</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
                   <label class="block text-xs font-medium text-slate-400 mb-1">Log level</label>
                   <select data-field="log_level" title="0: warnings/errors only (Matricxon's own default). 1: coarse per-request pipeline milestones (model load, prompt build, each generated token, generation summary). 2: also adds a per-decoder-layer trace line for every forward pass — very verbose."
                     class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">

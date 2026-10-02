@@ -205,21 +205,27 @@ function initWorkflowDiagram() {
     .attr("fill-opacity", 0.14)
     .attr("stroke-width", 2);
 
-  // "K" (top-right) marks stages that run on the native C kernels.
+  // Top-right badge: "K" = native C kernels, "G" = can run on the GPU (experimental), "GK" = both.
+  const BADGE_TITLES = {
+    K: "Runs on native C kernels",
+    G: "Can run on the GPU (experimental, MATRICXON_DEVICE=cuda)",
+    GK: "Runs on native C kernels on the CPU, and can run on the GPU (experimental)",
+  };
+  const badgeOf = (d) => (d.gpu ? "G" : "") + (d.native ? "K" : "");
   nodeGroups
-    .filter((d) => d.native)
+    .filter((d) => badgeOf(d))
     .append("text")
     .attr("class", "wf-native-icon")
-    .attr("x", (d) => d.w - 11)
+    .attr("x", (d) => d.w - 8)
     .attr("y", 18)
-    .attr("text-anchor", "middle")
+    .attr("text-anchor", "end")
     .attr("fill", ThemeColors.get("--color-slate-300"))
     .attr("font-size", "11.2px")
     .attr("font-weight", "480")
     .attr("font-family", "ui-monospace, Menlo, Consolas, monospace")
-    .text("K")
+    .text((d) => badgeOf(d))
     .append("title")
-    .text("Runs on native C kernels");
+    .text((d) => BADGE_TITLES[badgeOf(d)]);
 
   root
     .append("g")
