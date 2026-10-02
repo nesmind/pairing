@@ -33,13 +33,17 @@ const ML_GROUP = {
 };
 
 // Stages that run on Matricxon's native C kernels (app/native/src/*.c) when that backend is built —
-// the quantized matmuls, embedding-row dequant and the gated delta rule. Marked with a chip icon.
-const ML_NATIVE = new Set(["ml_embed", "ml_attention", "ml_linear_attn", "ml_ffn", "ml_lm_head", "ml_kernels"]);
+// the quantized matmuls, embedding-row dequant, the gated delta rule, and the fused RMSNorm / RoPE /
+// decode-attention / sampler ops (app/native/src/mx_fused_ops.c, mx_attention.c, mx_sample.c). Marked "K".
+const ML_NATIVE = new Set([
+  "ml_embed", "ml_attention", "ml_linear_attn", "ml_ffn", "ml_lm_head", "ml_kernels",
+  "ml_norm_attn", "ml_norm_ffn", "ml_final_norm", "ml_sampler",
+]);
 
 // Stages that can run on the GPU (Matricxon's experimental MATRICXON_DEVICE=cuda mode): the forward
 // pass proper. Tokenizing, sampling, the stop check, the vision tower and MoE routing stay on the CPU.
-// Marked "G"; a stage that is also in ML_NATIVE shows "GK" (GPU and the native C kernels, each on
-// the device it applies to).
+// Marked "G"; a stage that is also in ML_NATIVE shows "K|G" (the native C kernels on the CPU, or the
+// GPU when the engine runs on one).
 const ML_GPU = new Set([
   "ml_embed", "ml_norm_attn", "ml_attention", "ml_linear_attn", "ml_norm_ffn", "ml_ffn",
   "ml_final_norm", "ml_lm_head", "ml_kernels", "ml_kv", "ml_emb_pos", "ml_emb_enc",
@@ -103,14 +107,14 @@ const WORKFLOW_ML_NODES = [
   mlNode(
     "ml_norm_attn", "RMSNorm\n(before attention)", 4, ML_ROW.r2,
     "Normalizing each token's vector",
-    "app/architectures/layers.py — RMSNorm",
-    "Rescales every token vector to a steady magnitude (root-mean-square normalization) and applies a learned per-dimension gain. Keeps the numbers in a range the following matrix multiplications handle well. Each layer starts with one; the block below repeats for every layer of the model."
+    "app/architectures/layers.py — RMSNorm · app/native/src/mx_fused_ops.c",
+    "Rescales every token vector to a steady magnitude (root-mean-square normalization) and applies a learned per-dimension gain. Keeps the numbers in a range the following matrix multiplications handle well. Each layer starts with one; the block below repeats for every layer of the model. With the native backend this is one C call instead of about seven separate tensor operations."
   ),
   mlNode(
     "ml_attention", "Self-attention\nQ·K·V · RoPE · KV cache", 3, ML_ROW.r2,
     "Letting tokens look at earlier tokens",
-    "app/architectures/qwen_layers.py / mistral3_layers.py — attention",
-    "Three projections turn each vector into a query, key and value. Rotary position embedding (RoPE) rotates queries and keys so relative distance is encoded. Each query is scored against every earlier key, softmaxed, and used to blend the values — this is how \"it\" gets tied to the right noun. New keys and values are appended to the KV cache so later tokens never recompute them."
+    "app/architectures/qwen_layers.py / mistral3_layers.py — attention · app/native/src/mx_attention.c",
+    "Three projections turn each vector into a query, key and value. Rotary position embedding (RoPE) rotates queries and keys so relative distance is encoded. Each query is scored against every earlier key, softmaxed, and used to blend the values — this is how \"it\" gets tied to the right noun. New keys and values are appended to the KV cache so later tokens never recompute them. When one new token is decoded, the RoPE rotation and the whole score → softmax → blend step run as single native C calls (longer prompts use PyTorch's matrix-multiply attention instead)."
   ),
   mlNode(
     "ml_linear_attn", "Linear attention / SSM\n(Mamba-2, Gated DeltaNet)", 3, ML_ROW.r2b,
@@ -159,8 +163,8 @@ const WORKFLOW_ML_NODES = [
   mlNode(
     "ml_sampler", "Sampler\ntemp · top-k · top-p", 2, ML_ROW.r3,
     "Choosing the next token",
-    "app/runtime/sampler.py — Sampler",
-    "Logits are adjusted by the repeat penalty, divided by the temperature, trimmed to the top-k and top-p candidates, turned into probabilities, and one token is drawn at random (or the highest one at temperature 0). These are the same options a chat's settings pass down (temperature, top_p, top_k, repeat_penalty, seed)."
+    "app/runtime/sampler.py — Sampler · app/native/src/mx_sample.c",
+    "Logits are adjusted by the repeat penalty, divided by the temperature, trimmed to the top-k and top-p candidates, turned into probabilities, and one token is drawn at random (or the highest one at temperature 0). These are the same options a chat's settings pass down (temperature, top_p, top_k, repeat_penalty, seed). Over a 150k–250k-word vocabulary this used to cost tens of milliseconds per token in PyTorch (a full sort and several softmaxes); the native version does it in one pass in about a millisecond."
   ),
   mlNode(
     "ml_stop_check", "Stop check\n(EOS · num_predict)", 3, ML_ROW.r3,

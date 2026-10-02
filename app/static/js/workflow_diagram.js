@@ -205,27 +205,39 @@ function initWorkflowDiagram() {
     .attr("fill-opacity", 0.14)
     .attr("stroke-width", 2);
 
-  // Top-right badge: "K" = native C kernels, "G" = can run on the GPU (experimental), "GK" = both.
+  // Top-right badge: "K" = native C kernels (CPU), "G" = can run on the GPU (experimental), "K|G" = either: the
+  // C kernels on the CPU, or the GPU when the engine runs on one.
   const BADGE_TITLES = {
     K: "Runs on native C kernels",
     G: "Can run on the GPU (experimental, MATRICXON_DEVICE=cuda)",
-    GK: "Runs on native C kernels on the CPU, and can run on the GPU (experimental)",
+    "K|G": "Runs on native C kernels on the CPU, or on the GPU (experimental) when the engine is set to use one",
   };
-  const badgeOf = (d) => (d.gpu ? "G" : "") + (d.native ? "K" : "");
-  nodeGroups
+  const badgeOf = (d) => [d.native ? "K" : "", d.gpu ? "G" : ""].filter(Boolean).join("|");
+  // A small pill straddling the node's top-right border, so it never sits on the label text.
+  const badges = nodeGroups
     .filter((d) => badgeOf(d))
-    .append("text")
+    .append("g")
     .attr("class", "wf-native-icon")
-    .attr("x", (d) => d.w - 8)
-    .attr("y", 18)
-    .attr("text-anchor", "end")
+    .attr("transform", (d) => `translate(${d.w - (10 + 7 * badgeOf(d).length) - 8}, -9)`);
+  badges
+    .append("rect")
+    .attr("width", (d) => 10 + 7 * badgeOf(d).length)
+    .attr("height", 17)
+    .attr("rx", 8.5)
+    .attr("fill", ThemeColors.get("--color-slate-900"))
+    .attr("stroke", ThemeColors.get("--color-slate-500"))
+    .attr("stroke-width", 1);
+  badges
+    .append("text")
+    .attr("x", (d) => (10 + 7 * badgeOf(d).length) / 2)
+    .attr("y", 12.5)
+    .attr("text-anchor", "middle")
     .attr("fill", ThemeColors.get("--color-slate-300"))
-    .attr("font-size", "11.2px")
-    .attr("font-weight", "480")
+    .attr("font-size", "11px")
+    .attr("font-weight", "500")
     .attr("font-family", "ui-monospace, Menlo, Consolas, monospace")
-    .text((d) => badgeOf(d))
-    .append("title")
-    .text((d) => BADGE_TITLES[badgeOf(d)]);
+    .text((d) => badgeOf(d));
+  badges.append("title").text((d) => BADGE_TITLES[badgeOf(d)]);
 
   root
     .append("g")
