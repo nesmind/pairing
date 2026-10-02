@@ -205,6 +205,22 @@ function initWorkflowDiagram() {
     .attr("fill-opacity", 0.14)
     .attr("stroke-width", 2);
 
+  // "K" (top-right) marks stages that run on the native C kernels.
+  nodeGroups
+    .filter((d) => d.native)
+    .append("text")
+    .attr("class", "wf-native-icon")
+    .attr("x", (d) => d.w - 11)
+    .attr("y", 18)
+    .attr("text-anchor", "middle")
+    .attr("fill", ThemeColors.get("--color-slate-300"))
+    .attr("font-size", "11.2px")
+    .attr("font-weight", "480")
+    .attr("font-family", "ui-monospace, Menlo, Consolas, monospace")
+    .text("K")
+    .append("title")
+    .text("Runs on native C kernels");
+
   root
     .append("g")
     .selectAll("text")

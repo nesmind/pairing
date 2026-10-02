@@ -32,11 +32,16 @@ const ML_GROUP = {
   ml_kernels: "ml_support", ml_kv: "ml_support",
 };
 
+// Stages that run on Matricxon's native C kernels (app/native/src/*.c) when that backend is built —
+// the quantized matmuls, embedding-row dequant and the gated delta rule. Marked with a chip icon.
+const ML_NATIVE = new Set(["ml_embed", "ml_attention", "ml_linear_attn", "ml_ffn", "ml_lm_head", "ml_kernels"]);
+
 function mlNode(id, label, col, y, title, location, body, size = {}) {
   return {
     id,
     label,
     category: ML_GROUP[id],
+    native: ML_NATIVE.has(id),
     x: size.x ?? ML_COL[col],
     y,
     w: size.w ?? ML_W,
