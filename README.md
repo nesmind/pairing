@@ -38,6 +38,13 @@ Supports MySQL migration and multi-server deployment.
 3. Once the models are ready, go to **Settings → System** and set the important parameters (such as the default vision model).
 4. Run a few tests.
 
+**Production notes**
+
+In a production environment it is crucial to tune the important cache parameters. Matricxon, for example, lets you manage the persistent cache very efficiently. The hardware of a single computer/server (or several working as a cluster) plays a big role in how fast the system runs.
+
+It is also important not to expose more models to users than the system RAM/VRAM can handle. For example, on a single computer with 32GB of RAM, expose only 2-3 models that all fit in memory. In production, models always need to stay in memory.
+
+
 ## ✨ Features
 
 **Advanced model management**
