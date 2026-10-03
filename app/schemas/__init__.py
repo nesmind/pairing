@@ -53,6 +53,10 @@ from app.schemas.health import HealthStatus
 from app.schemas.http_proxy_config import HttpProxyConfig
 from app.schemas.image_generation import CheckpointList, ImageGenerationJobOut, ImageGenerationRequest
 from app.schemas.instances import InstancesConfig, InstanceStatus, InstancesUpdate, ProxyMode
+from app.schemas.matricxon_cache_persistence import (
+    MatricxonCachePersistence,
+    MatricxonCachePersistenceUpdate,
+)
 from app.schemas.matricxon_server_config import (
     MatricxonAutoDetectedPath,
     MatricxonServerConfig,
@@ -192,6 +196,8 @@ __all__ = [
     "NoteSlotUpdate",
     "NoteUpdate",
     "MatricxonAutoDetectedPath",
+    "MatricxonCachePersistence",
+    "MatricxonCachePersistenceUpdate",
     "MatricxonServerConfig",
     "MatricxonServerStatus",
     "OllamaAutoDetectedPath",

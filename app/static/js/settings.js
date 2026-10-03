@@ -1736,6 +1736,13 @@ saveBtn.addEventListener("click", async () => {
         body: JSON.stringify({ params: currentParams }),
       });
     }
+    // Reload to apply the saved values, but come back to the tab being edited (Behavior or Knowledge) instead
+    // of the default Model tab.
+    try {
+      sessionStorage.setItem(SETTINGS_TAB_STORAGE_KEY, activeTabName);
+    } catch (_err) {
+      // Storage blocked — reload still happens, just lands on the default tab.
+    }
     window.location.reload();
   } catch (err) {
     saveStatusEl.textContent = `Failed to save: ${err.message}`;
@@ -2550,14 +2557,10 @@ if (activeEngineSaveBtn) {
       // other model-related fetch on this page (installed vision/embedding models, RAG availability, ...) cache
       // themselves for the lifetime of this page load — switching engines here makes every one of those stale,
       // so this is the same "reload rather than try to selectively invalidate every cache" pattern the
-      // Ollama/Matricxon Start button already uses right below for the identical reason. Confirmed live: without
-      // this, the Model tab kept showing whichever engine's models were loaded *before* the switch until a hard
-      // refresh. Lands on the Model tab itself (not back on System, where this picker lives) — that's the one
-      // place an admin actually needs to look right after a switch, to see the new engine's own models and pick
-      // a default (see model_catalog_service.compute_matricxon_support and the "no default selected yet" gap
-      // this same switch can leave behind).
+      // Ollama/Matricxon Start button already uses right below for the identical reason. Stays on this tab
+      // (External servers) after the reload, so the admin can keep configuring the engine they just switched to.
       try {
-        sessionStorage.setItem(SETTINGS_TAB_STORAGE_KEY, "model");
+        sessionStorage.setItem(SETTINGS_TAB_STORAGE_KEY, "external-servers");
       } catch (_err) {
         // Private-browsing/storage-blocked — reload still happens, just lands on the default tab.
       }
@@ -2599,13 +2602,13 @@ async function loadAvailableVersions(server, section) {
 }
 
 /** Switching Ollama/Matricxon between local and remote changes which models exist (a remote server has its own
- * storage, managed through its API) — every model-related cache on this page is stale, so reload onto the Model
- * tab, same pattern as the active-engine switch. Returns true if it reloaded. */
-function redirectToModelsIfModeChanged(section, body, force = false) {
+ * storage, managed through its API) — every model-related cache on this page is stale, so reload, same pattern as
+ * the active-engine switch, and land back on this External servers tab. Returns true if it reloaded. */
+function reloadIfModeChanged(section, body, force = false) {
   const server = section.dataset.server;
   if (!["ollama", "matricxon"].includes(server) || (!force && body.mode === section.dataset.loadedMode)) return false;
   try {
-    sessionStorage.setItem(SETTINGS_TAB_STORAGE_KEY, "model");
+    sessionStorage.setItem(SETTINGS_TAB_STORAGE_KEY, "external-servers");
   } catch (_err) {
     // Storage blocked — reload still happens, just lands on the default tab.
   }
@@ -2730,7 +2733,7 @@ for (const server of EXTERNAL_SERVERS) {
           await api(`/api/settings/${server}/apply`, { method: "POST", body: JSON.stringify(body) }),
         );
         statusEl.textContent = `Saved — ${engineLabel} restarted.`;
-        redirectToModelsIfModeChanged(section, body, true); // a restart also clears "Browse more models"
+        reloadIfModeChanged(section, body, true); // a restart also clears "Browse more models"
         return;
       }
       await api(`/api/settings/${server}/config`, { method: "PUT", body: JSON.stringify(body) });
@@ -2753,7 +2756,7 @@ for (const server of EXTERNAL_SERVERS) {
           return;
         }
       }
-      redirectToModelsIfModeChanged(section, body);
+      reloadIfModeChanged(section, body);
     } catch (err) {
       // Stays put (no timeout, no redirect) so the admin can read why and fix the setting — e.g. a CUDA device
       // chosen on a machine without a GPU makes the restart fail. The failed restart left the engine stopped,

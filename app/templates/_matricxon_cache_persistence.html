@@ -1,0 +1,49 @@
+<!-- Settings > Matricxon > saved chat caches, shown only while Matricxon is the active engine. Wired by
+     app/static/js/settings_cache_persistence.js to /api/settings/matricxon/cache-persistence
+     (app/routers/matricxon_cache_admin.py). Changes apply instantly. -->
+<section class="hidden space-y-3" id="matricxon-cache-panel">
+  <h2 class="text-sm font-semibold text-slate-200">Matricxon saved chat caches</h2>
+  <p class="text-xs text-slate-500 -mt-2">
+    Keeps each long chat's processed state on disk, encrypted, so coming back to it after a restart or a long
+    break doesn't re-read the whole conversation. Applies to every Matricxon host and takes effect immediately.
+  </p>
+  <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
+    <div class="flex items-center justify-between gap-4">
+      <div class="min-w-0">
+        <p class="text-sm text-slate-200">Save chat caches to disk</p>
+        <p class="text-xs text-slate-500">Turning this off deletes everything saved.</p>
+      </div>
+      <label class="relative inline-flex items-center cursor-pointer shrink-0"
+        title="Write chat caches to disk when they leave memory, when a model unloads and when Matricxon stops.">
+        <input type="checkbox" id="matricxon-cache-enabled" class="peer sr-only">
+        <div class="h-6 w-11 rounded-full bg-slate-700 transition-colors peer-checked:bg-brand-600 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-500"></div>
+        <div class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-5"></div>
+      </label>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1" for="matricxon-cache-budget">Disk limit (MB)</label>
+        <input id="matricxon-cache-budget" type="number" min="0" max="1048576" placeholder="4096"
+          title="Most disk space the saved caches may use together. When it is exceeded the oldest are deleted first. 0 saves nothing."
+          class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500 disabled:opacity-40">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1" for="matricxon-cache-ttl">Keep for (hours)</label>
+        <input id="matricxon-cache-ttl" type="number" min="1" max="8760" placeholder="168"
+          title="Saved caches older than this are deleted. 168 hours is 7 days."
+          class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500 disabled:opacity-40">
+      </div>
+    </div>
+    <div class="flex flex-wrap items-center gap-3">
+      <button type="button" id="matricxon-cache-save"
+        class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+        Save
+      </button>
+      <button type="button" id="matricxon-cache-clear"
+        class="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+        Delete all saved caches
+      </button>
+      <span id="matricxon-cache-status" class="text-xs text-slate-500"></span>
+    </div>
+  </div>
+</section>

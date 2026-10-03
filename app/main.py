@@ -34,6 +34,7 @@ from app.routers import (
     image_generation,
     instances_admin,
     matricxon_admin,
+    matricxon_cache_admin,
     model_catalog_admin,
     notes,
     ollama_admin,
@@ -141,6 +142,7 @@ app.include_router(proxy_admin.router)
 app.include_router(http_proxy_admin.router)
 app.include_router(ollama_admin.router)
 app.include_router(matricxon_admin.router)
+app.include_router(matricxon_cache_admin.router)
 app.include_router(engine_admin.router)
 app.include_router(connectors.router)
 app.include_router(stats.router)
