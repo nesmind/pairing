@@ -132,6 +132,13 @@ class Message(Base):
     # other read of the history (app.services.conversation_service.visible_messages)
     # filters these out entirely.
     status = Column(String(20), nullable=False, default="complete")
+    # Set only on a message shared into a channel from someone's private chat (see
+    # app.services.message_share_service): the role the original had there - "user" (the sharer's own
+    # question) or "assistant" (an AI answer they're passing on). The copy itself is always a plain "user"-role
+    # message from the sharer, so it never triggers an AI reply and reads as theirs in the channel history;
+    # this only drives the small "Shared from a private chat" remark in the UI. Deliberately no link back to
+    # the private conversation - the other members can't open it, and it must stay private.
+    shared_from = Column(String(20), nullable=True)
     # The real reason a status="error" message failed (e.g. Matricxon's own "not enough memory to load ...: need
     # ~12.9GB, only 10.9GB available" — see app.services.matricxon_client._error_detail_from_body) — set once, by
     # app.services.reply_termination_service.mark_error, and null for every non-error message. Before this

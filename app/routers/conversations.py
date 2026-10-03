@@ -27,9 +27,11 @@ from app.schemas import (
     MessageOut,
     MessagesLatestResponse,
     OkResponse,
+    ShareMessageRequest,
 )
 from app.services import channel_service, conversation_service
 from app.services.auth_service import get_current_user
+from app.services.message_share_service import MessageShareService
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
@@ -117,6 +119,20 @@ async def delete_message(
         raise HTTPException(status_code=404, detail="Message not found")
     deleted_ids = await conversation_service.delete_message(db, conversation, message)
     return DeleteMessageResponse(deleted_message_ids=deleted_ids)
+
+
+@router.post("/{conversation_id}/messages/{message_id}/share", response_model=MessageOut)
+async def share_message(
+    conversation_id: str,
+    message_id: str,
+    body: ShareMessageRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Posts a copy of one message from the caller's own private chat into a channel they belong to, as a
+    plain message from them (no AI reply) - see MessageShareService. Returns the new channel message."""
+    conversation = await conversation_service.get_accessible_conversation_or_404(db, conversation_id, user)
+    return await MessageShareService(db).share_to_channel(user, conversation, message_id, body.channel_id)
 
 
 @router.patch("/{conversation_id}", response_model=ConversationOut)

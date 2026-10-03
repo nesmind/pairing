@@ -8,7 +8,7 @@ change to any call site outside it.
 """
 
 from app.schemas.channel import ChannelCreate, ChannelMemberOut, ChannelOut, ChannelSummary, ChannelUpdate
-from app.schemas.chat import DeleteMessageResponse, MessageOut, MessagesLatestResponse
+from app.schemas.chat import DeleteMessageResponse, MessageOut, MessagesLatestResponse, ShareMessageRequest
 from app.schemas.comfyui_config import ComfyUIProcessConfig, ComfyUIStatus
 from app.schemas.common import (
     DEFAULT_ENGINE,
@@ -138,6 +138,7 @@ __all__ = [
     "ChannelUpdate",
     "DeleteMessageResponse",
     "MessageOut",
+    "ShareMessageRequest",
     "MessagesLatestResponse",
     "ComfyUIProcessConfig",
     "ComfyUIStatus",

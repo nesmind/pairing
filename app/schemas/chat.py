@@ -58,6 +58,10 @@ class MessageOut(BaseModel):
     # "system" message, which the frontend never shows an avatar for.
     sender_avatar_url: str | None = None
     sender_initials: str | None = None
+    # "user" or "assistant" when this message was shared into a channel from a private chat (the role the
+    # original had there - see app.models.conversation.Message.shared_from); null for every normal message.
+    # chat.js shows a small "Shared from a private chat" remark under such a bubble.
+    shared_from: str | None = None
     # The raw id behind sender_display_name/sender_avatar_url above —
     # lets chat.js's "click an avatar to see more" modal fetch
     # GET /api/account/{id} for that specific sender (see
@@ -90,3 +94,9 @@ class DeleteMessageResponse(BaseModel):
     for the next poll/live-watch tick to notice the second one."""
 
     deleted_message_ids: list[str]
+
+
+class ShareMessageRequest(BaseModel):
+    """Body of POST /api/conversations/{id}/messages/{message_id}/share."""
+
+    channel_id: str

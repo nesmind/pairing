@@ -671,12 +671,23 @@ function addMessageBubble(
   senderId,
   errorText
 ) {
-  const { wrapper, bubble } = bubbleFor(role, senderLabel, avatarUrl, initials, senderId);
+  const sharedFrom = attachmentSource && attachmentSource.shared_from;
+  const { wrapper, bubble } = bubbleFor(
+    ChannelShare.visualRole(role, sharedFrom),
+    senderLabel,
+    avatarUrl,
+    initials,
+    senderId
+  );
   if (messageId) {
     wrapper.dataset.messageId = messageId;
     attachDeleteButtonIfEligible(wrapper, messageId);
   }
   setBubbleTime(wrapper, attachmentSource && attachmentSource.created_at);
+  // A finished message in a private chat can be shared to a channel; a message that was shared INTO this
+  // channel carries a small "Shared from a private chat" remark (see chat_share.js).
+  if (messageId && (!status || status === "complete")) ChannelShare.decorate(wrapper, messageId, role);
+  ChannelShare.remark(wrapper, sharedFrom, attachmentSource && attachmentSource.sender_display_name);
   renderReplyBody(bubble, content, status, sources, errorText);
   renderAttachment(bubble, attachmentSource);
   messagesEl.appendChild(wrapper);
@@ -948,13 +959,15 @@ async function runChannelPoll(conversationId) {
     const senderId = channelInfo && message.role === "user" ? message.sender_id : null;
     const { bubble } = findOrCreateBubbleForMessage(
       message.id,
-      message.role,
+      ChannelShare.visualRole(message.role, message.shared_from),
       senderLabel,
       message.sender_avatar_url,
       message.sender_initials,
       senderId
     );
     setBubbleTime(bubble.closest("[data-message-id]"), message.created_at);
+    // A message another member shared in from a private chat arrives through here too, while this tab is open.
+    ChannelShare.remark(bubble.closest("[data-message-id]"), message.shared_from, message.sender_display_name);
     renderReplyBody(bubble, message.content, message.status, message.sources, message.error_message);
     renderAttachment(bubble, message);
     messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -1960,6 +1973,7 @@ async function readAssistantReplyStream(
         userWrapper.dataset.messageId = payload.user_message_id;
         liveMessageIds.add(payload.user_message_id);
         attachDeleteButtonIfEligible(userWrapper, payload.user_message_id);
+        ChannelShare.decorate(userWrapper, payload.user_message_id, "user");
       }
       // Present on every event now (see app.services.reply_generation_service)
       // — tag the bubble with it the first time it's seen (before the
@@ -2029,6 +2043,7 @@ async function readAssistantReplyStream(
       }
       if (payload.done) {
         if (bubble) renderReplyBody(bubble, fullText, "complete", payload.sources);
+        if (bubble && wrapper.dataset.messageId) ChannelShare.decorate(wrapper, wrapper.dataset.messageId, "assistant");
         if (isChannel && askAi) {
           channelReplyInFlight = false;
           updateAskAiButtonState();
