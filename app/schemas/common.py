@@ -155,3 +155,7 @@ class GenerationParams(BaseModel):
     disabled_default_notes: list[PinType] = []
     # Offer the admin-connected MCP tools to the model in this conversation (see tool_loop_service).
     use_tools: bool = False
+    # The tool definitions this chat offers its model, saved the first time it uses tools (see
+    # app.services.chat_tool_set). Server-managed: a params update from a client never changes it. Declared so a
+    # Settings-page save, which rebuilds `params` from this model, doesn't lose it.
+    tool_snapshot: list[dict] = []

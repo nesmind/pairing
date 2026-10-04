@@ -32,7 +32,7 @@ async def test_unavailable_with_no_embedding_model_configured_on_an_embeddings_c
     result = await rag_availability(db=db, _user=user)
 
     assert result.available is False
-    assert result.reason == "No embedding model found yet — see Settings > Model to install one."
+    assert result.reason == "No embedding model found yet — ask admin."
 
 
 @pytest.mark.asyncio

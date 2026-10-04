@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import inference_client, mcp_settings_service
+from app.services.chat_tool_set import ChatTool, ChatToolSet
 from app.services.inference_client import InferenceError
 from app.services.mcp_client import McpError
 from app.services.mcp_tool_catalog import ExposedTool, McpToolCatalog
@@ -22,7 +23,7 @@ from app.services.tool_result_clip import ToolResultClip
 class ToolLoop:
     def __init__(
         self,
-        tools: list[ExposedTool],
+        tools: list[ExposedTool | ChatTool],
         max_rounds: int = mcp_settings_service.DEFAULT_MAX_TOOL_ROUNDS,
         max_result_chars: int = mcp_settings_service.DEFAULT_MAX_RESULT_CHARS,
     ) -> None:
@@ -124,7 +125,8 @@ async def tool_stream_or_none(
     the conversation didn't ask for tools, no MCP server offers any, or the model can't use them."""
     if not params.get("use_tools") or not await mcp_settings_service.get_enabled(db):
         return None
-    tools = await McpToolCatalog(db).tools()
+    live = await McpToolCatalog(db).tools()
+    tools = await ChatToolSet(db).for_chat(params.get("conversation_id"), params.get("tool_snapshot") or [], live)
     if not tools or not await _model_can_use_tools(model):
         return None
     limits = await mcp_settings_service.get_limits(db)

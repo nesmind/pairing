@@ -189,9 +189,7 @@ async def rag_availability(db: AsyncSession = Depends(get_db), _user: User = Dep
             "active engine (see External servers/Connectors).",
         )
     if (await get_default_embedding_model(db)) is None:
-        return RagAvailability(
-            available=False, reason="No embedding model found yet — see Settings > Model to install one."
-        )
+        return RagAvailability(available=False, reason="No embedding model found yet — ask admin.")
     return RagAvailability(available=True)
 
 

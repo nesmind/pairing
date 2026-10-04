@@ -490,7 +490,7 @@ function renderModelRow(entry, pairing = null, compact = false) {
   // instruction format was never actually confirmed. Amber (a caution, not a hard "broken" claim — the model
   // may still work fine) rather than +Vision's brand color or the other badges' neutral slate.
   const chatFormatUnverifiedBadge = entry.chat_format_unverified
-    ? ` <span class="inline-flex items-center rounded-full bg-amber-500/15 border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-medium text-amber-400 align-middle" title="Matricxon has no confirmed chat template for this model and is falling back to a best-effort guess — it may not reliably follow instructions or stay in character.">Chat format unverified</span>`
+    ? ` <span class="inline-flex items-center rounded-full bg-warning-500/15 border border-warning-500/40 px-1.5 py-0.5 text-[10px] font-medium text-warning-400 align-middle" title="Matricxon has no confirmed chat template for this model and is falling back to a best-effort guess — it may not reliably follow instructions or stay in character.">Chat format unverified</span>`
     : "";
   label.innerHTML =
     `<span class="block truncate font-medium text-slate-100">${escapeHtml(modelName || entry.tag)}` +
@@ -517,7 +517,7 @@ function renderModelRow(entry, pairing = null, compact = false) {
 
   if (!entry.hardware_ok) {
     const badge = document.createElement("span");
-    badge.className = "text-xs font-medium text-amber-400";
+    badge.className = "text-xs font-medium text-warning-400";
     badge.textContent = "Unavailable";
     action.appendChild(badge);
   } else if (entry.installed) {
@@ -636,7 +636,7 @@ function renderModelRow(entry, pairing = null, compact = false) {
 
   if (!entry.hardware_ok && !compact) {
     const reason = document.createElement("p");
-    reason.className = "mt-1.5 text-xs text-amber-400";
+    reason.className = "mt-1.5 text-xs text-warning-400";
     reason.textContent = entry.unavailable_reason
       || `Requires ~${entry.engine_support?.[currentActiveEngine]?.min_ram_gb ?? entry.min_ram_gb}GB RAM/VRAM — this machine has ~${currentCatalog.hardware.total_gb}GB.`;
     row.appendChild(reason);
@@ -961,7 +961,7 @@ function renderHfRepoFiles(repo) {
     // implies — confirmed live: this is exactly what caused a mmproj file to get added and pulled as if it
     // were a real, standalone chat model.
     const projectorBadge = file.is_projector
-      ? ` <span class="inline-flex items-center rounded-full bg-amber-500/15 border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-medium text-amber-400 align-middle">Vision projector — not a chat model on its own</span>`
+      ? ` <span class="inline-flex items-center rounded-full bg-warning-500/15 border border-warning-500/40 px-1.5 py-0.5 text-[10px] font-medium text-warning-400 align-middle">Vision projector — not a chat model on its own</span>`
       : "";
     // Same "+Vision" pill renderModelRow shows — this repo also ships an mmproj sidecar that gets paired with it.
     const visionBadge = file.vision
@@ -1541,7 +1541,7 @@ function readUploadSlots() {
 function resetUploadSlot(entry) {
   entry.slotEl.querySelector(".upload-slot-input").value = "";
   entry.statusEl.textContent = "—";
-  entry.statusEl.classList.remove("text-amber-400", "text-emerald-400");
+  entry.statusEl.classList.remove("text-warning-400", "text-emerald-400");
   entry.barWrapEl.classList.add("hidden");
   entry.barEl.classList.remove("bg-red-500");
   entry.barEl.classList.add("bg-brand-600");
@@ -1568,14 +1568,14 @@ async function handleUpload() {
   for (const entry of entries) {
     if (currentUploadLimits && entry.file.size > currentUploadLimits.max_file_mb * 1024 * 1024) {
       entry.statusEl.textContent = "Too large";
-      entry.statusEl.classList.add("text-amber-400");
+      entry.statusEl.classList.add("text-warning-400");
       continue;
     }
     valid.push(entry);
   }
   if (valid.length === 0) {
     statusEl.textContent = "No files small enough to upload — see the size limit above.";
-    statusEl.classList.add("text-amber-400");
+    statusEl.classList.add("text-warning-400");
     return;
   }
 
@@ -1591,7 +1591,7 @@ async function handleUpload() {
   for (const entry of valid) {
     slotByFilename.set(entry.file.name, entry);
     entry.statusEl.textContent = "Waiting…";
-    entry.statusEl.classList.remove("text-amber-400", "text-emerald-400");
+    entry.statusEl.classList.remove("text-warning-400", "text-emerald-400");
     entry.barWrapEl.classList.remove("hidden");
     entry.barEl.style.width = "0%";
   }
@@ -1631,7 +1631,7 @@ async function handleUpload() {
       } else if (fileState.status === "error") {
         entry.barEl.style.width = "100%";
         entry.statusEl.textContent = fileState.error;
-        entry.statusEl.classList.add("text-amber-400");
+        entry.statusEl.classList.add("text-warning-400");
         entry.barEl.classList.remove("bg-brand-600");
         entry.barEl.classList.add("bg-red-500");
         fraction = 1;
@@ -1651,7 +1651,7 @@ async function handleUpload() {
   overallWrapEl.classList.remove("hidden");
   setOverall(0);
   statusEl.textContent = `Uploading ${totalFiles} file${totalFiles === 1 ? "" : "s"}…`;
-  statusEl.classList.remove("text-amber-400");
+  statusEl.classList.remove("text-warning-400");
 
   try {
     const result = await uploadFiles(formData, applyJobState);
@@ -1661,14 +1661,14 @@ async function handleUpload() {
     if (result.uploaded.length) parts.push(`Uploaded ${result.uploaded.length}.`);
     if (result.errors.length) {
       parts.push(...result.errors);
-      statusEl.classList.add("text-amber-400");
+      statusEl.classList.add("text-warning-400");
     }
     statusEl.textContent = parts.join(" ") || "Done.";
     renderKnowledgeSummary(result.summary);
     await loadDocumentLists();
   } catch (err) {
     statusEl.textContent = `Upload failed: ${err.message}`;
-    statusEl.classList.add("text-amber-400");
+    statusEl.classList.add("text-warning-400");
   } finally {
     uploadBtn.disabled = false;
     setTimeout(() => {
@@ -3465,11 +3465,11 @@ document.getElementById("account-password-save-btn")?.addEventListener("click", 
   const new_password = newInput.value;
   const confirm = confirmInput.value;
 
-  statusEl.classList.remove("text-amber-400");
+  statusEl.classList.remove("text-warning-400");
 
   if (!current_password || !new_password) {
     statusEl.textContent = "Fill in both your current and new password.";
-    statusEl.classList.add("text-amber-400");
+    statusEl.classList.add("text-warning-400");
     return;
   }
   // Mirrors app/schemas.py's ChangePasswordRequest constraint, so a
@@ -3477,12 +3477,12 @@ document.getElementById("account-password-save-btn")?.addEventListener("click", 
   // FastAPI validation error.
   if (new_password.length < 3 || new_password.length > 200) {
     statusEl.textContent = "New password must be 3-200 characters.";
-    statusEl.classList.add("text-amber-400");
+    statusEl.classList.add("text-warning-400");
     return;
   }
   if (new_password !== confirm) {
     statusEl.textContent = "New password and confirmation don't match.";
-    statusEl.classList.add("text-amber-400");
+    statusEl.classList.add("text-warning-400");
     return;
   }
 
@@ -3499,12 +3499,12 @@ document.getElementById("account-password-save-btn")?.addEventListener("click", 
     statusEl.textContent = "Password changed.";
   } catch (err) {
     statusEl.textContent = err.message;
-    statusEl.classList.add("text-amber-400");
+    statusEl.classList.add("text-warning-400");
   } finally {
     btn.disabled = false;
     setTimeout(() => {
       statusEl.textContent = "";
-      statusEl.classList.remove("text-amber-400");
+      statusEl.classList.remove("text-warning-400");
     }, 3000);
   }
 });
@@ -3542,12 +3542,12 @@ document.getElementById("ui-theme-save-btn")?.addEventListener("click", async ()
     statusEl.textContent = "Saved";
   } catch (err) {
     statusEl.textContent = err.message;
-    statusEl.classList.add("text-amber-400");
+    statusEl.classList.add("text-warning-400");
   } finally {
     btn.disabled = false;
     setTimeout(() => {
       statusEl.textContent = "";
-      statusEl.classList.remove("text-amber-400");
+      statusEl.classList.remove("text-warning-400");
     }, 3000);
   }
 });
@@ -3576,12 +3576,12 @@ document.getElementById("default-notes-enabled-toggle")?.addEventListener("chang
   } catch (err) {
     e.target.checked = !enabled; // revert the visible toggle — the save didn't actually take effect
     statusEl.textContent = err.message;
-    statusEl.classList.add("text-amber-400");
+    statusEl.classList.add("text-warning-400");
   } finally {
     e.target.disabled = false;
     setTimeout(() => {
       statusEl.textContent = "";
-      statusEl.classList.remove("text-amber-400");
+      statusEl.classList.remove("text-warning-400");
     }, 2500);
   }
 });

@@ -53,6 +53,19 @@ class McpToolOut(BaseModel):
     description: str = ""
 
 
+class McpChatTool(McpToolOut):
+    available: bool = True  # False once an admin removed it: still in the chat's list, but calls fail
+
+
+class McpChatTools(BaseModel):
+    """What one chat offers its model (see app.services.chat_tool_set) and what an admin added since."""
+
+    enabled: bool = True  # the admin's global MCP switch
+    frozen: bool  # the chat has its own saved list (it has used tools)
+    tools: list[McpChatTool]
+    new_tools: list[McpToolOut] = Field(default_factory=list)
+
+
 class McpTestResult(BaseModel):
     ok: bool
     error: str | None = None

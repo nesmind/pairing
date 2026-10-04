@@ -459,6 +459,26 @@
   --color-emerald-300: 110 231 183; --color-emerald-400: 52 211 153; --color-emerald-500: 16 185 129;
   --color-emerald-600: 5 150 105;  --color-emerald-700: 4 120 87;   --color-emerald-800: 6 95 70;
   --color-emerald-900: 6 78 59;    --color-emerald-950: 2 44 34;
+
+  /* Warning/notice accent ramps (warn-pink, warn-purple, warn-red). Which one the `warning` colour uses is the single
+   WARNING_RAMP constant in base.html - one edit recolors every warning. A new colour needs a ramp here in both
+   semantic blocks: as-is in the dark-themes block, shades reversed in the light-themes block below. */
+  --color-warn-pink-50: 253 242 248;  --color-warn-pink-100: 252 231 243;  --color-warn-pink-200: 251 207 232;
+  --color-warn-pink-300: 249 168 212;  --color-warn-pink-400: 244 114 182;  --color-warn-pink-500: 236 72 153;
+  --color-warn-pink-600: 219 39 119;  --color-warn-pink-700: 190 24 93;  --color-warn-pink-800: 157 23 77;
+  --color-warn-pink-900: 131 24 67;  --color-warn-pink-950: 80 7 36;
+
+  /* warn-purple (light purple): the ramp the "warning" colour uses now */
+  --color-warn-purple-50: 245 243 255;  --color-warn-purple-100: 245 243 255;  --color-warn-purple-200: 237 233 254;
+  --color-warn-purple-300: 221 214 254;  --color-warn-purple-400: 196 181 253;  --color-warn-purple-500: 167 139 250;
+  --color-warn-purple-600: 139 92 246;  --color-warn-purple-700: 124 58 237;  --color-warn-purple-800: 109 40 217;
+  --color-warn-purple-900: 91 33 182;  --color-warn-purple-950: 76 29 149;
+
+  /* warn-red (light red) */
+  --color-warn-red-50: 254 242 242;  --color-warn-red-100: 254 242 242;  --color-warn-red-200: 254 226 226;
+  --color-warn-red-300: 254 202 202;  --color-warn-red-400: 252 165 165;  --color-warn-red-500: 248 113 113;
+  --color-warn-red-600: 239 68 68;  --color-warn-red-700: 220 38 38;  --color-warn-red-800: 185 28 28;
+  --color-warn-red-900: 153 27 27;  --color-warn-red-950: 127 29 29;
 }
 
 [data-theme="sunshine"], [data-theme="bubblegum"], [data-theme="sky"],
@@ -482,4 +502,22 @@
   --color-emerald-300: 4 120 87;   --color-emerald-400: 5 150 105;  --color-emerald-500: 16 185 129;
   --color-emerald-600: 52 211 153; --color-emerald-700: 110 231 183; --color-emerald-800: 167 243 208;
   --color-emerald-900: 209 250 229; --color-emerald-950: 236 253 245;
+
+  /* warn-pink, reversed like the other semantic ramps */
+  --color-warn-pink-50: 80 7 36;  --color-warn-pink-100: 131 24 67;  --color-warn-pink-200: 157 23 77;
+  --color-warn-pink-300: 190 24 93;  --color-warn-pink-400: 219 39 119;  --color-warn-pink-500: 236 72 153;
+  --color-warn-pink-600: 244 114 182;  --color-warn-pink-700: 249 168 212;  --color-warn-pink-800: 251 207 232;
+  --color-warn-pink-900: 252 231 243;  --color-warn-pink-950: 253 242 248;
+
+  /* warn-purple, reversed */
+  --color-warn-purple-50: 76 29 149;  --color-warn-purple-100: 91 33 182;  --color-warn-purple-200: 109 40 217;
+  --color-warn-purple-300: 124 58 237;  --color-warn-purple-400: 139 92 246;  --color-warn-purple-500: 167 139 250;
+  --color-warn-purple-600: 196 181 253;  --color-warn-purple-700: 221 214 254;  --color-warn-purple-800: 237 233 254;
+  --color-warn-purple-900: 245 243 255;  --color-warn-purple-950: 245 243 255;
+
+  /* warn-red (light red), reversed. Light themes: 400 (the warning text) is dark gray (slate-700) instead, for body-text-like contrast; 500 (the frame and badge tint) is the same dark gray */
+  --color-warn-red-50: 127 29 29;  --color-warn-red-100: 153 27 27;  --color-warn-red-200: 185 28 28;
+  --color-warn-red-300: 153 27 27;  --color-warn-red-400: 51 65 85;  --color-warn-red-500: 51 65 85;
+  --color-warn-red-600: 252 165 165;  --color-warn-red-700: 254 202 202;  --color-warn-red-800: 254 226 226;
+  --color-warn-red-900: 254 242 242;  --color-warn-red-950: 254 242 242;
 }

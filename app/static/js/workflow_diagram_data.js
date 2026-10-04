@@ -552,7 +552,7 @@ const WORKFLOW_NODES = [
       server: APP_NAME,
       title: "MCP stage 2 — which tools exist",
       location: "app/services/mcp_tool_catalog.py — McpToolCatalog.tools",
-      body: "Lists the enabled servers (one query) and each server's tools, asked in parallel. A server's tool list is cached 60 seconds per instance, keyed on its saved URL/headers so an edit applies at once; a server that fails is remembered as empty for 15 seconds so a dead one never adds its timeout to every reply. Tool names become <server>__<tool>. Long tool/parameter descriptions are clipped when the definitions are built, because they are re-read by the model on every round.",
+      body: "Lists the enabled servers (one query) and each server's tools, asked in parallel. A server's tool list is cached 60 seconds per instance, keyed on its saved URL/headers so an edit applies at once; a server that fails is remembered as empty for 15 seconds so a dead one never adds its timeout to every reply. Tool names become <server>__<tool>. Long tool/parameter descriptions are clipped when the definitions are built, because they are re-read by the model on every round. A chat does not use this list directly: the first time it uses tools its current tools are saved on the conversation (params.tool_snapshot) and offered unchanged from then on, so an admin adding or removing a tool never makes the engine re-read every chat (the tool definitions sit at the start of the prompt). A removed tool stays in the chat and a call to it returns \"no longer available\" to the model; new tools are only suggested in the chat\u0027s Tools popup, and updating them is the person\u0027s choice.",
     },
   },
   {

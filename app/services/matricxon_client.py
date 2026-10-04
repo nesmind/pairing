@@ -166,8 +166,8 @@ async def chat_stream(model: str, messages: list[dict], params: dict) -> AsyncGe
     # unloading the model for everyone else - see stop_model below.
     if params.get("request_id"):
         payload["request_id"] = params["request_id"]
-    if params.get("cache_tag"):  # the conversation, so a deleted chat's stored prompt cache can be dropped
-        payload["cache_tag"] = params["cache_tag"]
+    if params.get("conversation_id"):  # tags the cached prompt, so a deleted chat's cache can be dropped
+        payload["cache_tag"] = params["conversation_id"]
 
     # Populated by _raw_content_chunks_from below (overwritten on every attempt, since stream_with_failover can
     # call it more than once) and read back once the stream finishes, to attach telemetry to the span below —

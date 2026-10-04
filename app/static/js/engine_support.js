@@ -49,7 +49,7 @@ function _renderArchitectures(architectures, moeArchitectures = [], visionArchit
     .map((name) => {
       const kind = EMBEDDING_ARCHITECTURES.has(name) ? "Embeddings" : "Text generation";
       const moeBadge = moeSet.has(name)
-        ? '<span class="text-[10px] uppercase tracking-wide text-amber-400">MoE</span>'
+        ? '<span class="text-[10px] uppercase tracking-wide text-warning-400">MoE</span>'
         : "";
       const visionBadge = visionSet.has(name)
         ? '<span class="text-[10px] uppercase tracking-wide text-sky-400">+Vision</span>'

@@ -28,6 +28,11 @@
       }
       return scale;
     }
+    // The warning/notice accent (every `*-warning-*` class). Pick a ramp defined in app/static/css/themes.css:
+    // 'warn-pink', 'warn-purple' or 'warn-red'. To add a colour, add a `--color-warn-<name>-50..950` ramp to themes.css in
+    // BOTH semantic blocks (the dark-themes block as-is, the light-themes block with the shades reversed, like
+    // the amber/red ramps there), then name it here.
+    const WARNING_RAMP = 'warn-red';
     tailwind.config = {
       theme: {
         extend: {
@@ -35,6 +40,7 @@
             slate: themedColorScale('slate'),
             brand: themedColorScale('brand'),
             amber: themedColorScale('amber'),
+            warning: themedColorScale(WARNING_RAMP),
             red: themedColorScale('red'),
             rose: themedColorScale('rose'),
             emerald: themedColorScale('emerald'),

@@ -52,6 +52,7 @@ class ToolToggle {
     this.conversationId = null;
     this.params = null;
     this.tools = [];
+    this.newTools = [];
     this.canManage = false;
     this.popover = document.createElement("div");
     this.popover.className =
@@ -74,15 +75,16 @@ class ToolToggle {
     this.params = conversation.params || {};
     this.canManage = canManage;
     this.popover.classList.add("hidden");
-    let tools = [];
+    let info = { enabled: false, tools: [], new_tools: [] };
     try {
-      tools = await api("/api/mcp/tools");
+      info = await api(`/api/mcp/conversations/${conversationId}/tools`);
     } catch (_) {
       /* no tools -> no switch */
     }
     if (this.conversationId !== conversationId) return; // the user moved on while this loaded
-    this.tools = tools;
-    this.button.classList.toggle("hidden", tools.length === 0);
+    this.tools = info.tools;
+    this.newTools = info.new_tools;
+    this.button.classList.toggle("hidden", !info.enabled || info.tools.length === 0);
     this.paint();
   }
 
@@ -121,18 +123,62 @@ class ToolToggle {
     const items = this.tools.map((tool) => {
       const item = document.createElement("div");
       const name = document.createElement("p");
-      name.className = "font-medium text-slate-300";
-      name.textContent = tool.name;
+      name.className = tool.available ? "font-medium text-slate-300" : "font-medium text-slate-500 line-through";
+      name.textContent = tool.available ? tool.name : `${tool.name} (no longer available)`;
       const description = document.createElement("p");
       description.className = "text-slate-500 line-clamp-2";
       description.textContent = tool.description;
       item.append(name, description);
       return item;
     });
-    this.popover.replaceChildren(head, note, ...items);
+    this.popover.replaceChildren(head, note, ...items, ...this.newToolsNotice());
+  }
+
+  /** When an admin added tools after this chat started: suggest them, but only change the chat on request, since
+   * a new tool list makes the model re-read the whole chat once. */
+  newToolsNotice() {
+    if (!this.newTools.length) return [];
+    const box = document.createElement("div");
+    box.className = "rounded-lg border border-warning-500/50 bg-slate-900 p-2 text-warning-400 space-y-1";
+    const text = document.createElement("p");
+    text.textContent =
+      `${this.newTools.length} new tool${this.newTools.length === 1 ? "" : "s"} available: ` +
+      `${this.newTools.map((t) => t.name).join(", ")}. This chat keeps its current tools until you update them; ` +
+      "updating makes its next reply re-read the whole chat (slower).";
+    box.append(text);
+    if (this.canManage) {
+      const update = document.createElement("button");
+      update.type = "button";
+      update.className = "rounded-md border border-slate-600 px-2 py-1 text-slate-200 hover:bg-slate-800";
+      update.textContent = "Update tools";
+      update.addEventListener("click", () => this.update());
+      box.append(update);
+    }
+    return [box];
+  }
+
+  async update() {
+    const id = this.conversationId;
+    try {
+      const info = await api(`/api/mcp/conversations/${id}/tools/refresh`, { method: "POST" });
+      if (this.conversationId !== id) return;
+      this.tools = info.tools;
+      this.newTools = info.new_tools;
+      this.drawPopover();
+    } catch (error) {
+      this.drawPopover(error.message);
+    }
   }
 
   async flip() {
+    // Tools sit at the start of the prompt: switching them on or off in a chat that already has messages makes the
+    // engine re-read all of it on the next reply. Say so and let the person choose.
+    const turningOn = !this.on;
+    const rereads = typeof activeHasMessages !== "undefined" && activeHasMessages;
+    if (rereads && !confirm(`Turning tools ${turningOn ? "on" : "off"} changes this chat's prompt, so its next reply will re-read the whole chat (slower). Continue?`)) {
+      this.drawPopover();
+      return;
+    }
     const params = { ...this.params, use_tools: !this.on };
     const id = this.conversationId;
     let message = "";
