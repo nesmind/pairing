@@ -14,6 +14,7 @@ class McpServerIn(BaseModel):
     # the stored ones; send {} to clear them.
     headers: dict[str, str] | None = None
     enabled: bool = True
+    call_timeout_seconds: int = Field(default=20, ge=1, le=300)  # per tool call on this server
 
     @field_validator("name")
     @classmethod
@@ -37,6 +38,7 @@ class McpServerOut(BaseModel):
     url: str
     header_names: list[str] = Field(default_factory=list)  # values are never sent back
     enabled: bool
+    call_timeout_seconds: int = 20
 
 
 class McpEnabled(BaseModel):
@@ -66,7 +68,25 @@ class McpChatTools(BaseModel):
     new_tools: list[McpToolOut] = Field(default_factory=list)
 
 
+class McpTestTool(McpToolOut):
+    params: list[str] = Field(default_factory=list)  # parameter names, a trailing * marks a required one
+    definition_chars: int = 0  # size of the definition the model reads (clipped the way chats send it)
+
+
+class McpServerDetails(BaseModel):
+    """What the server says about itself when the connection starts."""
+
+    name: str = ""
+    version: str = ""
+    protocol: str = ""
+    instructions: str = ""
+    capabilities: list[str] = Field(default_factory=list)
+
+
 class McpTestResult(BaseModel):
     ok: bool
     error: str | None = None
-    tools: list[McpToolOut] = Field(default_factory=list)
+    tools: list[McpTestTool] = Field(default_factory=list)
+    server: McpServerDetails | None = None
+    seconds: float = 0.0  # connect, initialize and list the tools
+    definition_tokens: int = 0  # rough size of all tool definitions, which the model re-reads every round

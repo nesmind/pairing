@@ -512,15 +512,15 @@ const WORKFLOW_NODES = [
     mcp: true,
     label: "MCP server\n(call_tool)",
     category: "engine",
-    x: 240,
+    x: 30,
     y: 810,
-    w: 180,
+    w: 170,
     h: 64,
     detail: {
       server: "MCP server",
       title: "Running a tool on an MCP server",
       location: "app/services/mcp_client.py — McpConnection.call_tool; servers are set up in Admin settings > MCP servers",
-      body: "A short-lived streamable-HTTP session per call (connect, initialize, call the tool, close), so nothing is shared between users or between pAIring instances. Limited to 8 calls at once per instance, 30 seconds per call, and results are cut at the admin-set limit (Admin settings > System, default 4,000 characters; a JSON result is shortened by clipping long strings and lists so it stays valid JSON, other text is cut at a word boundary). A failed or unreachable server becomes an error result the model sees instead of failing the reply.",
+      body: "A short-lived streamable-HTTP session per call (connect, initialize, call the tool, close), so nothing is shared between users or between pAIring instances. Limited to 8 calls at once per instance, the server\u0027s own tool-call timeout (default 20 seconds, set per server) per call, 15 seconds to list a server\u0027s tools, and results are cut at the admin-set limit (Admin settings > System, default 4,000 characters; a JSON result is shortened by clipping long strings and lists so it stays valid JSON, other text is cut at a word boundary). A failed or unreachable server becomes an error result the model sees instead of failing the reply.",
     },
   },
   {
@@ -561,7 +561,7 @@ const WORKFLOW_NODES = [
     label: "tool_event_service\n.record()",
     category: "service",
     x: 30,
-    y: 810,
+    y: 920,
     w: 170,
     h: 64,
     detail: {
@@ -617,10 +617,14 @@ const WORKFLOW_EDGES = [
   { from: "stream_done", to: "smart_title", branch: true },
 
   // MCP tools branch
-  { from: "run_generation_task", to: "mcp_gate", branch: true },
+  { from: "run_generation_task", to: "mcp_gate", branch: true, dir: "v" },
   { from: "mcp_gate", to: "mcp_catalog", branch: true },
   { from: "mcp_gate", to: "mcp_tool_loop", branch: true },
   { from: "mcp_server_call", to: "mcp_record", branch: true },
+  // MCP -> ML engine: the tool definitions and tool results are rendered into the prompt by the chat template. The way
+  // back (the engine parses the model's tool call out of its text and returns it as tool_calls) is the ordinary
+  // reply stream, described in the detokenize / stop-check stages, not a separate edge (it would cross the ML rows).
+  { from: "mcp_tool_loop", to: "ml_template", branch: true, dir: "v" },
   { from: "mcp_tool_loop", to: "inference_client_stream", branch: true },
   { from: "mcp_tool_loop", to: "mcp_server_call", branch: true },
 ];

@@ -63,3 +63,16 @@ def test_bad_names_are_rejected(name: str) -> None:
 def test_bad_urls_are_rejected(url: str) -> None:
     with pytest.raises(ValueError):
         McpServerIn(name="ok", url=url)
+
+
+async def test_the_call_timeout_defaults_to_20_and_is_saved_per_server(db) -> None:
+    service = McpServerService(db)
+    plain = await service.create(McpServerIn(name="plain", url="http://127.0.0.1:9101/mcp"))
+    slow = await service.create(McpServerIn(name="slow", url="http://127.0.0.1:9101/mcp", call_timeout_seconds=90))
+
+    assert McpServerService.to_out(plain).call_timeout_seconds == 20
+    assert McpServerService.to_out(slow).call_timeout_seconds == 90
+    updated = await service.update(
+        slow.id, McpServerIn(name="slow", url="http://127.0.0.1:9101/mcp", call_timeout_seconds=45)
+    )
+    assert updated.call_timeout_seconds == 45

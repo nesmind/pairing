@@ -109,3 +109,22 @@ def test_long_descriptions_are_clipped_in_the_definition_sent_to_the_model() -> 
     assert len(function["description"]) <= 400
     assert len(function["parameters"]["properties"]["q"]["description"]) <= 160
     assert len(schema["properties"]["q"]["description"]) == 1000  # the original is untouched
+
+
+async def test_the_test_connection_result_describes_the_server_and_its_tools(server) -> None:
+    result = await McpToolCatalog.probe("fake", server.url, {})
+
+    assert result.ok and result.server is not None
+    assert result.server.name == "fake" and result.server.protocol and "tools" in result.server.capabilities
+    add = next(t for t in result.tools if t.name == "fake__add")
+    assert add.params == ["a*", "b*"] and add.definition_chars > 0
+    assert result.seconds >= 0 and result.definition_tokens > 0
+
+
+async def test_a_tool_runs_with_its_servers_timeout_and_listing_has_its_own(db, server) -> None:
+    await McpServerService(db).create(McpServerIn(name="fake", url=server.url, call_timeout_seconds=7))
+
+    tools = await McpToolCatalog(db).tools()
+
+    assert tools and all(t.connection._timeout == 7.0 for t in tools)
+    assert mcp_tool_catalog.LIST_TIMEOUT_SECONDS == 15.0

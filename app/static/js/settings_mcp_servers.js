@@ -18,6 +18,7 @@ class McpServersPanel {
     this.headers = root.querySelector("#mcp-headers");
     this.headersHint = root.querySelector("#mcp-headers-hint");
     this.enabled = root.querySelector("#mcp-enabled");
+    this.timeout = root.querySelector("#mcp-timeout");
     this.cancel = root.querySelector("#mcp-cancel");
     this.status = root.querySelector("#mcp-status");
     this.addButton = root.querySelector("#mcp-add");
@@ -76,10 +77,29 @@ class McpServersPanel {
     }
   }
 
+  /** The test result as readable lines: what the server says about itself, how heavy its tools are for a
+   * model (their definitions are re-read every round), and each tool with its parameters (* = required). */
   static describe(result) {
     if (!result.ok) return `Failed: ${result.error}`;
+    const clip = (text, max) => (text.length > max ? `${text.slice(0, max).trimEnd()}…` : text);
+    const server = result.server || {};
+    const who = [server.name, server.version].filter(Boolean).join(" ");
+    const lines = [`Connected in ${result.seconds}s${who ? ` — ${who}` : ""}`];
+    const facts = [];
+    if (server.protocol) facts.push(`protocol ${server.protocol}`);
+    if (server.capabilities?.length) facts.push(`offers: ${server.capabilities.join(", ")}`);
+    if (facts.length) lines.push(facts.join(" · "));
+    if (server.instructions) lines.push(`Instructions: ${clip(server.instructions.replace(/\s+/g, " "), 300)}`);
     const n = result.tools.length;
-    return `Connected — ${n} tool${n === 1 ? "" : "s"}: ${result.tools.map((t) => t.name).join(", ")}`;
+    lines.push(
+      `${n} tool${n === 1 ? "" : "s"}, about ${result.definition_tokens} tokens of definitions sent to the model each round`,
+    );
+    for (const tool of result.tools) {
+      const params = tool.params.length ? ` (${tool.params.join(", ")})` : "";
+      const description = tool.description ? ` — ${clip(tool.description.replace(/\s+/g, " "), 140)}` : "";
+      lines.push(`• ${tool.name}${params}${description}`);
+    }
+    return lines.join("\n");
   }
 
   /** "Name: value" lines -> {Name: value}; throws on a malformed line. */
@@ -98,6 +118,7 @@ class McpServersPanel {
     this.editingId = null;
     this.form.reset();
     this.enabled.checked = true;
+    this.timeout.value = "";
     this.title.textContent = "Add a server";
     this.headersHint.classList.add("hidden");
     this.testResult.textContent = "";
@@ -109,6 +130,7 @@ class McpServersPanel {
     this.url.value = server.url;
     this.headers.value = "";
     this.enabled.checked = server.enabled;
+    this.timeout.value = server.call_timeout_seconds;
     this.title.textContent = `Edit ${server.name}`;
     this.headersHint.classList.remove("hidden");
   }
@@ -135,10 +157,10 @@ class McpServersPanel {
     const url = document.createElement("p");
     url.className = "text-xs text-slate-500 truncate";
     const headerNote = server.header_names.length ? ` — headers: ${server.header_names.join(", ")}` : "";
-    url.textContent = server.url + headerNote;
+    url.textContent = `${server.url}${headerNote} — tool timeout ${server.call_timeout_seconds}s`;
     label.append(name, url);
     const result = document.createElement("p");
-    result.className = "text-xs text-slate-400";
+    result.className = "text-xs text-slate-400 whitespace-pre-wrap break-words";
     top.append(
       label,
       this.button(server.enabled ? "Disable" : "Enable", () => this.setEnabled(server)),
@@ -155,7 +177,12 @@ class McpServersPanel {
     try {
       await api(`${McpServersPanel.URL}/${server.id}`, {
         method: "PUT",
-        body: JSON.stringify({ name: server.name, url: server.url, enabled: !server.enabled }),
+        body: JSON.stringify({
+          name: server.name,
+          url: server.url,
+          enabled: !server.enabled,
+          call_timeout_seconds: server.call_timeout_seconds,
+        }),
       });
       await this.load();
     } catch (error) {
@@ -185,7 +212,12 @@ class McpServersPanel {
 
   async save() {
     try {
-      const body = { name: this.name.value, url: this.url.value, enabled: this.enabled.checked };
+      const body = {
+        name: this.name.value,
+        url: this.url.value,
+        enabled: this.enabled.checked,
+        call_timeout_seconds: Number(this.timeout.value) || 20, // empty = the 20 s default shown as the placeholder
+      };
       const headers = this.parseHeaders();
       // On an edit, an empty box keeps the saved headers (the server never sends their values back).
       if (!this.editingId || Object.keys(headers).length) body.headers = headers;

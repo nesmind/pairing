@@ -76,7 +76,7 @@ const WORKFLOW_ML_NODES = [
     "ml_template", "Chat template\n(messages → prompt text)", 1, ML_ROW.r1,
     "Rendering the model's own chat template",
     "app/runtime/chat_template.py — ChatTemplatePromptBuilder",
-    "The conversation (system prompt, history, new question) is turned into the single text string this particular model was trained on. The template ships inside the GGUF file as Jinja; it decides the role markers (for Qwen, <|im_start|>user …), where images and tool definitions go, and whether the reply starts with an empty or open thinking block."
+    "The conversation (system prompt, history, new question) is turned into the single text string this particular model was trained on. The template ships inside the GGUF file as Jinja; it decides the role markers (for Qwen, <|im_start|>user …), where images and tool definitions go, and whether the reply starts with an empty or open thinking block. With tools on, the tool definitions (saved per chat) go into this rendering — in most templates (Gemma, Mistral) at the very start of the prompt, in Llama 3.2\u0027s only into the last user message — and each tool result comes back as a \"tool\" message the template renders into the model\u0027s turn. See the MCP tool loop stage."
   ),
   mlNode(
     "ml_tokenize", "Tokenizer\n(text → token ids)", 2, ML_ROW.r1,
@@ -88,7 +88,7 @@ const WORKFLOW_ML_NODES = [
     "ml_prompt_cache", "Prompt cache\n(reuse shared prefix)", 3, ML_ROW.r1,
     "Skipping work already done last turn",
     "app/runtime/prompt_cache.py — PromptCache",
-    "The app resends the whole conversation every turn, but the model already computed most of it last time. The engine keeps the previous turn's cache and finds the longest run of identical leading token ids; only the tokens after it are processed (prefill). Hybrid models with recurrent layers (Qwen 3.5, Nemotron-H) cannot rewind, so they restore a snapshot of the recurrent state taken during the previous prefill instead."
+    "The app resends the whole conversation every turn, but the model already computed most of it last time. The engine keeps the previous turn's cache and finds the longest run of identical leading token ids; only the tokens after it are processed (prefill). Hybrid models with recurrent layers (Qwen 3.5, Nemotron-H) cannot rewind, so they restore a snapshot of the recurrent state taken during the previous prefill instead. Because the tool list sits at the start of the prompt, changing it (a tool added or removed, Tools switched on or off) makes the shared prefix nearly empty and the whole chat is re-read; that is why each chat keeps its own saved tool list."
   ),
   mlNode(
     "ml_embed", "Embedding lookup\n(token ids → vectors)", 4, ML_ROW.r1,
@@ -170,13 +170,13 @@ const WORKFLOW_ML_NODES = [
     "ml_stop_check", "Stop check\n(EOS · num_predict)", 3, ML_ROW.r3,
     "Deciding whether the reply is over",
     "app/runtime/chat_engine.py — ChatEngine.stream",
-    "Generation ends when the model emits an end-of-sequence token, when the num_predict limit or the context window is reached, or when a stop is requested from outside (a cancelled message). Otherwise the token continues down to be streamed out and also loops back as the next step's input."
+    "Generation ends when the model emits an end-of-sequence token, when the num_predict limit or the context window is reached, or when a stop is requested from outside (a cancelled message). Otherwise the token continues down to be streamed out and also loops back as the next step's input. With tools on, generation also stops on <|tool_response> (Gemma) and <eos>: after the model\u0027s tool call it waits for the tool, so it must not keep writing."
   ),
   mlNode(
     "ml_detok", "Incremental detokenizer\n(ids → text)", 4, ML_ROW.r3,
     "Turning token ids back into text",
     "app/runtime/tokenizer.py — IncrementalTextDecoder",
-    "Tokens map back to pieces of text, but a character can span several tokens (emoji, non-Latin scripts), so the decoder holds back incomplete bytes until they form a full character. Special tokens are filtered out so a reply never shows literal <|im_end|> markers."
+    "Tokens map back to pieces of text, but a character can span several tokens (emoji, non-Latin scripts), so the decoder holds back incomplete bytes until they form a full character. Special tokens are filtered out so a reply never shows literal <|im_end|> markers. With tools on, the stream is also scanned for the model\u0027s tool-call markup (per chat-template format); a parsed call leaves as message.tool_calls instead of text, which is what the MCP tool loop acts on."
   ),
   mlNode(
     "ml_ndjson", `NDJSON line out\n(→ back to ${APP_NAME})`, 5, ML_ROW.r3,

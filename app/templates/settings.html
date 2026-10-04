@@ -646,53 +646,6 @@
       </section>
 
       <section class="space-y-3">
-        <h2 class="text-sm font-semibold text-slate-200">Outbound HTTP proxy</h2>
-        <p class="text-xs text-slate-500 -mt-2">
-          Is used to download models from this UI as well as external servers if you configure them to run
-          locally. Unrelated to "Local {{ app_name }} server mode" above, which is about requests <em>to</em> this
-          app, not requests <em>from</em> it. Username/password are optional — no scheme picker, always
-          built as <span class="font-mono">http://[user[:pass]@]host:port</span>.
-        </p>
-        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
-          <label class="flex items-center gap-2 text-sm text-slate-300">
-            <input type="checkbox" id="http-proxy-enabled" class="rounded border-slate-700 bg-slate-950">
-            Enabled
-          </label>
-          <div class="grid grid-cols-[2fr_1fr] gap-3">
-            <div>
-              <label class="block text-xs font-medium text-slate-400 mb-1">Host / IP</label>
-              <input type="text" id="http-proxy-host" placeholder="192.168.1.10"
-                class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-slate-400 mb-1">Port</label>
-              <input type="number" id="http-proxy-port" min="1" max="65535" placeholder="8080"
-                class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
-            </div>
-          </div>
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="block text-xs font-medium text-slate-400 mb-1">Username (optional)</label>
-              <input type="text" id="http-proxy-username" autocomplete="off"
-                class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-slate-400 mb-1">Password (optional)</label>
-              <input type="password" id="http-proxy-password" autocomplete="new-password" placeholder="(unchanged if left blank)"
-                class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
-            </div>
-          </div>
-        </div>
-        <div class="flex items-center gap-3">
-          <button id="http-proxy-save-btn" type="button"
-            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
-            Save
-          </button>
-          <span id="http-proxy-status" class="text-xs text-slate-500"></span>
-        </div>
-      </section>
-
-      <section class="space-y-3">
         <h2 class="text-sm font-semibold text-slate-200">Database</h2>
         <p class="text-xs text-slate-500 -mt-2">
           Which database {{ app_name }} stores everything in. Saving builds the schema if needed and switches
@@ -788,6 +741,53 @@
       </section>
 
       <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Outbound HTTP proxy</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          Is used to download models from this UI as well as external servers if you configure them to run
+          locally. Unrelated to "Local {{ app_name }} server mode" above, which is about requests <em>to</em> this
+          app, not requests <em>from</em> it. Username/password are optional — no scheme picker, always
+          built as <span class="font-mono">http://[user[:pass]@]host:port</span>.
+        </p>
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
+          <label class="flex items-center gap-2 text-sm text-slate-300">
+            <input type="checkbox" id="http-proxy-enabled" class="rounded border-slate-700 bg-slate-950">
+            Enabled
+          </label>
+          <div class="grid grid-cols-[2fr_1fr] gap-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Host / IP</label>
+              <input type="text" id="http-proxy-host" placeholder="192.168.1.10"
+                class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Port</label>
+              <input type="number" id="http-proxy-port" min="1" max="65535" placeholder="8080"
+                class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Username (optional)</label>
+              <input type="text" id="http-proxy-username" autocomplete="off"
+                class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Password (optional)</label>
+              <input type="password" id="http-proxy-password" autocomplete="new-password" placeholder="(unchanged if left blank)"
+                class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="http-proxy-save-btn" type="button"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save
+          </button>
+          <span id="http-proxy-status" class="text-xs text-slate-500"></span>
+        </div>
+      </section>
+
+      <section class="space-y-3">
         <h2 class="text-sm font-semibold text-slate-200">RAG (Knowledge base)</h2>
         <p class="text-xs text-slate-500 -mt-2">
           Applies to every user's own document uploads (Settings > Knowledge). The per-file limit
@@ -826,69 +826,83 @@
       </section>
 
       <section class="space-y-3">
-        <h2 class="text-sm font-semibold text-slate-200">Default model for new users</h2>
+        <h2 class="text-sm font-semibold text-slate-200">Default models</h2>
         <p class="text-xs text-slate-500 -mt-2">
-          Whichever model is picked here is what a brand-new account is created with —
-          see the Users tab below.
+          The models the system uses by default: for a new account's chats, for messages with an image, and for the
+          Knowledge base (RAG). Each has its own Save button.
         </p>
-        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-2">
-          <select id="default-model-for-new-users"
-            class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500"></select>
-          <p id="default-model-for-new-users-empty" class="hidden text-xs text-warning-400">
-            No models installed yet — install one above before adding new users.
+        <div class="space-y-6 rounded-lg bg-slate-900/40 border border-slate-800 px-4 py-4">
+        <div class="space-y-3">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-brand-500">Default model for new users</h3>
+          <p class="text-xs text-slate-500 -mt-2">
+            Whichever model is picked here is what a brand-new account is created with —
+            see the Users tab below.
           </p>
+          <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-2">
+            <select id="default-model-for-new-users"
+              class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500"></select>
+            <p id="default-model-for-new-users-empty" class="hidden text-xs text-warning-400">
+              No models installed yet — install one above before adding new users.
+            </p>
+          </div>
+          <div class="flex items-center gap-3">
+            <button id="default-model-for-new-users-save-btn" type="button"
+              class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+              Save
+            </button>
+            <span id="default-model-for-new-users-status" class="text-xs text-slate-500"></span>
+          </div>
         </div>
-        <div class="flex items-center gap-3">
-          <button id="default-model-for-new-users-save-btn" type="button"
-            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
-            Save
-          </button>
-          <span id="default-model-for-new-users-status" class="text-xs text-slate-500"></span>
-        </div>
-      </section>
 
-      <section class="space-y-3">
-        <h2 class="text-sm font-semibold text-slate-200">Default vision model</h2>
-        <p class="text-xs text-slate-500 -mt-2">
-          Any message with an image attached is answered by this model for that one reply only —
-          a conversation's own model is never changed by this.
-        </p>
-        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-2">
-          <select id="default-vision-model"
-            class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500"></select>
-          <p id="default-vision-model-empty" class="hidden text-xs text-warning-400">
-            No vision-capable models installed yet — pull one (e.g. llava) above to enable image attachments.
-          </p>
-        </div>
-        <div class="flex items-center gap-3">
-          <button id="default-vision-model-save-btn" type="button"
-            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
-            Save
-          </button>
-          <span id="default-vision-model-status" class="text-xs text-slate-500"></span>
-        </div>
-      </section>
+        <div class="border-t border-slate-800"></div>
 
-      <section class="space-y-3">
-        <h2 class="text-sm font-semibold text-slate-200">Default embedding model</h2>
-        <p class="text-xs text-slate-500 -mt-2">
-          Powers the Knowledge base (RAG) feature for every user — never used for chat. Switching this after
-          documents were already ingested with a different embedding model doesn't re-embed them; their existing
-          vectors stay as they are.
-        </p>
-        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-2">
-          <select id="default-embedding-model" title="Which installed embedding model powers the Knowledge base (RAG) feature for every user."
-            class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500"></select>
-          <p id="default-embedding-model-empty" class="hidden text-xs text-warning-400">
-            No embedding models installed yet — pull one above to enable the Knowledge base (RAG) feature.
+        <div class="space-y-3">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-brand-500">Default vision model</h3>
+          <p class="text-xs text-slate-500 -mt-2">
+            Any message with an image attached is answered by this model for that one reply only —
+            a conversation's own model is never changed by this.
           </p>
+          <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-2">
+            <select id="default-vision-model"
+              class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500"></select>
+            <p id="default-vision-model-empty" class="hidden text-xs text-warning-400">
+              No vision-capable models installed yet — pull one (e.g. llava) above to enable image attachments.
+            </p>
+          </div>
+          <div class="flex items-center gap-3">
+            <button id="default-vision-model-save-btn" type="button"
+              class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+              Save
+            </button>
+            <span id="default-vision-model-status" class="text-xs text-slate-500"></span>
+          </div>
         </div>
-        <div class="flex items-center gap-3">
-          <button id="default-embedding-model-save-btn" type="button"
-            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
-            Save
-          </button>
-          <span id="default-embedding-model-status" class="text-xs text-slate-500"></span>
+
+        <div class="border-t border-slate-800"></div>
+
+        <div class="space-y-3">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-brand-500">Default embedding model</h3>
+          <p class="text-xs text-slate-500 -mt-2">
+            Powers the Knowledge base (RAG) feature for every user — never used for chat. Switching this after
+            documents were already ingested with a different embedding model doesn't re-embed them; their existing
+            vectors stay as they are.
+          </p>
+          <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-2">
+            <select id="default-embedding-model" title="Which installed embedding model powers the Knowledge base (RAG) feature for every user."
+              class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500"></select>
+            <p id="default-embedding-model-empty" class="hidden text-xs text-warning-400">
+              No embedding models installed yet — pull one above to enable the Knowledge base (RAG) feature.
+            </p>
+          </div>
+          <div class="flex items-center gap-3">
+            <button id="default-embedding-model-save-btn" type="button"
+              class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+              Save
+            </button>
+            <span id="default-embedding-model-status" class="text-xs text-slate-500"></span>
+          </div>
+        </div>
+
         </div>
       </section>
 

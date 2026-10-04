@@ -32,7 +32,9 @@ class McpServerService:
         return server
 
     async def create(self, body: McpServerIn) -> McpServer:
-        server = McpServer(name=body.name, url=body.url, enabled=body.enabled)
+        server = McpServer(
+            name=body.name, url=body.url, enabled=body.enabled, call_timeout_seconds=body.call_timeout_seconds
+        )
         server.headers_encrypted = self._encrypt(body.headers)
         self._db.add(server)
         await self._commit()
@@ -41,6 +43,7 @@ class McpServerService:
     async def update(self, server_id: str, body: McpServerIn) -> McpServer:
         server = await self.get(server_id)
         server.name, server.url, server.enabled = body.name, body.url, body.enabled
+        server.call_timeout_seconds = body.call_timeout_seconds
         if body.headers is not None:
             server.headers_encrypted = self._encrypt(body.headers)
         await self._commit()
@@ -65,6 +68,7 @@ class McpServerService:
             url=server.url,
             header_names=sorted(cls.headers_of(server)),
             enabled=server.enabled,
+            call_timeout_seconds=server.call_timeout_seconds,
         )
 
     @staticmethod

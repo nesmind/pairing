@@ -41,8 +41,15 @@
       <p id="mcp-headers-hint" class="hidden text-xs text-slate-500 mt-1">Leave empty to keep the saved headers.</p>
     </div>
     <div class="flex flex-wrap items-center gap-3">
-      <label class="flex items-center gap-2 text-sm text-slate-300">
+      <label class="flex items-center gap-2 text-sm text-slate-300 mr-6">
         <input type="checkbox" id="mcp-enabled" checked> Enabled
+      </label>
+      <label class="flex items-center gap-2 text-sm text-slate-300"
+        title="How long one tool call on this server may take. After that the model is told the tool timed out.">
+        Tool call timeout
+        <input type="number" id="mcp-timeout" min="1" max="300" step="1" placeholder="20"
+          class="w-20 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-sm focus:outline-none focus:border-brand-500">
+        s
       </label>
       <button type="submit" id="mcp-save"
         class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors disabled:opacity-40">Save</button>
@@ -51,7 +58,7 @@
       <button type="button" id="mcp-cancel"
         class="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800 transition-colors">Cancel</button>
     </div>
-    <p id="mcp-test-result" class="text-xs text-slate-400 break-words"></p>
+    <p id="mcp-test-result" class="text-xs text-slate-400 break-words whitespace-pre-wrap"></p>
   </form>
   <p id="mcp-status" class="text-xs text-slate-500"></p>
 </section>

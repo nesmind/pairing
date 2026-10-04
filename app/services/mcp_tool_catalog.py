@@ -6,6 +6,7 @@ keyed on the server's saved settings so editing a server never serves a stale li
 as empty for a few seconds, so a dead one doesn't add its timeout to every reply."""
 
 import asyncio
+import json
 import logging
 import re
 import time
@@ -15,13 +16,14 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import McpServer
-from app.schemas.mcp import McpTestResult, McpToolOut
+from app.schemas.mcp import McpServerDetails, McpTestResult, McpTestTool
 from app.services.mcp_client import McpConnection, McpError, McpToolInfo, McpToolResult
 from app.services.mcp_server_service import McpServerService
 
 logger = logging.getLogger("llama_chat")
 
 _CACHE_SECONDS = 60.0
+LIST_TIMEOUT_SECONDS = 15.0  # asking a server for its tools (a tool call uses the server's own timeout)
 _FAILURE_CACHE_SECONDS = 15.0
 _MAX_NAME = 64
 _MAX_TOOL_DESCRIPTION = 400  # tool definitions are re-sent (and re-read) every round, so keep them short
@@ -82,7 +84,9 @@ class McpToolCatalog:
         exposed: list[ExposedTool] = []
         taken: set[str] = set()
         for server, listing in zip(servers, listings, strict=True):
-            connection = McpConnection(server.url, self._service.headers_of(server))
+            connection = McpConnection(
+                server.url, self._service.headers_of(server), timeout=float(server.call_timeout_seconds)
+            )
             for info in listing:
                 name = self._unique_name(server.name, info.name, taken)
                 taken.add(name)
@@ -99,7 +103,7 @@ class McpToolCatalog:
             return cached[2]
         try:
             headers = McpServerService.headers_of(server)
-            listing = await McpConnection(server.url, headers).list_tools()
+            listing = await McpConnection(server.url, headers, timeout=LIST_TIMEOUT_SECONDS).list_tools()
         except McpError as exc:
             logger.warning("MCP server %r is unavailable: %s", server.name, exc)
             _cache[server.id] = (time.monotonic() + _FAILURE_CACHE_SECONDS, fingerprint, [])
@@ -110,12 +114,39 @@ class McpToolCatalog:
     @staticmethod
     async def probe(name: str, url: str, headers: dict[str, str]) -> McpTestResult:
         """Connects right now (no cache) for the admin's "Test connection" button."""
+        connection = McpConnection(url, headers, timeout=LIST_TIMEOUT_SECONDS)
         try:
-            listing = await McpConnection(url, headers).list_tools()
+            found = await connection.inspect()
         except McpError as exc:
             return McpTestResult(ok=False, error=str(exc))
+        tools = [McpToolCatalog._test_tool(name, t, connection) for t in found.tools]
+        server = found.server
         return McpTestResult(
-            ok=True, tools=[McpToolOut(name=f"{name}__{t.name}", description=t.description) for t in listing]
+            ok=True,
+            tools=tools,
+            server=McpServerDetails(
+                name=server.name,
+                version=server.version,
+                protocol=server.protocol,
+                instructions=server.instructions,
+                capabilities=list(server.capabilities),
+            ),
+            seconds=round(found.seconds, 2),
+            definition_tokens=sum(t.definition_chars for t in tools) // 4,
+        )
+
+    @staticmethod
+    def _test_tool(server: str, info: McpToolInfo, connection: McpConnection) -> McpTestTool:
+        exposed = ExposedTool(
+            f"{server}__{info.name}", server, info.name, info.description, info.input_schema, connection
+        )
+        required = set(info.input_schema.get("required") or [])
+        params = [f"{p}*" if p in required else p for p in (info.input_schema.get("properties") or {})]
+        return McpTestTool(
+            name=exposed.name,
+            description=info.description,
+            params=params,
+            definition_chars=len(json.dumps(exposed.definition())),
         )
 
     @staticmethod
