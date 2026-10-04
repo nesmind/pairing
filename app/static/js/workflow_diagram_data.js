@@ -17,7 +17,7 @@
  * `detail.server` is which actual process runs this step — "Browser"
  * (chat.js, in the user's own tab), "pAIring" (this app's own backend),
  * or "ML engine" (the separate model-serving process this app talks to —
- * Ollama or Matricxon, whichever Settings > External servers has active
+ * Ollama or Matricxon, whichever Admin settings > External servers has active
  * right now; see app.services.inference_client/engine_service) —
  * shown as a badge in the click-to-expand detail panel.
  *
@@ -129,7 +129,7 @@ const WORKFLOW_NODES = [
       server: APP_NAME,
       title: "Orchestration begins",
       location: "app/services/chat_service.py — build_reply_stream",
-      body: "Creates and commits the user's own Message row immediately (durably saved regardless of whether generation later succeeds). In \"simple\" title mode, sets the conversation's title here too — pure local text processing, no model call. Yields {user_message_id} as the very first SSE event so the browser can tag its optimistic bubble. Also resolves conversation.model against whichever engine is currently active (model_catalog_service.resolve_installed_model) — an admin switching engines leaves every existing conversation's model column pointed at a tag the newly active engine may never have heard of, so this falls back to something actually installed there instead of failing outright. Builds a trimmed conversation history (chat_history_service.trim_history, kept under a token-budget proxy based on num_ctx) — which also folds any run of consecutive same-role messages into one turn (e.g. several channel posts before anyone asked the AI): a strict chat template rejects back-to-back same-role turns outright, so this merges them, each line attributed to its own sender, before the model ever sees them. Then hands off to system-prompt assembly. History sent to the model leaves out replies that failed or were cancelled, and — in a channel, when the admin turns it off (Settings > System > Channel replies) — messages members posted without asking the AI.",
+      body: "Creates and commits the user's own Message row immediately (durably saved regardless of whether generation later succeeds). In \"simple\" title mode, sets the conversation's title here too — pure local text processing, no model call. Yields {user_message_id} as the very first SSE event so the browser can tag its optimistic bubble. Also resolves conversation.model against whichever engine is currently active (model_catalog_service.resolve_installed_model) — an admin switching engines leaves every existing conversation's model column pointed at a tag the newly active engine may never have heard of, so this falls back to something actually installed there instead of failing outright. Builds a trimmed conversation history (chat_history_service.trim_history, kept under a token-budget proxy based on num_ctx) — which also folds any run of consecutive same-role messages into one turn (e.g. several channel posts before anyone asked the AI): a strict chat template rejects back-to-back same-role turns outright, so this merges them, each line attributed to its own sender, before the model ever sees them. Then hands off to system-prompt assembly. History sent to the model leaves out replies that failed or were cancelled, and — in a channel, when the admin turns it off (Admin settings > System > Channel replies) — messages members posted without asking the AI.",
     },
   },
   {
@@ -189,7 +189,7 @@ const WORKFLOW_NODES = [
       server: APP_NAME,
       title: "Resolving the active engine and calling it",
       location: "app/services/inference_client.py — chat_stream",
-      body: "This is the step that actually hands the conversation off to the AI language model for inference. Reads engine_service.current_engine() — an admin-configurable choice, Settings > External servers' \"Active engine\" picker — and dispatches to that engine's own client unchanged: ollama_client.chat_stream (host failover via ollama_pool — local mode: the one Ollama process this app manages itself; remote mode: the admin's configured host list) or matricxon_client.chat_stream (same failover shape via matricxon_pool). Either engine's own error type is normalized into one InferenceError here, so nothing downstream needs to know which engine actually served the request. If the model is a \"thinking\" model, raw reasoning tokens are stripped before anything is yielded upward (Ollama's own ollama_client only — Matricxon implements no thinking-capable architecture yet).",
+      body: "This is the step that actually hands the conversation off to the AI language model for inference. Reads engine_service.current_engine() — an admin-configurable choice, Admin settings > External servers' \"Active engine\" picker — and dispatches to that engine's own client unchanged: ollama_client.chat_stream (host failover via ollama_pool — local mode: the one Ollama process this app manages itself; remote mode: the admin's configured host list) or matricxon_client.chat_stream (same failover shape via matricxon_pool). Either engine's own error type is normalized into one InferenceError here, so nothing downstream needs to know which engine actually served the request. If the model is a \"thinking\" model, raw reasoning tokens are stripped before anything is yielded upward (Ollama's own ollama_client only — Matricxon implements no thinking-capable architecture yet).",
     },
   },
   {
@@ -296,7 +296,7 @@ const WORKFLOW_NODES = [
       server: APP_NAME,
       title: "RAG — sending the question to an embedding model",
       location: "app/services/inference_client.py — embed, using model_catalog_service.get_default_embedding_model",
-      body: `${APP_NAME}'s own code builds and sends this request — a SEPARATE, smaller machine learning model from the conversation's own chat model, purpose-built for similarity search rather than text generation, and which model that actually is comes from the admin-configured default (Settings > System — falls back to whichever embedding model is actually installed if never configured, or if the configured one was since uninstalled). Same active-engine dispatch as the main chat_stream step above. The actual embedding computation doesn't happen here; it happens on the ML engine, the next step.`,
+      body: `${APP_NAME}'s own code builds and sends this request — a SEPARATE, smaller machine learning model from the conversation's own chat model, purpose-built for similarity search rather than text generation, and which model that actually is comes from the admin-configured default (Admin settings > System — falls back to whichever embedding model is actually installed if never configured, or if the configured one was since uninstalled). Same active-engine dispatch as the main chat_stream step above. The actual embedding computation doesn't happen here; it happens on the ML engine, the next step.`,
     },
   },
   {
@@ -504,7 +504,7 @@ const WORKFLOW_NODES = [
       server: APP_NAME,
       title: "The tool loop — when a chat has Tools turned on",
       location: "app/services/tool_loop_service.py — tool_stream_or_none, ToolLoop.run (called from _run_generation)",
-      body: "Only used when the conversation's Tools switch is on, at least one enabled MCP server offers tools, and the model can use them (Matricxon reports a \"tools\" capability; Ollama is tried and falls back to a plain chat if it refuses). Instead of one chat_stream call it runs rounds: the tool definitions go to the model with the messages; if the model answers with tool_calls (read from the stream into a ToolCallSink — Matricxon parses them out of the model's text per chat-template format), each call runs on its MCP server and the result goes back as a \"tool\" message for the next round. After the admin-set max rounds (Settings > System, default 5, shared by every MCP server) the model is asked to answer without tools. Tool definitions are sent shortened (long descriptions clipped) on every round. Every finished call is stored on the message (Message.tool_events) and published to viewers live, so the reply shows a \"Used N tool calls\" block.",
+      body: "Only used when the conversation's Tools switch is on, at least one enabled MCP server offers tools, and the model can use them (Matricxon reports a \"tools\" capability; Ollama is tried and falls back to a plain chat if it refuses). Instead of one chat_stream call it runs rounds: the tool definitions go to the model with the messages; if the model answers with tool_calls (read from the stream into a ToolCallSink — Matricxon parses them out of the model's text per chat-template format), each call runs on its MCP server and the result goes back as a \"tool\" message for the next round. After the admin-set max rounds (Admin settings > System, default 5, shared by every MCP server) the model is asked to answer without tools. Tool definitions are sent shortened (long descriptions clipped) on every round. Every finished call is stored on the message (Message.tool_events) and published to viewers live, so the reply shows a \"Used N tool calls\" block.",
     },
   },
   {
@@ -519,8 +519,8 @@ const WORKFLOW_NODES = [
     detail: {
       server: "MCP server",
       title: "Running a tool on an MCP server",
-      location: "app/services/mcp_client.py — McpConnection.call_tool; servers are set up in Settings > Knowledge > Configure MCP",
-      body: "A short-lived streamable-HTTP session per call (connect, initialize, call the tool, close), so nothing is shared between users or between pAIring instances. Limited to 8 calls at once per instance, 30 seconds per call, and results are cut at the admin-set limit (Settings > System, default 4,000 characters; a JSON result is shortened by clipping long strings and lists so it stays valid JSON, other text is cut at a word boundary). A failed or unreachable server becomes an error result the model sees instead of failing the reply.",
+      location: "app/services/mcp_client.py — McpConnection.call_tool; servers are set up in Admin settings > MCP servers",
+      body: "A short-lived streamable-HTTP session per call (connect, initialize, call the tool, close), so nothing is shared between users or between pAIring instances. Limited to 8 calls at once per instance, 30 seconds per call, and results are cut at the admin-set limit (Admin settings > System, default 4,000 characters; a JSON result is shortened by clipping long strings and lists so it stays valid JSON, other text is cut at a word boundary). A failed or unreachable server becomes an error result the model sees instead of failing the reply.",
     },
   },
   {

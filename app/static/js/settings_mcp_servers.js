@@ -1,7 +1,7 @@
 /**
- * Settings > Knowledge > Configure MCP (app/templates/_mcp_servers.html): a list of the MCP tool servers,
+ * Admin settings > MCP servers (app/templates/_mcp_servers.html): a list of the MCP tool servers,
  * with a form (opened by "Add server" or a row's Edit) to add or change one and test its connection, via
- * /api/settings/mcp-servers. Also the global on/off switch in Settings > System
+ * /api/settings/mcp-servers. Also the global on/off switch in Admin settings > System
  * (app/templates/_mcp_global_switch.html, /api/settings/mcp-enabled). Uses api() from app.js.
  */
 class McpServersPanel {
@@ -206,7 +206,7 @@ class McpServersPanel {
   }
 }
 
-/** Settings > System: one switch that turns MCP off (or on) for every user. */
+/** Admin settings > System: one switch that turns MCP off (or on) for every user. */
 class McpGlobalSwitch {
   static URL = "/api/settings/mcp-enabled";
 
@@ -232,7 +232,7 @@ class McpGlobalSwitch {
   }
 }
 
-/** Settings > System: the limits every MCP server shares (tool rounds per reply, characters of a result). */
+/** Admin settings > System: the limits every MCP server shares (tool rounds per reply, characters of a result). */
 class McpLimits {
   static URL = "/api/settings/mcp-limits";
 

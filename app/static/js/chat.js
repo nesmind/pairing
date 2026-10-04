@@ -1424,7 +1424,7 @@ function renderChannelListItem(channel) {
       : "text-slate-300 hover:bg-slate-800/60");
 
   // No delete button here — a channel's lifecycle (create/rename/
-  // membership/delete) is admin-only, managed from Settings > Channels,
+  // membership/delete) is admin-only, managed from Admin settings > Channels,
   // not from the sidebar (see app/routers/channels.py).
   const titleBtn = document.createElement("button");
   titleBtn.type = "button";
@@ -1462,7 +1462,7 @@ async function selectConversation(id) {
 
   const conversation = await api(`/api/conversations/${id}`);
   // A channel conversation's display name is the channel's own `name`
-  // (set/edited via Settings > Channels), never conversation.title —
+  // (set/edited via Admin settings > Channels), never conversation.title —
   // see chat_service.build_reply_stream's title-generation guard, which
   // deliberately leaves that field alone for channel conversations.
   const titleText = channelInfo ? channelInfo.name : (conversation.title || "New chat");
@@ -2085,7 +2085,7 @@ async function readAssistantReplyStream(
         // Deliberately returns here instead of continuing the loop to
         // let the stream close naturally: the server yields this event
         // *before* "smart" title mode's model call, if that's the
-        // admin-configured mode (Settings > System) — so this response
+        // admin-configured mode (Admin settings > System) — so this response
         // doesn't have to sit through that too.
         if (!isChannel && payload.title === "New chat") {
           pollForGeneratedTitle(conversationId);

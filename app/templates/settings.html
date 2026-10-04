@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Settings — {{ app_name }}{% endblock %}
+{% block title %}{{ "Admin settings" if admin_page else "Settings" }} — {{ app_name }}{% endblock %}
 {% block body %}
 <div class="flex h-full flex-col">
   <header class="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
@@ -9,9 +9,14 @@
           <path d="M19 12H5M12 19l-7-7 7-7"/>
         </svg>
       </a>
-      <h1 class="text-sm font-semibold">Settings</h1>
+      <h1 class="text-sm font-semibold">{{ "Admin settings" if admin_page else "Settings" }}</h1>
     </div>
     <div class="flex items-center gap-3">
+      {% if admin_page %}
+      <a href="/settings" class="text-xs text-brand-500 hover:text-brand-400 transition-colors">My settings</a>
+      {% elif can_admin %}
+      <a href="/admin-settings" class="text-xs text-brand-500 hover:text-brand-400 transition-colors">Admin settings</a>
+      {% endif %}
       <span class="text-xs text-slate-500">{{ username }}</span>
       <form method="post" action="/logout" class="flex items-center">
         <button type="submit" class="text-xs text-slate-500 hover:text-slate-300 transition-colors">Log out</button>
@@ -19,16 +24,37 @@
     </div>
   </header>
 
-  <!-- Tab nav: Model + Behavior + Knowledge + Account are for everyone
-       (every user has their own default model, generation params, RAG
-       chunk count, and password); System and Users are admin-only
-       extras appended when is_admin. -->
+  <!-- Tab nav: /settings (every account, admins too) has Models, Behavior, Knowledge and Account; /admin-settings
+       (admins only) has Models, System, External servers, MCP servers, Users and Channels. Panels not listed
+       for a page stay in the DOM, hidden and never reachable, so settings.js keeps finding the elements it binds. -->
   <div class="border-b border-slate-800 px-4">
     <nav class="mx-auto max-w-3xl flex gap-1 -mb-px">
       <button type="button" data-tab="model"
         class="settings-tab-btn border-b-2 border-brand-500 px-3 py-2.5 text-sm font-medium text-slate-100">
         Models
       </button>
+      {% if admin_page %}
+      <button type="button" data-tab="system"
+        class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
+        System
+      </button>
+      <button type="button" data-tab="external-servers"
+        class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
+        External servers
+      </button>
+      <button type="button" data-tab="mcp-servers"
+        class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
+        MCP servers
+      </button>
+      <button type="button" data-tab="users"
+        class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
+        Users
+      </button>
+      <button type="button" data-tab="channels"
+        class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
+        Channels
+      </button>
+      {% else %}
       <button type="button" data-tab="behavior"
         class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
         Behavior
@@ -40,23 +66,6 @@
       <button type="button" data-tab="account"
         class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
         Account
-      </button>
-      {% if is_admin %}
-      <button type="button" data-tab="system"
-        class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
-        System
-      </button>
-      <button type="button" data-tab="external-servers"
-        class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
-        External servers
-      </button>
-      <button type="button" data-tab="users"
-        class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
-        Users
-      </button>
-      <button type="button" data-tab="channels"
-        class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
-        Channels
       </button>
       {% endif %}
     </nav>
@@ -75,6 +84,11 @@
          its old blockedByModels check, since it doesn't touch the model
          at all anymore. -->
     <div id="tab-model" class="mx-auto max-w-3xl px-4 py-8 space-y-8">
+      {% if not admin_page %}
+      <p class="text-xs text-amber-400 bg-amber-950/40 border border-amber-900 rounded-lg px-3 py-2">
+        Updates here affect your own settings and will not affect other users.
+      </p>
+      {% endif %}
       <!-- Browse more models: the small hand-curated list below (app/model_catalog.py) stays fixed; this is the
            separate, admin-extensible catalog behind app/services/extended_model_catalog_service.py. Open by
            default (see settings.js: initModelTab preloads it, same as expanding it manually would) and placed
@@ -102,7 +116,7 @@
                (both read-only — see app/services/huggingface_client.py), then Add a specific file, which
                re-verifies it from scratch server-side rather than trusting this search/file-list round trip (see
                extended_model_catalog_service.add_model's own docstring on why). All three route through the same
-               admin-configured outbound proxy as the Ollama/ComfyUI installers (Settings > System), and need a
+               admin-configured outbound proxy as the Ollama/ComfyUI installers (Admin settings > System), and need a
                real internet connection or that proxy to succeed — unless the resulting tag is already installed
                on this machine, which skips the network round trip entirely for Add. -->
           <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
@@ -140,7 +154,9 @@
 
       <section class="space-y-4">
         <h2 class="text-sm font-semibold text-slate-200">Installed models</h2>
+        {% if admin_page %}
         <p class="text-xs text-slate-500 -mt-2">Models available for the active inference engine — the one you select on external servers tab becomes the default engine for the UI. Please note that each inference engine has its own separate models repository.</p>
+        {% endif %}
 
         <div id="model-field">
           <div id="model-loading" class="flex items-center gap-2 text-xs text-slate-500 py-6">
@@ -156,7 +172,7 @@
           <div id="model-field-normal" class="hidden">
             <div class="flex items-center justify-between mb-3">
               <label class="block text-xs font-medium text-brand-500">Default model for new chats</label>
-              <span id="hardware-summary" class="text-xs text-slate-500"></span>
+              <span id="hardware-summary" class="text-xs text-slate-500{% if not admin_page %} hidden{% endif %}"></span>
             </div>
             <p class="text-xs text-slate-500 mb-4">Selecting a model saves it immediately.</p>
             <div id="model-no-default-banner" class="hidden mb-4 text-xs text-amber-400 bg-amber-950/40 border border-amber-900 rounded-lg px-3 py-2">
@@ -189,6 +205,8 @@
 
     </div>
 
+    {% if not admin_page %}
+    <!-- Behavior, Knowledge and Account: the user-level tabs, only on /settings (settings.js checks for tab-behavior). -->
     <!-- Behavior tab: generation parameters, per target (a specific
          conversation, or "Defaults for new chats") — unlike Model above,
          saving here for an existing conversation changes its live
@@ -200,17 +218,15 @@
          same currentParams for the target picked here). -->
     <div id="tab-behavior" class="hidden mx-auto max-w-3xl px-4 py-8 space-y-10">
 
-      <!-- Same "no models installed at all" banner as the Model tab's own #model-unavailable, and the same
-           reasoning: generation parameters here mean nothing without a model to actually apply them to (the
-           conversation-select below still populates with "Defaults for new chats", and the sliders still
-           render — nothing else here would tell the admin *why* a new chat still won't reply). See settings.js:
-           loadTarget, which toggles this the same way initModelTab toggles #model-unavailable. -->
-      <div id="behavior-model-unavailable" class="hidden text-xs text-amber-400 bg-amber-950/40 border border-amber-900 rounded-lg px-3 py-2">
-        System is not configured for models yet, ask your admin.
-      </div>
-
-      <!-- Which conversation these params apply to -->
+      <!-- Which conversation these params apply to. The "no models installed" banner sits inside this first section,
+           not as a sibling above it: a hidden sibling still gives the next one space-y's top margin, which pushed
+           this tab's title lower than every other tab's. Same banner as the Model tab's own #model-unavailable
+           (see settings.js: loadTarget). -->
       <section>
+        <div id="behavior-model-unavailable" class="hidden mb-4 text-xs text-amber-400 bg-amber-950/40 border border-amber-900 rounded-lg px-3 py-2">
+          System is not configured for models yet, ask your admin.
+        </div>
+
         <label class="block text-xs font-medium uppercase tracking-wide text-slate-400 mb-2">Editing settings for</label>
         <select id="conversation-select"
           class="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm focus:outline-none focus:border-brand-500"></select>
@@ -252,30 +268,13 @@
          many chunks their own chats retrieve. Operates on the same
          conversation/defaults target picked on the Behavior tab. -->
     <div id="tab-knowledge" class="hidden mx-auto max-w-3xl px-4 py-8 space-y-8">
-      <!-- Which knowledge feature to configure (see app/static/js/settings_group_select.js). -->
-      <section class="space-y-3">
-        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 flex items-center gap-3">
-          <label for="knowledge-group-select" class="text-sm text-slate-300 shrink-0">Configure</label>
-          <select id="knowledge-group-select" data-group-select
-            class="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
-            <option value="rag" selected>Configure RAG</option>
-            <option value="mcp">Configure MCP</option>
-          </select>
-        </div>
-      </section>
-
       <div data-group="rag" class="space-y-8">
       <section class="space-y-3">
         <h2 class="text-sm font-semibold text-slate-200">Document knowledge (RAG)</h2>
         <p class="text-xs text-slate-500 -mt-2">
           Every chat automatically searches your knowledge base below — there's nothing to turn on.
+          These settings and your documents apply only to your own chats; they don't affect other users.
         </p>
-        {% if is_admin %}
-        <p class="text-xs text-amber-400 -mt-1">
-          The RAG settings on this page apply only to your own chats, not to other users. Documents that
-          apply to all users are global RAG documents — see the Help docs.
-        </p>
-        {% endif %}
 
         <div>
           <div class="flex items-center justify-between mb-1">
@@ -304,6 +303,19 @@
           <code class="font-mono">.html</code>, <code class="font-mono">.csv</code>, and
           <code class="font-mono">.json</code> — up to 5 files per upload.
         </p>
+
+        <!-- Your quota: what the admin allows this account (Admin settings > System > RAG limits) and how much of it is
+             used. Filled by settings.js: renderKnowledgeSummary. -->
+        <div id="rag-quota" class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-2">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-semibold uppercase tracking-wide text-slate-400">Your quota</span>
+            <span id="rag-quota-usage" class="font-mono text-slate-300"></span>
+          </div>
+          <div class="h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
+            <div id="rag-quota-bar" class="h-full w-0 rounded-full bg-brand-600 transition-[width] duration-300"></div>
+          </div>
+          <ul id="rag-quota-details" class="text-xs text-slate-500 space-y-0.5 list-disc pl-4"></ul>
+        </div>
 
         <div id="rag-unavailable" class="hidden text-xs text-amber-400 bg-amber-950/40 border border-amber-900 rounded-lg px-3 py-2">
           <span id="rag-unavailable-reason">No embedding model found yet — see Settings &gt; Model to install one.</span>
@@ -368,13 +380,6 @@
       </section>
       </div>
 
-      <div data-group="mcp" class="hidden space-y-8">
-        {% if is_admin %}
-        {% include "_mcp_servers.html" %}
-        {% else %}
-        <p class="text-sm text-slate-400">MCP tool servers are managed by an administrator.</p>
-        {% endif %}
-      </div>
     </div>
 
     <!-- Account tab: everyone gets this, not just admin — starting with
@@ -560,6 +565,8 @@
         </div>
       </section>
     </div>
+
+    {% endif %}
 
     {% if is_admin %}
     <!-- System tab: admin-only. Hardware/Ollama info plus the shared
@@ -918,7 +925,7 @@
           navigates away mid-stream — this only affects who else finds out about it, and how.
           "Cheap" has other members' tabs check back every few seconds — no extra server load
           beyond that. "Real" pushes it to them live, token-by-token, but only reliably reaches
-          everyone when running as a single app instance (Settings &gt; System &gt; instance count).
+          everyone when running as a single app instance (Admin settings &gt; System &gt; instance count).
           The second setting is whether the model also reads the messages members post to the channel
           without asking it, when it answers a later question: "Skip" keeps its prompt shorter and faster.
         </p>
@@ -1551,6 +1558,12 @@
         </div>
       </section>
       </div>
+    </div>
+
+    <!-- MCP servers tab: the tool servers every user's chats can use (Admin settings > System has the on/off switch and
+         the limits). Wired by app/static/js/settings_mcp_servers.js. -->
+    <div id="tab-mcp-servers" class="hidden mx-auto max-w-3xl px-4 py-8 space-y-8">
+      {% include "_mcp_servers.html" %}
     </div>
 
     <!-- Users tab: admin-only account management (moved out of System

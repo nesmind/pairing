@@ -96,16 +96,32 @@ async def image_generation_page(request: Request, db: AsyncSession = Depends(get
 
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request, db: AsyncSession = Depends(get_db)):
-    """The settings/fine-tuning screen. `is_admin` decides whether the
-    template renders the System tab (see app/templates/settings.html)."""
+    """The user-level settings: the same page for every account, an admin's included (admin functions live on
+    /admin-settings). `is_admin` is therefore always False here — it is what the template and settings.js read
+    to decide which tabs and controls exist — and `can_admin` only drives the link to the admin page."""
+    return await _settings_response(request, db, admin_page=False)
+
+
+@router.get("/admin-settings", response_class=HTMLResponse)
+async def admin_settings_page(request: Request, db: AsyncSession = Depends(get_db)):
+    """The admin-level settings (System, External servers, MCP servers, Users, Channels, and the admin view of
+    Models), same layout as /settings. A non-admin is sent back to /settings."""
+    return await _settings_response(request, db, admin_page=True)
+
+
+async def _settings_response(request: Request, db: AsyncSession, admin_page: bool):
     auth = await PageAuth(request, db).resolve()
     if isinstance(user := auth.require_login(), RedirectResponse):
         return user
+    if admin_page and not auth.is_admin:
+        return RedirectResponse("/settings", status_code=303)
     return templates.TemplateResponse(
         request,
         "settings.html",
         {
-            "is_admin": auth.is_admin,
+            "is_admin": admin_page,
+            "admin_page": admin_page,
+            "can_admin": auth.is_admin,
             "username": user.username,
             "ui_themes": UI_THEMES,
             "theme": await get_ui_theme(db, user),

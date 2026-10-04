@@ -9,7 +9,7 @@
  */
 
 // A small inline "animate-spin" SVG, shared by every ad-hoc loading indicator on this page (the
-// install-progress spinner further below, and the ones added around Settings > System's
+// install-progress spinner further below, and the ones added around Admin settings > System's
 // default-model selects, External servers' Start/Stop buttons, and the Matricxon panel's own
 // data-fetching div) so they all look identical instead of each hand-rolling their own markup.
 const SPINNER_SVG_HTML =
@@ -98,6 +98,9 @@ const DEFAULTS_TARGET = "__defaults__";
 // so a regular user sees an honest "ask an admin" note instead of a
 // button that would just 403 when clicked.
 const isAdmin = document.body.dataset.isAdmin === "true";
+// /admin-settings renders no Behavior/Knowledge/Account tabs and /settings no admin tabs, so code for the other
+// page's elements must not run (or bind) here.
+const hasUserTabs = document.getElementById("tab-behavior") !== null;
 
 const conversationSelect = document.getElementById("conversation-select");
 const modelCatalogEl = document.getElementById("model-catalog");
@@ -1188,6 +1191,7 @@ async function initModelTab() {
 // exposed until that gets a proper management pass.
 
 async function loadRagAvailability() {
+  if (!hasUserTabs) return; // the Knowledge tab only exists on /settings
   const { available, reason } = await api("/api/settings/rag-availability");
   ragAvailable = available;
   ragUnavailableEl.classList.toggle("hidden", available);
@@ -1328,6 +1332,39 @@ function renderKnowledgeSummary(summary) {
     `${summary.mine.document_count} doc${summary.mine.document_count === 1 ? "" : "s"}, ` +
     `${summary.mine.chunk_count} chunk${summary.mine.chunk_count === 1 ? "" : "s"} — ` +
     `${summary.mine.used_mb}MB of ${summary.limits.max_user_space_mb}MB used`;
+  renderRagQuota(summary);
+}
+
+/** More decimals the smaller the share, so a small upload against a big quota never reads as "0.0%". */
+function formatPercent(percent) {
+  if (percent === 0) return "0%";
+  if (percent < 0.001) return "<0.001%";
+  return `${percent.toFixed(percent < 1 ? 3 : percent < 10 ? 2 : 1)}%`;
+}
+
+/** The "Your quota" box on the Knowledge tab: storage used against the admin's per-user limit, plus the other
+ * limits that apply to this account's uploads. */
+function renderRagQuota(summary) {
+  const usageEl = document.getElementById("rag-quota-usage");
+  if (!usageEl) return;
+  const { used_mb: used, document_count: docs } = summary.mine;
+  const { max_user_space_mb: space, max_file_mb: perFile, enabled } = summary.limits;
+  const percent = space > 0 ? Math.min(100, (used / space) * 100) : 0;
+  usageEl.textContent = `${used}MB of ${space}MB (${formatPercent(percent)})`;
+  const bar = document.getElementById("rag-quota-bar");
+  bar.style.width = `${percent}%`;
+  bar.classList.toggle("bg-red-500", percent >= 90);
+  bar.classList.toggle("bg-brand-600", percent < 90);
+  const details = [
+    `${Math.max(0, +(space - used).toFixed(2))}MB of storage left for your private documents`,
+    `Largest single file: ${perFile}MB`,
+    "Up to 5 files per upload",
+    `${docs} document${docs === 1 ? "" : "s"} stored`,
+  ];
+  if (!enabled) details.unshift("The knowledge base is turned off by an admin");
+  document.getElementById("rag-quota-details").replaceChildren(
+    ...details.map((text) => Object.assign(document.createElement("li"), { textContent: text })),
+  );
 }
 
 async function loadKnowledgeSummary() {
@@ -1408,11 +1445,11 @@ function renderMyDocsPage() {
   document.getElementById("my-docs-next-btn").disabled = myDocsPage >= totalPages;
 }
 
-document.getElementById("my-docs-prev-btn").addEventListener("click", () => {
+document.getElementById("my-docs-prev-btn")?.addEventListener("click", () => {
   myDocsPage -= 1;
   renderMyDocsPage();
 });
-document.getElementById("my-docs-next-btn").addEventListener("click", () => {
+document.getElementById("my-docs-next-btn")?.addEventListener("click", () => {
   myDocsPage += 1;
   renderMyDocsPage();
 });
@@ -1641,7 +1678,7 @@ async function handleUpload() {
   }
 }
 
-document.getElementById("my-docs-upload-btn").addEventListener("click", handleUpload);
+document.getElementById("my-docs-upload-btn")?.addEventListener("click", handleUpload);
 
 // ---- Loading a target's current settings ---------------------------------
 
@@ -1711,16 +1748,16 @@ async function populateConversationSelect() {
   await loadTarget(DEFAULTS_TARGET);
 }
 
-conversationSelect.addEventListener("change", () => loadTarget(conversationSelect.value));
+conversationSelect?.addEventListener("change", () => loadTarget(conversationSelect.value));
 
-ragTopKInput.addEventListener("input", () => {
+ragTopKInput?.addEventListener("input", () => {
   currentParams.rag_top_k = parseInt(ragTopKInput.value, 10);
   ragTopKValueEl.textContent = ragTopKInput.value;
 });
 
 // ---- Saving ---------------------------------------------------------------
 
-saveBtn.addEventListener("click", async () => {
+saveBtn?.addEventListener("click", async () => {
   const targetId = conversationSelect.value;
   saveBtn.disabled = true;
   saveStatusEl.textContent = "Saving…";
@@ -1763,9 +1800,9 @@ const knowledgeBaseSectionEl = document.getElementById("knowledge-base-section")
 // Where save-bar naturally sits in the markup (below My Settings) —
 // remembered once at load so it can be moved back here when leaving
 // the Knowledge tab, rather than needing a second hardcoded position.
-const saveBarHomeParent = saveBarEl.parentNode;
-const saveBarHomeNextSibling = saveBarEl.nextSibling;
-const TAB_CONTENT_IDS = ["model", "behavior", "knowledge", "account", "system", "external-servers", "users", "channels"];
+const saveBarHomeParent = saveBarEl?.parentNode;
+const saveBarHomeNextSibling = saveBarEl?.nextSibling;
+const TAB_CONTENT_IDS = ["model", "behavior", "knowledge", "account", "system", "external-servers", "mcp-servers", "users", "channels"];
 
 let activeTabName = "model";
 
@@ -1776,7 +1813,7 @@ let activeTabName = "model";
 // this rather than toggling "hidden" directly, so neither one can clobber the other's reason for hiding it.
 function updateSaveBarVisibility() {
   const tabAllowsSave = activeTabName === "behavior" || activeTabName === "knowledge";
-  saveBarEl.classList.toggle("hidden", !tabAllowsSave);
+  saveBarEl?.classList.toggle("hidden", !tabAllowsSave);
 }
 
 function activateTab(name) {
@@ -1798,14 +1835,16 @@ function activateTab(name) {
   // physically relocated to sit just above the "Knowledge base"
   // section while that tab's active, and moved back to its normal spot
   // below Behavior otherwise.
-  if (name === "knowledge") {
-    knowledgeBaseSectionEl.parentNode.insertBefore(saveBarEl, knowledgeBaseSectionEl);
-  } else if (saveBarEl.parentNode !== saveBarHomeParent || saveBarEl.nextSibling !== saveBarHomeNextSibling) {
-    saveBarHomeParent.insertBefore(saveBarEl, saveBarHomeNextSibling);
+  if (hasUserTabs) {
+    if (name === "knowledge") {
+      knowledgeBaseSectionEl.parentNode.insertBefore(saveBarEl, knowledgeBaseSectionEl);
+    } else if (saveBarEl.parentNode !== saveBarHomeParent || saveBarEl.nextSibling !== saveBarHomeNextSibling) {
+      saveBarHomeParent.insertBefore(saveBarEl, saveBarHomeNextSibling);
+    }
   }
   activeTabName = name;
   updateSaveBarVisibility();
-  applyRagAvailabilityToKnowledgeTab();
+  if (hasUserTabs) applyRagAvailabilityToKnowledgeTab();
 }
 
 // Extracted from the click handler below so the same per-tab data load
@@ -3315,14 +3354,14 @@ function fillTimezoneSelect(selected) {
   select.value = selected;
 }
 
-document.getElementById("account-timezone-detect-btn").addEventListener("click", () => {
+document.getElementById("account-timezone-detect-btn")?.addEventListener("click", () => {
   const select = document.getElementById("account-timezone");
   const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
   if (![...select.options].some((o) => o.value === detected)) fillTimezoneSelect(detected);
   select.value = detected;
 });
 
-document.getElementById("account-timezone-save-btn").addEventListener("click", async () => {
+document.getElementById("account-timezone-save-btn")?.addEventListener("click", async () => {
   const statusEl = document.getElementById("account-timezone-status");
   const btn = document.getElementById("account-timezone-save-btn");
   btn.disabled = true;
@@ -3339,7 +3378,7 @@ document.getElementById("account-timezone-save-btn").addEventListener("click", a
   }
 });
 
-document.getElementById("account-avatar-input").addEventListener("change", async (e) => {
+document.getElementById("account-avatar-input")?.addEventListener("change", async (e) => {
   const file = e.target.files[0];
   e.target.value = ""; // lets picking the exact same file again still fire "change"
   if (!file) return;
@@ -3371,7 +3410,7 @@ document.getElementById("account-avatar-input").addEventListener("change", async
   }
 });
 
-document.getElementById("account-avatar-remove-btn").addEventListener("click", async () => {
+document.getElementById("account-avatar-remove-btn")?.addEventListener("click", async () => {
   const statusEl = document.getElementById("account-avatar-status");
   statusEl.textContent = "Removing…";
   try {
@@ -3388,7 +3427,7 @@ document.getElementById("account-avatar-remove-btn").addEventListener("click", a
   }
 });
 
-document.getElementById("account-profile-save-btn").addEventListener("click", async () => {
+document.getElementById("account-profile-save-btn")?.addEventListener("click", async () => {
   const statusEl = document.getElementById("account-profile-status");
   const btn = document.getElementById("account-profile-save-btn");
   const first_name = document.getElementById("account-first-name").value.trim();
@@ -3407,7 +3446,7 @@ document.getElementById("account-profile-save-btn").addEventListener("click", as
   }
 });
 
-document.getElementById("account-password-toggle").addEventListener("click", () => {
+document.getElementById("account-password-toggle")?.addEventListener("click", () => {
   const form = document.getElementById("account-password-form");
   const toggle = document.getElementById("account-password-toggle");
   const opening = form.classList.contains("hidden");
@@ -3415,7 +3454,7 @@ document.getElementById("account-password-toggle").addEventListener("click", () 
   toggle.textContent = opening ? "Cancel" : "Update password";
 });
 
-document.getElementById("account-password-save-btn").addEventListener("click", async () => {
+document.getElementById("account-password-save-btn")?.addEventListener("click", async () => {
   const currentInput = document.getElementById("account-current-password");
   const newInput = document.getElementById("account-new-password");
   const confirmInput = document.getElementById("account-confirm-password");
@@ -3492,7 +3531,7 @@ document.querySelectorAll("[data-theme-swatch]").forEach((btn) => {
   });
 });
 
-document.getElementById("ui-theme-save-btn").addEventListener("click", async () => {
+document.getElementById("ui-theme-save-btn")?.addEventListener("click", async () => {
   const statusEl = document.getElementById("ui-theme-status");
   const btn = document.getElementById("ui-theme-save-btn");
 
@@ -3526,7 +3565,7 @@ async function loadDefaultNotesEnabledIntoEditor() {
   toggleEl.checked = enabled;
 }
 
-document.getElementById("default-notes-enabled-toggle").addEventListener("change", async (e) => {
+document.getElementById("default-notes-enabled-toggle")?.addEventListener("change", async (e) => {
   const statusEl = document.getElementById("default-notes-enabled-status");
   const enabled = e.target.checked;
   e.target.disabled = true;
@@ -4358,7 +4397,10 @@ if (addChannelBtn) {
   // unreachable breaks populateConversationSelect's own model-catalog
   // fetch) must not silently prevent the unrelated ones after it from
   // ever running, the way a single sequential await chain would.
-  for (const step of [initModelTab, populateConversationSelect, loadRagAvailability, loadEmbeddingCatalog, loadKnowledgeSummary, loadDocumentLists]) {
+  const steps = hasUserTabs
+    ? [initModelTab, populateConversationSelect, loadRagAvailability, loadEmbeddingCatalog, loadKnowledgeSummary, loadDocumentLists]
+    : [initModelTab, loadEmbeddingCatalog];
+  for (const step of steps) {
     try {
       await step();
     } catch (err) {
