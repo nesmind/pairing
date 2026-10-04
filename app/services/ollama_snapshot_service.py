@@ -1,5 +1,5 @@
 """Reads back the "currently loaded models" table for the Telemetry page from the raw poll history
-app.services.ollama_ps_poller/matricxon_ps_poller write (both engines share the same OllamaModelSnapshot table —
+app.services.ollama_ps_poller/matricxon_ps_poller write (both engines share the same ModelSnapshot table —
 see that model's own docstring — so every query here filters by `engine`, one engine's dashboard at a time, the
 same convention app.services.telemetry_service uses for TelemetryEvent). Deliberately avoids a GROUP BY host,
 model_name + MAX(polled_at) window-function query (version-fragile the same way a SQL percentile would be, see
@@ -13,7 +13,7 @@ from datetime import timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import OllamaModelSnapshot
+from app.models import ModelSnapshot
 from app.models._base import utcnow
 from app.schemas import LoadedModelSnapshot
 from app.services.ollama_ps_poller import POLL_INTERVAL_SECONDS
@@ -29,15 +29,15 @@ async def get_latest_snapshots(db: AsyncSession, engine: str) -> list[LoadedMode
     rows = (
         (
             await db.execute(
-                select(OllamaModelSnapshot)
-                .where(OllamaModelSnapshot.engine == engine, OllamaModelSnapshot.polled_at >= cutoff)
-                .order_by(OllamaModelSnapshot.polled_at.desc())
+                select(ModelSnapshot)
+                .where(ModelSnapshot.engine == engine, ModelSnapshot.polled_at >= cutoff)
+                .order_by(ModelSnapshot.polled_at.desc())
             )
         )
         .scalars()
         .all()
     )
-    newest_per_key: dict[tuple[str, str], OllamaModelSnapshot] = {}
+    newest_per_key: dict[tuple[str, str], ModelSnapshot] = {}
     for row in rows:
         key = (row.host, row.model_name)
         if key not in newest_per_key:

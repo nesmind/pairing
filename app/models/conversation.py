@@ -132,6 +132,10 @@ class Message(Base):
     # other read of the history (app.services.conversation_service.visible_messages)
     # filters these out entirely.
     status = Column(String(20), nullable=False, default="complete")
+    # Tool calls the model made while writing this reply (MCP), in order, each
+    # {id, server, tool, arguments, result, is_error} — see app.services.tool_loop_service.
+    # Null for every reply that used no tools.
+    tool_events = Column(JSON, nullable=True)
     # Set only on a message shared into a channel from someone's private chat (see
     # app.services.message_share_service): the role the original had there - "user" (the sharer's own
     # question) or "assistant" (an AI answer they're passing on). The copy itself is always a plain "user"-role

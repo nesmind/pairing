@@ -80,11 +80,8 @@ async def hide_model(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),
 ):
-    """Hides or unhides one model tag from regular users' picker.
-    Admin-only, and purely a visibility control — it doesn't uninstall
-    anything and doesn't stop an existing conversation from using a
-    hidden model, it just declutters the list regular users choose
-    from."""
+    """Disables (hidden=True) or enables one model tag for regular users: left out of their picker and
+    refused in their chats (admins are unaffected). Admin-only; doesn't uninstall anything."""
     hidden_tags = HiddenModelTags(db)
     tags = await hidden_tags.get()
     if body.hidden:

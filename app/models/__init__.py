@@ -18,12 +18,14 @@ from app.models.channel import Channel, ChannelMember
 from app.models.conversation import Conversation, Message, MessageAttachment
 from app.models.document import Chunk, Document
 from app.models.image_generation import ImageGenerationJob
+from app.models.mcp_server import McpServer
 from app.models.note import Note, NotePin
 from app.models.system_metrics import GpuMetricSnapshot, SystemMetricSnapshot
-from app.models.telemetry import OllamaModelSnapshot, TelemetryEvent
+from app.models.telemetry import ModelSnapshot, TelemetryEvent
 from app.models.user import User
 
 __all__ = [
+    "McpServer",
     "ID_LEN",
     "new_id",
     "utcnow",
@@ -40,7 +42,7 @@ __all__ = [
     "Note",
     "NotePin",
     "GpuMetricSnapshot",
-    "OllamaModelSnapshot",
+    "ModelSnapshot",
     "SystemMetricSnapshot",
     "TelemetryEvent",
     "User",

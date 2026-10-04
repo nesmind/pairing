@@ -6,10 +6,14 @@ tests, or by a production ASGI server like `uvicorn app.main:app`)
 without also starting a server as a side effect of importing it.
 """
 
+import os
+from pathlib import Path
+
 import setproctitle
 import uvicorn
 
 from app.config import APP_HOST, APP_PORT, INSTANCE_INDEX
+from app.pid_file import PidFile
 
 if __name__ == "__main__":
     # Every launch path this project actually uses (scripts/start.sh,
@@ -30,4 +34,13 @@ if __name__ == "__main__":
     # process matching.
     proctitle = "pAIring-server" if INSTANCE_INDEX == 0 else f"pAIring-server-{INSTANCE_INDEX}"
     setproctitle.setproctitle(proctitle)
-    uvicorn.run("app.main:app", host=APP_HOST, port=APP_PORT, reload=False)
+    # Only the primary writes one: it stops its siblings itself on shutdown (see scripts/stop.sh). start.sh sets
+    # PAIRING_PID_FILE to an absolute path; the default matches its own.
+    pid_file = PidFile(Path(os.environ.get("PAIRING_PID_FILE", "run/pairing.pid")))
+    if INSTANCE_INDEX == 0:
+        pid_file.write()
+    try:
+        uvicorn.run("app.main:app", host=APP_HOST, port=APP_PORT, reload=False)
+    finally:
+        if INSTANCE_INDEX == 0:
+            pid_file.remove()

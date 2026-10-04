@@ -10,7 +10,7 @@ import httpx
 import pytest
 from sqlalchemy import select
 
-from app.models import OllamaModelSnapshot
+from app.models import ModelSnapshot
 from app.services import matricxon_pool, matricxon_ps_poller
 
 
@@ -59,7 +59,7 @@ async def test_poll_once_writes_one_snapshot_row_per_loaded_model_stamped_with_t
 
     await matricxon_ps_poller._poll_once()
 
-    rows = (await db.execute(select(OllamaModelSnapshot))).scalars().all()
+    rows = (await db.execute(select(ModelSnapshot))).scalars().all()
     assert {r.model_name for r in rows} == {"ministral-3:3b", "gemma4:2b"}
     assert all(r.host == "http://host-a:8420" for r in rows)
     assert all(r.engine == "matricxon" for r in rows)
@@ -76,7 +76,7 @@ async def test_poll_once_skips_an_unreachable_host_but_still_polls_the_rest(monk
 
     await matricxon_ps_poller._poll_once()
 
-    rows = (await db.execute(select(OllamaModelSnapshot))).scalars().all()
+    rows = (await db.execute(select(ModelSnapshot))).scalars().all()
     assert len(rows) == 1
     assert rows[0].host == "http://up:8420"
 
@@ -88,7 +88,7 @@ async def test_poll_once_writes_nothing_when_no_models_are_loaded_anywhere(monke
 
     await matricxon_ps_poller._poll_once()
 
-    rows = (await db.execute(select(OllamaModelSnapshot))).scalars().all()
+    rows = (await db.execute(select(ModelSnapshot))).scalars().all()
     assert rows == []
 
 

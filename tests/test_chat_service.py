@@ -681,7 +681,9 @@ async def test_build_reply_stream_records_the_attachments_on_the_user_message(db
 
 
 @pytest.mark.asyncio
-async def test_build_reply_stream_folds_a_text_attachment_into_the_system_prompt(db, user, tmp_path, monkeypatch):
+async def test_build_reply_stream_puts_a_text_attachment_in_front_of_the_newest_user_message(
+    db, user, tmp_path, monkeypatch
+):
     """A text/PDF/etc. attachment's extracted content must reach the
     model as part of the system prompt, and the conversation's own model
     is used unchanged (no vision-model override — see the image test
@@ -712,8 +714,10 @@ async def test_build_reply_stream_folds_a_text_attachment_into_the_system_prompt
 
     assert captured["model"] == "fake-model"
     system_message = next(m for m in captured["messages"] if m["role"] == "system")
-    assert "the launch code is 12345" in system_message["content"]
-    assert "notes.txt" in system_message["content"]
+    assert "the launch code is 12345" not in system_message["content"]  # keeps the system prompt cache-stable
+    last_user = [m for m in captured["messages"] if m["role"] == "user"][-1]["content"]
+    assert "the launch code is 12345" in last_user and "notes.txt" in last_user
+    assert last_user.endswith("what's the code?")
 
 
 @pytest.mark.asyncio
@@ -828,3 +832,41 @@ async def test_build_reply_stream_falls_back_when_the_conversation_model_is_not_
     assert captured["model"] == "actually-installed-model"
     await db.refresh(conversation)
     assert conversation.model == "actually-installed-model"
+
+
+@pytest.mark.asyncio
+async def test_a_channel_can_hide_plain_messages_from_the_model(
+    db, admin_user, user, channel_manager_user, monkeypatch
+):
+    """With the admin setting off, a message posted without asking the AI never reaches the model."""
+    from app.services import channel_history_setting
+
+    captured: list[list[dict]] = []
+
+    async def fake_chat_stream(_model, messages, _params):
+        captured.append([dict(m) for m in messages])
+        yield "ok"
+
+    monkeypatch.setattr(reply_generation_service, "chat_stream", fake_chat_stream)
+    channel = await channel_service.create_channel(
+        db,
+        ChannelCreate(
+            name="general",
+            member_user_ids=[user.id, channel_manager_user.id],
+            manager_user_ids=[channel_manager_user.id],
+        ),
+        admin_user,
+    )
+    conversation = channel.conversation
+    async for _ in chat_service.build_reply_stream(db, conversation, user, "side chatter", ask_ai=False):
+        pass
+
+    for include in (True, False):
+        await channel_history_setting.set_include_plain_messages(db, include)
+        captured.clear()
+        await db.refresh(conversation, ["messages"])  # a real request loads these fresh
+        async for _ in chat_service.build_reply_stream(db, conversation, user, "now the real question"):
+            pass
+        sent = " ".join(m["content"] for m in captured[0])
+        assert ("side chatter" in sent) is include
+        assert "now the real question" in sent

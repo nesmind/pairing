@@ -54,7 +54,7 @@ class TelemetryEvent(Base):
     attempt_count = Column(Integer, nullable=False, default=1)
 
 
-class OllamaModelSnapshot(Base):
+class ModelSnapshot(Base):
     """One row per (host, currently-loaded model) on every poll of an engine's GET /api/ps — see
     app.services.ollama_ps_poller and app.services.matricxon_ps_poller, both of which write here. Appended
     unconditionally rather than upserted: at a 30s poll interval this stays small for a typical single/few-host
@@ -62,7 +62,7 @@ class OllamaModelSnapshot(Base):
     app.services.ollama_snapshot_service reads back only the newest row per (engine, host, model_name) for the
     "currently loaded" dashboard table, one engine at a time."""
 
-    __tablename__ = "ollama_model_snapshots"
+    __tablename__ = "model_snapshots"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     # "ollama" | "matricxon" — see TelemetryEvent.engine's own comment for the identical reasoning.

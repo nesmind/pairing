@@ -24,6 +24,8 @@ class MessageOut(BaseModel):
     role: str
     content: str
     sources: list[str] | None = None
+    # Tool calls (MCP) the reply made, in order — see Message.tool_events; null when it used none.
+    tool_events: list[dict] | None = None
     # Populated only for a "user"-role message sent with one or more
     # files attached (see app.services.chat_attachment_service and
     # app.models.conversation.Message.attachments) — empty for every

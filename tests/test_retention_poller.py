@@ -1,5 +1,5 @@
 """Unit tests for app/services/retention_poller.py — the periodic sweep
-that keeps telemetry_events/ollama_model_snapshots/system_metric_snapshots
+that keeps telemetry_events/model_snapshots/system_metric_snapshots
 bounded for a process's entire uptime, not just between restarts (see
 that module's own docstring for why a startup-only prune wasn't enough).
 Uses the shared `db` fixture; conftest.py already patches
@@ -11,7 +11,7 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import select
 
-from app.models import OllamaModelSnapshot, SystemMetricSnapshot, TelemetryEvent
+from app.models import ModelSnapshot, SystemMetricSnapshot, TelemetryEvent
 from app.models._base import utcnow
 from app.schemas import RetentionSettings
 from app.services import retention_poller, retention_settings_service
@@ -39,8 +39,8 @@ async def test_prune_once_deletes_old_rows_and_keeps_recent_ones_across_all_thre
         [
             _old_telemetry_event(),
             _recent_telemetry_event(),
-            OllamaModelSnapshot(host="http://x:11434", model_name="llama3:latest", polled_at=old_cutoff_ollama),
-            OllamaModelSnapshot(host="http://x:11434", model_name="llama3:latest", polled_at=utcnow()),
+            ModelSnapshot(host="http://x:11434", model_name="llama3:latest", polled_at=old_cutoff_ollama),
+            ModelSnapshot(host="http://x:11434", model_name="llama3:latest", polled_at=utcnow()),
             SystemMetricSnapshot(
                 cpu_percent=1.0,
                 mem_used_bytes=1,
@@ -64,7 +64,7 @@ async def test_prune_once_deletes_old_rows_and_keeps_recent_ones_across_all_thre
     await retention_poller.prune_once()
 
     assert len((await db.execute(select(TelemetryEvent))).scalars().all()) == 1
-    assert len((await db.execute(select(OllamaModelSnapshot))).scalars().all()) == 1
+    assert len((await db.execute(select(ModelSnapshot))).scalars().all()) == 1
     assert len((await db.execute(select(SystemMetricSnapshot))).scalars().all()) == 1
 
 

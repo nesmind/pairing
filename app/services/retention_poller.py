@@ -1,5 +1,5 @@
 """Periodically prunes the four append-only, poller-written tables this
-app accumulates over time (telemetry_events, ollama_model_snapshots,
+app accumulates over time (telemetry_events, model_snapshots,
 system_metric_snapshots, gpu_metric_snapshots — see
 app.services.ollama_ps_poller, app.services.system_metrics_poller, and
 app.services.ollama_telemetry for what writes them). A one-shot prune
@@ -24,7 +24,7 @@ from datetime import timedelta
 from sqlalchemy import delete
 
 from app.database import AsyncSessionLocal
-from app.models import GpuMetricSnapshot, OllamaModelSnapshot, SystemMetricSnapshot, TelemetryEvent
+from app.models import GpuMetricSnapshot, ModelSnapshot, SystemMetricSnapshot, TelemetryEvent
 from app.models._base import utcnow
 from app.services import retention_settings_service
 
@@ -47,7 +47,7 @@ async def prune_once() -> None:
             await db.execute(delete(TelemetryEvent).where(TelemetryEvent.started_at < telemetry_cutoff))
         ).rowcount
         deleted_ollama_snapshots = (
-            await db.execute(delete(OllamaModelSnapshot).where(OllamaModelSnapshot.polled_at < telemetry_cutoff))
+            await db.execute(delete(ModelSnapshot).where(ModelSnapshot.polled_at < telemetry_cutoff))
         ).rowcount
         deleted_metric_snapshots = (
             await db.execute(delete(SystemMetricSnapshot).where(SystemMetricSnapshot.polled_at < metrics_cutoff))

@@ -159,9 +159,7 @@ def test_build_env_fresh_install_defaults():
 
 
 def test_a_blank_memory_safety_margin_is_not_passed_so_matricxon_uses_its_own_default():
-    assert "MATRICXON_MEMORY_SAFETY_MARGIN" not in matricxon_process._build_env(
-        _config(memory_safety_margin=None)
-    )
+    assert "MATRICXON_MEMORY_SAFETY_MARGIN" not in matricxon_process._build_env(_config(memory_safety_margin=None))
 
 
 def test_build_env_passes_through_quantized_native_compute_and_log_level():
@@ -507,9 +505,7 @@ def test_concurrency_tuning_is_sent_to_matricxon_only_when_set():
         )
     )
 
-    env = matricxon_process._build_env(
-        _config(prompt_cache_slots=6, prompt_cache_budget_mb=4096, max_decode_batch=4)
-    )
+    env = matricxon_process._build_env(_config(prompt_cache_slots=6, prompt_cache_budget_mb=4096, max_decode_batch=4))
 
     assert env["MATRICXON_PROMPT_CACHE_SLOTS"] == "6"
     assert env["MATRICXON_PROMPT_CACHE_BUDGET_MB"] == "4096"
@@ -518,9 +514,7 @@ def test_concurrency_tuning_is_sent_to_matricxon_only_when_set():
 
 def test_write_env_file_persists_and_clears_concurrency_tuning(tmp_path):
     checkout = _make_checkout(tmp_path)
-    matricxon_process.write_env_file(
-        _config(project_dir=str(checkout), prompt_cache_slots=6, max_decode_batch=4)
-    )
+    matricxon_process.write_env_file(_config(project_dir=str(checkout), prompt_cache_slots=6, max_decode_batch=4))
     text = (checkout / ".env").read_text()
     assert "MATRICXON_PROMPT_CACHE_SLOTS=6" in text and "MATRICXON_MAX_DECODE_BATCH=4" in text
     assert "MATRICXON_PROMPT_CACHE_BUDGET_MB" not in text
@@ -558,7 +552,7 @@ def test_device_rejects_anything_but_cpu_or_cuda(device):
 def test_startup_failure_reason_picks_the_last_error_line_of_a_traceback():
     log = (
         "matricxon exited during startup - last lines of logs/matricxon.log:\n"
-        "  File \"app/main.py\", line 99, in _lifespan\n"
+        '  File "app/main.py", line 99, in _lifespan\n'
         "app.server.errors.DeviceUnavailableError: device 'cuda' requested but PyTorch sees no CUDA GPU\n"
         "\n"
         "ERROR:    Application startup failed. Exiting.\n"

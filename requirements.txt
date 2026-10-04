@@ -26,6 +26,9 @@ bcrypt>=4.2.0
 itsdangerous>=2.2.0
 alembic>=1.19.2
 
+# MCP client (tool servers over streamable HTTP). Pinned below 2.x: the client API differs there.
+mcp>=1.27,<2
+
 # Renames this process from the generic "python" (what every tool that
 # reads /proc/PID/comm — ps, top, ss -p, etc. — shows by default for
 # any Python script) to "pAIring-server" instead. See run.py.

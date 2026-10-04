@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 import httpx
 
 from app.database import AsyncSessionLocal
-from app.models import OllamaModelSnapshot
+from app.models import ModelSnapshot
 from app.services import matricxon_pool
 
 logger = logging.getLogger("llama_chat")
@@ -35,13 +35,13 @@ def _parse_expires_at(raw: str | None) -> datetime | None:
         return None
 
 
-async def _poll_host(host: str) -> list[OllamaModelSnapshot]:
+async def _poll_host(host: str) -> list[ModelSnapshot]:
     polled_at = datetime.now(UTC)
     async with httpx.AsyncClient(timeout=_PS_TIMEOUT) as client:
         resp = await client.get(f"{host}/api/ps")
         resp.raise_for_status()
     return [
-        OllamaModelSnapshot(
+        ModelSnapshot(
             engine="matricxon",
             host=host,
             model_name=m.get("name") or m.get("model", "unknown"),
@@ -55,7 +55,7 @@ async def _poll_host(host: str) -> list[OllamaModelSnapshot]:
 
 
 async def _poll_once() -> None:
-    snapshots: list[OllamaModelSnapshot] = []
+    snapshots: list[ModelSnapshot] = []
     for host in matricxon_pool.get_effective_hosts():
         try:
             snapshots.extend(await _poll_host(host))

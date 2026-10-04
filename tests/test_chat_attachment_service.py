@@ -194,3 +194,26 @@ async def test_apply_image_attachment_attaches_base64_bytes_to_the_last_message(
     assert ollama_messages[-1]["role"] == "user"
     assert ollama_messages[-1]["content"] == "look at this"
     assert base64.b64decode(ollama_messages[-1]["images"][0]) == b"fake-image-bytes"
+
+
+def test_turn_context_goes_in_front_of_the_newest_user_message_only():
+    from app.services.chat_prompt_service import prepend_turn_context
+
+    history = [
+        {"role": "user", "content": "old"},
+        {"role": "assistant", "content": "reply"},
+        {"role": "user", "content": "now"},
+    ]
+    prepend_turn_context(history, "CTX")
+
+    assert history[0]["content"] == "old"
+    assert history[2]["content"] == "CTX\n\n---\n\nnow"
+
+
+def test_empty_turn_context_changes_nothing():
+    from app.services.chat_prompt_service import prepend_turn_context
+
+    history = [{"role": "user", "content": "now"}]
+    prepend_turn_context(history, "")
+
+    assert history == [{"role": "user", "content": "now"}]

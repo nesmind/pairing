@@ -607,6 +607,7 @@ const REPLY_FAILED_NOTICE = "⚠️ This reply didn't finish — generation fail
 function renderReplyBody(bubble, content, status, sources, errorText) {
   if (status === "streaming" && !content) {
     bubble.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
+    ToolBlocks.render(bubble);
     return;
   }
   renderMessageContent(bubble, content);
@@ -618,6 +619,7 @@ function renderReplyBody(bubble, content, status, sources, errorText) {
   } else {
     appendSourcesFooter(bubble, sources);
   }
+  ToolBlocks.render(bubble); // tool calls (MCP) from bubble._toolEvents, if the reply made any
 }
 
 /** Appends every one of a message's attachments (an image, or a small
@@ -688,6 +690,7 @@ function addMessageBubble(
   // channel carries a small "Shared from a private chat" remark (see chat_share.js).
   if (messageId && (!status || status === "complete")) ChannelShare.decorate(wrapper, messageId, role);
   ChannelShare.remark(wrapper, sharedFrom, attachmentSource && attachmentSource.sender_display_name);
+  bubble._toolEvents = attachmentSource && attachmentSource.tool_events;
   renderReplyBody(bubble, content, status, sources, errorText);
   renderAttachment(bubble, attachmentSource);
   messagesEl.appendChild(wrapper);
@@ -839,12 +842,17 @@ function handleReplyLiveEvent(conversationId, payload) {
     channelReplyInFlight = true;
     updateAskAiButtonState();
     const { bubble, created } = findOrCreateBubbleForMessage(messageId, "assistant", "AI");
+    bubble._toolEvents = payload.tool_events;
     renderReplyBody(bubble, replyLiveContent.get(messageId), payload.status);
     messagesEl.scrollTop = messagesEl.scrollHeight;
     if (created) reconcileConversationMessages(conversationId);
     return;
   }
 
+  if (payload.tool) {
+    const { bubble } = findOrCreateBubbleForMessage(messageId, "assistant", "AI");
+    ToolBlocks.add(bubble, payload.tool);
+  }
   if (payload.chunk) {
     channelReplyInFlight = true;
     updateAskAiButtonState();
@@ -968,6 +976,7 @@ async function runChannelPoll(conversationId) {
     setBubbleTime(bubble.closest("[data-message-id]"), message.created_at);
     // A message another member shared in from a private chat arrives through here too, while this tab is open.
     ChannelShare.remark(bubble.closest("[data-message-id]"), message.shared_from, message.sender_display_name);
+    bubble._toolEvents = message.tool_events;
     renderReplyBody(bubble, message.content, message.status, message.sources, message.error_message);
     renderAttachment(bubble, message);
     messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -1273,6 +1282,9 @@ document.addEventListener("keydown", (event) => {
  * on is exactly as easy as turning it off (see openSlotEditor's
  * "Enable" button). Best-effort: a failed lookup just means no icons
  * show, not a broken chat. */
+let pinnedSlots = []; // the active chat's slots, kept so the badges can be redrawn when the first message lands
+let activeHasMessages = false; // once true the badges are read-only (a persona change would force a full re-read)
+
 async function loadPinnedBadges(conversationId) {
   let slots;
   try {
@@ -1284,24 +1296,35 @@ async function loadPinnedBadges(conversationId) {
   // switched to a different conversation while this was in flight, its
   // result is now stale and shouldn't overwrite that conversation's icons.
   if (conversationId !== activeConversationId) return;
+  pinnedSlots = slots;
+  renderPinnedBadges();
+}
 
+/** Draws the 3 badges from `pinnedSlots`; clickable only for someone who can manage this chat, and only while
+ * it has no messages yet. */
+function renderPinnedBadges() {
+  const editable = canManageActive && !activeHasMessages;
+  const conversationId = activeConversationId;
   pinnedBadgesEl.innerHTML = "";
-  for (const slot of slots) {
+  for (const slot of pinnedSlots) {
     const badge = document.createElement("button");
     badge.type = "button";
-    badge.className = "rounded-full px-1.5 py-0.5 transition-colors " + (
-      slot.active
-        ? "bg-slate-800" + (canManageActive ? " hover:bg-slate-700" : "")
-        : "bg-slate-800/40 opacity-40" + (canManageActive ? " hover:opacity-70" : "")
-    );
+    const look = !editable
+      ? "bg-slate-800/60 opacity-60 cursor-not-allowed" // locked: the chat has messages, or not the viewer's to change
+      : slot.active
+        ? "bg-slate-800" + (editable ? " hover:bg-slate-700" : " cursor-default")
+        : "bg-slate-800/40 opacity-40" + (editable ? " hover:opacity-70" : " cursor-default");
+    badge.className = "rounded-full px-1.5 py-0.5 transition-colors " + look;
     const state = !slot.active ? " (off)" : slot.is_override ? " (customized)" : "";
-    const readOnlyNote = canManageActive ? "" : " — read-only (admins/managers only)";
+    const readOnlyNote = !canManageActive
+      ? " — read-only (admins/managers only)"
+      : activeHasMessages ? " — locked: can only change before the first message" : "";
     badge.title = `${PIN_TYPE_LABELS[slot.pin_type] || slot.pin_type}${state}: ${slot.title || ""}${readOnlyNote}`;
     badge.textContent = PIN_TYPE_ICONS[slot.pin_type] || "📌";
     // Reads canManageActive fresh at click time (not the value captured
     // when this badge was rendered) — see its own declaration above.
     badge.addEventListener("click", () => {
-      if (canManageActive) openSlotEditor(conversationId, slot);
+      if (canManageActive && !activeHasMessages) openSlotEditor(conversationId, slot);
     });
     pinnedBadgesEl.appendChild(badge);
   }
@@ -1447,10 +1470,16 @@ async function selectConversation(id) {
   conversationTitleEl.dir = detectTextDirection(titleText);
   modelBadgeEl.textContent = conversation.model || "";
   modelBadgeEl.classList.remove("hidden");
+  toolToggle.sync(id, conversation, canManageActive); // not awaited, like the badges below
+  activeHasMessages = false; // until this chat's messages are known (the badges load in parallel)
   loadPinnedBadges(id); // not awaited — a badge lookup shouldn't delay showing messages
 
   const messages = await api(`/api/conversations/${id}/messages`);
   renderMessageList(messages, channelInfo);
+  if (id === activeConversationId) {
+    activeHasMessages = messages.length > 0;
+    renderPinnedBadges();
+  }
 
   if (channelInfo) {
     // Watch for other members' activity in this channel — which
@@ -1629,6 +1658,10 @@ async function sendMessage(askAi) {
     currentInitials,
     activeChannelInfo ? currentUserId : null
   );
+  if (!activeHasMessages) {
+    activeHasMessages = true; // the first message locks persona/rules/skill
+    renderPinnedBadges();
+  }
 
   // A normal (askAi=false) message never gets a reply at all — no
   // "thinking" bubble for it, since build_reply_stream's ask_ai=False
@@ -2036,6 +2069,7 @@ async function readAssistantReplyStream(
       if (payload.title && !isChannel) {
         updateConversationTitleDisplay(conversationId, payload.title);
       }
+      if (bubble && payload.tool) ToolBlocks.add(bubble, payload.tool);
       if (bubble && payload.chunk) {
         fullText += payload.chunk;
         renderReplyBody(bubble, fullText, "streaming");

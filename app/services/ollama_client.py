@@ -19,6 +19,7 @@ from opentelemetry.trace import SpanKind, Status, StatusCode
 from app.config import EMBEDDING_NUM_CTX
 from app.services import ollama_pool, ollama_telemetry
 from app.services.ollama_thinking import model_supports_thinking, strip_inline_thinking
+from app.services.tool_call_sink import add_tools_to_payload, sink_from
 
 logger = logging.getLogger("llama_chat")
 
@@ -143,6 +144,8 @@ async def chat_stream(
         "options": options,
         "stream": True,
     }
+    add_tools_to_payload(payload, params)
+    sink = sink_from(params)
 
     # Populated by _raw_content_chunks_from below (overwritten on every attempt, since stream_with_failover can call
     # it more than once) and read back once the stream finishes, to attach telemetry to the span _content_stream
@@ -165,6 +168,8 @@ async def chat_stream(
                     if not line:
                         continue
                     data = json.loads(line)
+                    if sink:
+                        sink.add_from_chunk(data)
                     if data.get("done"):
                         # Ollama's own server-side timing/token counts, only ever present on this final line — see
                         # app.services.telemetry_exporter for how these become a TelemetryEvent row.

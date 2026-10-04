@@ -9,7 +9,7 @@
  * app/services/model_catalog_service.py, app/services/reply_broadcast_service.py,
  * app/services/document_retrieval.py, app/services/reply_termination_service.py,
  * app/services/reply_cross_instance_service.py, app/services/title_service.py,
- * app/services/chat_attachment_service.py). Kept separate from
+ * app/services/chat_attachment_service.py, app/services/tool_loop_service.py). Kept separate from
  * workflow_diagram.js (rendering only) so this substantial amount of
  * descriptive text can be edited independently of the D3 mechanics.
  *
@@ -129,7 +129,7 @@ const WORKFLOW_NODES = [
       server: APP_NAME,
       title: "Orchestration begins",
       location: "app/services/chat_service.py — build_reply_stream",
-      body: "Creates and commits the user's own Message row immediately (durably saved regardless of whether generation later succeeds). In \"simple\" title mode, sets the conversation's title here too — pure local text processing, no model call. Yields {user_message_id} as the very first SSE event so the browser can tag its optimistic bubble. Also resolves conversation.model against whichever engine is currently active (model_catalog_service.resolve_installed_model) — an admin switching engines leaves every existing conversation's model column pointed at a tag the newly active engine may never have heard of, so this falls back to something actually installed there instead of failing outright. Builds a trimmed conversation history (chat_history_service.trim_history, kept under a token-budget proxy based on num_ctx) — which also folds any run of consecutive same-role messages into one turn (e.g. several channel posts before anyone asked the AI): a strict chat template rejects back-to-back same-role turns outright, so this merges them, each line attributed to its own sender, before the model ever sees them. Then hands off to system-prompt assembly.",
+      body: "Creates and commits the user's own Message row immediately (durably saved regardless of whether generation later succeeds). In \"simple\" title mode, sets the conversation's title here too — pure local text processing, no model call. Yields {user_message_id} as the very first SSE event so the browser can tag its optimistic bubble. Also resolves conversation.model against whichever engine is currently active (model_catalog_service.resolve_installed_model) — an admin switching engines leaves every existing conversation's model column pointed at a tag the newly active engine may never have heard of, so this falls back to something actually installed there instead of failing outright. Builds a trimmed conversation history (chat_history_service.trim_history, kept under a token-budget proxy based on num_ctx) — which also folds any run of consecutive same-role messages into one turn (e.g. several channel posts before anyone asked the AI): a strict chat template rejects back-to-back same-role turns outright, so this merges them, each line attributed to its own sender, before the model ever sees them. Then hands off to system-prompt assembly. History sent to the model leaves out replies that failed or were cancelled, and — in a channel, when the admin turns it off (Settings > System > Channel replies) — messages members posted without asking the AI.",
     },
   },
   {
@@ -489,6 +489,88 @@ const WORKFLOW_NODES = [
       body: "In \"smart\" title mode (personal chats only), a SEPARATE detached task fires only after the reply's own {done} event has already reached the browser — an inline await at that point would just be cancelled, since chat.js disconnects right after \"done\". Makes a short, non-streaming call asking the AI language model itself to generate a title, sanity-checks the result isn't obviously truncated reasoning, then commits it directly. chat.js polls the conversation a few times afterward to pick up the new title once it lands.",
     },
   },
+
+  // ---- Branch: MCP tools --------------------------------------------
+  {
+    id: "mcp_tool_loop",
+    mcp: true,
+    label: "ToolLoop.run() [only with Tools on]",
+    category: "service",
+    x: 240,
+    y: 700,
+    w: 250,
+    h: 64,
+    detail: {
+      server: APP_NAME,
+      title: "The tool loop — when a chat has Tools turned on",
+      location: "app/services/tool_loop_service.py — tool_stream_or_none, ToolLoop.run (called from _run_generation)",
+      body: "Only used when the conversation's Tools switch is on, at least one enabled MCP server offers tools, and the model can use them (Matricxon reports a \"tools\" capability; Ollama is tried and falls back to a plain chat if it refuses). Instead of one chat_stream call it runs rounds: the tool definitions go to the model with the messages; if the model answers with tool_calls (read from the stream into a ToolCallSink — Matricxon parses them out of the model's text per chat-template format), each call runs on its MCP server and the result goes back as a \"tool\" message for the next round. After the admin-set max rounds (Settings > System, default 5, shared by every MCP server) the model is asked to answer without tools. Tool definitions are sent shortened (long descriptions clipped) on every round. Every finished call is stored on the message (Message.tool_events) and published to viewers live, so the reply shows a \"Used N tool calls\" block.",
+    },
+  },
+  {
+    id: "mcp_server_call",
+    mcp: true,
+    label: "MCP server\n(call_tool)",
+    category: "engine",
+    x: 240,
+    y: 810,
+    w: 180,
+    h: 64,
+    detail: {
+      server: "MCP server",
+      title: "Running a tool on an MCP server",
+      location: "app/services/mcp_client.py — McpConnection.call_tool; servers are set up in Settings > Knowledge > Configure MCP",
+      body: "A short-lived streamable-HTTP session per call (connect, initialize, call the tool, close), so nothing is shared between users or between pAIring instances. Limited to 8 calls at once per instance, 30 seconds per call, and results are cut at the admin-set limit (Settings > System, default 4,000 characters; a JSON result is shortened by clipping long strings and lists so it stays valid JSON, other text is cut at a word boundary). A failed or unreachable server becomes an error result the model sees instead of failing the reply.",
+    },
+  },
+  {
+    id: "mcp_gate",
+    mcp: true,
+    label: "tool_stream_or_none()\n[cheap gates]",
+    category: "service",
+    x: 30,
+    y: 580,
+    w: 170,
+    h: 64,
+    detail: {
+      server: APP_NAME,
+      title: "MCP stage 1 — is this a tool reply?",
+      location: "app/services/tool_loop_service.py — tool_stream_or_none",
+      body: "Runs for every reply but stops at the first failed check, so a chat with Tools off costs nothing: (1) the conversation's Tools switch (params.use_tools) — no database read when off; (2) the admin's global MCP switch (one AppSetting read); (3) the tool catalog has at least one tool; (4) the model can use tools (engine capability list, cached 60s; Ollama has none, so it is tried and falls back to a plain chat if refused). Any failed check means a plain chat_stream, exactly as without MCP.",
+    },
+  },
+  {
+    id: "mcp_catalog",
+    mcp: true,
+    label: "McpToolCatalog\n.tools() [cached]",
+    category: "service",
+    x: 30,
+    y: 700,
+    w: 170,
+    h: 64,
+    detail: {
+      server: APP_NAME,
+      title: "MCP stage 2 — which tools exist",
+      location: "app/services/mcp_tool_catalog.py — McpToolCatalog.tools",
+      body: "Lists the enabled servers (one query) and each server's tools, asked in parallel. A server's tool list is cached 60 seconds per instance, keyed on its saved URL/headers so an edit applies at once; a server that fails is remembered as empty for 15 seconds so a dead one never adds its timeout to every reply. Tool names become <server>__<tool>. Long tool/parameter descriptions are clipped when the definitions are built, because they are re-read by the model on every round.",
+    },
+  },
+  {
+    id: "mcp_record",
+    mcp: true,
+    label: "tool_event_service\n.record()",
+    category: "service",
+    x: 30,
+    y: 810,
+    w: 170,
+    h: 64,
+    detail: {
+      server: APP_NAME,
+      title: "MCP stage 4 — keep and show the call",
+      location: "app/services/tool_event_service.py — record; app/static/js/chat_tools.js — ToolBlocks",
+      body: "Each finished tool call (server, tool, arguments, result, error flag) is appended to Message.tool_events and published to every viewer over the same live stream as the reply text, so the bubble shows a collapsible \"Used N tool calls\" block, also after a reload. The result the model reads is cut to the admin-set limit (default 4,000 characters). Failed replies are left out of later prompts (chat_history_service.without_failed_replies).",
+    },
+  },
 ];
 
 const WORKFLOW_EDGES = [
@@ -533,4 +615,12 @@ const WORKFLOW_EDGES = [
 
   // Smart title branch
   { from: "stream_done", to: "smart_title", branch: true },
+
+  // MCP tools branch
+  { from: "run_generation_task", to: "mcp_gate", branch: true },
+  { from: "mcp_gate", to: "mcp_catalog", branch: true },
+  { from: "mcp_gate", to: "mcp_tool_loop", branch: true },
+  { from: "mcp_server_call", to: "mcp_record", branch: true },
+  { from: "mcp_tool_loop", to: "inference_client_stream", branch: true },
+  { from: "mcp_tool_loop", to: "mcp_server_call", branch: true },
 ];

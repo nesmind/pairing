@@ -46,7 +46,7 @@ silently worked around by inventing new infra.
 """
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 # Bounded so one badly-lagging subscriber can't grow without limit — a
 # full queue just drops that one event (see publish below) rather than
@@ -69,6 +69,7 @@ class GenerationState:
     content: str = ""
     status: str = "streaming"
     sources: list[str] | None = None
+    tool_events: list[dict] = field(default_factory=list)
 
 
 class _Topic:
@@ -139,6 +140,14 @@ def publish_chunk(conversation_id: str, chunk: str) -> None:
     # stream_reply's own relay (the sender's tab) additionally stamps
     # this same key on top, which is harmless (same value either way).
     _publish(conversation_id, {"chunk": chunk, "message_id": topic.state.message_id})
+
+
+def publish_tool(conversation_id: str, tool_event: dict) -> None:
+    topic = _topics.get(conversation_id)
+    if topic is None or topic.state is None:
+        return
+    topic.state.tool_events.append(tool_event)
+    _publish(conversation_id, {"tool": tool_event, "message_id": topic.state.message_id})
 
 
 def publish_done(conversation_id: str, sources: list[str] | None) -> None:

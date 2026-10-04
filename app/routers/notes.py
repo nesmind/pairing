@@ -54,7 +54,13 @@ async def _require_slot_edit_rights(conversation, user: User) -> None:
     has full rights (unchanged from before channels existed), but a
     channel's shared conversation can only have its pinned persona/
     rules/skill changed by an admin or that channel's manager — a plain
-    member can read the slots (get_slots below) but not edit them."""
+    member can read the slots (get_slots below) but not edit them. Nobody can once the chat has a message:
+    the persona/rules/skill sit at the start of the prompt, so changing them makes the model re-read the
+    whole conversation."""
+    if conversation_service.visible_messages(conversation):
+        raise HTTPException(
+            status_code=409, detail="Persona, rules and skill can only change before the first message."
+        )
     if conversation.channel_id is not None and not channel_service.can_manage_channel_conversation(conversation, user):
         raise HTTPException(
             status_code=403,

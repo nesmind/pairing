@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import ATTACHMENTS_DIR
 from app.models import Conversation, Message, MessageAttachment, User
 from app.services import (
+    channel_history_setting,
     chat_attachment_service,
     chat_history_service,
     chat_prompt_service,
@@ -158,15 +159,19 @@ async def build_reply_stream(
     # conversation.messages collection itself) never updates it in memory
     # either. Without this, history would only ever reflect everything
     # *before* this turn — never the question actually being asked now.
+    past = conversation_service.visible_messages(conversation)
+    if not is_personal and not await channel_history_setting.get_include_plain_messages(db):
+        past = chat_history_service.only_addressed_to_ai(past)
     history = chat_history_service.trim_history(
-        [*conversation_service.visible_messages(conversation), user_message], params["num_ctx"]
+        [*chat_history_service.without_failed_replies(past), user_message], params["num_ctx"]
     )
 
     # See chat_prompt_service.build_system_prompt's own docstring for the
     # notes/RAG/attachment layering this produces.
-    system_prompt, source_filenames = await chat_prompt_service.build_system_prompt(
+    system_prompt, turn_context, source_filenames = await chat_prompt_service.build_system_prompt(
         db, conversation, user, content, params, attachments
     )
+    chat_prompt_service.prepend_turn_context(history, turn_context)
     # Always sent, even when system_prompt is "" (no notes/RAG/attachments contributed anything) — an
     # explicit empty system message is a real, deliberate signal to the engine that there is genuinely no
     # preamble, as opposed to omitting the role entirely, which some chat-template layers (e.g. Matricxon's

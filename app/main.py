@@ -21,6 +21,7 @@ from app.config import (
 from app.routers import (
     account,
     auth,
+    channel_history_admin,
     channels,
     chat,
     comfyui_admin,
@@ -35,6 +36,8 @@ from app.routers import (
     instances_admin,
     matricxon_admin,
     matricxon_cache_admin,
+    mcp_admin,
+    mcp_tools,
     model_catalog_admin,
     notes,
     ollama_admin,
@@ -145,6 +148,11 @@ app.include_router(matricxon_admin.router)
 app.include_router(matricxon_cache_admin.router)
 app.include_router(engine_admin.router)
 app.include_router(connectors.router)
+app.include_router(channel_history_admin.router)
+app.include_router(mcp_admin.router)
+app.include_router(mcp_admin.enabled_router)
+app.include_router(mcp_admin.limits_router)
+app.include_router(mcp_tools.router)
 app.include_router(stats.router)
 app.include_router(telemetry.router)
 app.include_router(system_metrics.router)

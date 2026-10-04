@@ -374,14 +374,14 @@ async function uninstallModel(entry, button, progressEl, onDone = refreshCatalog
   }
 }
 
-/** Hides or unhides a model from regular users' picker (admin only —
+/** Disables or enables a model for regular users (hidden from their picker, blocked in chats) (admin only —
  * see POST /api/settings/hide-model). Purely a visibility toggle, so
  * there's no confirmation dialog the way Uninstall gets. */
 async function toggleHideModel(entry, button, progressEl) {
   const newHidden = !entry.hidden;
   button.disabled = true;
   progressEl.classList.remove("hidden");
-  progressEl.textContent = newHidden ? "Hiding…" : "Unhiding…";
+  progressEl.textContent = newHidden ? "Disabling…" : "Enabling…";
 
   try {
     await api("/api/settings/hide-model", {
@@ -491,7 +491,7 @@ function renderModelRow(entry, pairing = null, compact = false) {
     : "";
   label.innerHTML =
     `<span class="block truncate font-medium text-slate-100">${escapeHtml(modelName || entry.tag)}` +
-    (entry.hidden ? ` <span class="text-xs font-normal text-slate-500">(hidden from users)</span>` : "") +
+    (entry.hidden ? ` <span class="text-xs font-normal text-slate-500">(disabled for users)</span>` : "") +
     visionBadge +
     (compact ? "" : matricxonBadge + notInCatalogBadge + chatFormatUnverifiedBadge) +
     `</span>` +
@@ -569,19 +569,19 @@ function renderModelRow(entry, pairing = null, compact = false) {
     action.appendChild(note);
   }
 
-  // Hide/Unhide: admin-only, independent of install state — an admin
+  // Disable/Enable: admin-only, independent of install state — an admin
   // can declutter the picker for regular users even for a model that
   // isn't installed yet.
-  // Only for an installed model - the not-installed "Recommended" list has no Hide/Unhide.
+  // Only for an installed model - the not-installed "Recommended" list has no Disable/Enable.
   if (isAdmin && managementEnabled && entry.installed) {
     const hideBtn = document.createElement("button");
     hideBtn.type = "button";
     hideBtn.title = entry.hidden
-      ? "Unhide — show this model to regular users again"
-      : "Hide — remove this model from regular users' picker";
+      ? "Enable — let regular users use this model again"
+      : "Disable — regular users can no longer pick or chat with this model";
     hideBtn.className =
       "rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 transition-colors";
-    hideBtn.textContent = entry.hidden ? "Unhide" : "Hide";
+    hideBtn.textContent = entry.hidden ? "Enable" : "Disable";
     hideBtn.addEventListener("click", () => toggleHideModel(entry, hideBtn, progressRow));
     action.appendChild(hideBtn);
   }
@@ -3664,6 +3664,8 @@ async function loadChannelDeliveryModeIntoEditor() {
   if (!channelDeliveryModeSaveBtn) return;
   const { mode } = await api("/api/settings/channel-delivery-mode");
   document.getElementById("channel-delivery-mode").value = mode;
+  const { include } = await api("/api/settings/channel-plain-messages");
+  document.getElementById("channel-plain-messages").value = include ? "include" : "skip";
 }
 
 if (channelDeliveryModeSaveBtn) {
@@ -3675,6 +3677,8 @@ if (channelDeliveryModeSaveBtn) {
     statusEl.textContent = "Saving…";
     try {
       await api("/api/settings/channel-delivery-mode", { method: "PUT", body: JSON.stringify({ mode }) });
+      const include = document.getElementById("channel-plain-messages").value === "include";
+      await api("/api/settings/channel-plain-messages", { method: "PUT", body: JSON.stringify({ include }) });
       statusEl.textContent = "Saved.";
     } catch (err) {
       statusEl.textContent = `Failed to save: ${err.message}`;
@@ -3786,6 +3790,14 @@ function validPassword(value) {
   return value.length >= 3 && value.length <= 200;
 }
 
+/** While one row of a list is being edited (or an "add" form is open), shows only that row/form: hides the
+ * list's other rows plus any `chrome` elements (Add button, pagination). `row` null restores everything. */
+function focusListRow(listEl, row, ...chrome) {
+  if (!listEl) return;
+  for (const child of listEl.children) child.style.display = row && child !== row ? "none" : "";
+  for (const el of chrome) if (el) el.style.display = row ? "none" : "";
+}
+
 const userListEl = document.getElementById("system-user-list");
 const addUserBtn = document.getElementById("add-user-btn");
 const addUserForm = document.getElementById("add-user-form");
@@ -3801,8 +3813,11 @@ function renderUserRow(user) {
   const row = document.createElement("div");
   row.className = "px-4 py-2.5";
 
+  const userChrome = () => [addUserBtn, document.getElementById("system-user-pagination")];
+
   function renderView() {
     row.innerHTML = "";
+    if (row.parentElement) focusListRow(row.parentElement, null, ...userChrome());
     const wrap = document.createElement("div");
     wrap.className = "flex items-center justify-between gap-3";
     const fullName = [user.first_name, user.last_name].filter(Boolean).join(" ");
@@ -3855,6 +3870,7 @@ function renderUserRow(user) {
 
   function renderEdit() {
     row.innerHTML = "";
+    focusListRow(row.parentElement, row, ...userChrome());
     const form = document.createElement("div");
     form.className = "space-y-2";
     form.innerHTML = `
@@ -3996,17 +4012,19 @@ function resetAddUserForm() {
 }
 
 if (addUserBtn) {
+  const showAddUser = (open) => {
+    addUserForm.classList.toggle("hidden", !open);
+    focusListRow(userListEl, open ? addUserForm : null, addUserBtn, document.getElementById("system-user-pagination"));
+  };
   addUserBtn.addEventListener("click", () => {
-    addUserForm.classList.toggle("hidden");
+    showAddUser(addUserForm.classList.contains("hidden"));
     if (!addUserForm.classList.contains("hidden")) {
       resetAddUserForm();
       document.getElementById("new-user-username").focus();
     }
   });
 
-  document.getElementById("cancel-add-user-btn").addEventListener("click", () => {
-    addUserForm.classList.add("hidden");
-  });
+  document.getElementById("cancel-add-user-btn").addEventListener("click", () => showAddUser(false));
 
   createUserBtn.addEventListener("click", async () => {
     const username = document.getElementById("new-user-username").value.trim();
@@ -4032,7 +4050,7 @@ if (addUserBtn) {
         method: "POST",
         body: JSON.stringify({ username, password, first_name, last_name, role, status }),
       });
-      addUserForm.classList.add("hidden");
+      showAddUser(false);
       // list_users orders by created_at, so the user just created is always on the *last* page — jump there
       // (renderUserPage's own clamp settles this to whatever that turns out to be) rather than silently
       // re-fetching behind whichever page happened to be showing, which could leave it looking like nothing
@@ -4240,6 +4258,7 @@ function renderChannelRow(channel) {
 
   function renderView() {
     row.innerHTML = "";
+    if (row.parentElement) focusListRow(row.parentElement, null, addChannelBtn);
     const managerCount = channel.members.filter((m) => m.is_manager).length;
     const wrap = document.createElement("div");
     wrap.className = "flex items-center justify-between gap-3";
@@ -4257,6 +4276,7 @@ function renderChannelRow(channel) {
     wrap.querySelector(".edit-channel-btn").addEventListener("click", async () => {
       const users = await api("/api/settings/users");
       row.innerHTML = "";
+      focusListRow(row.parentElement, row, addChannelBtn);
       row.appendChild(buildChannelForm(users, channel, {
         onCancel: renderView,
         onSave: async (body) => {
@@ -4307,26 +4327,27 @@ if (addChannelBtn) {
     // Acts as a toggle: clicking again while the form's open closes it
     // unsaved, same as there being no separate "Cancel" affordance next
     // to the button itself (the form's own Cancel button covers that).
-    if (!addChannelFormEl.classList.contains("hidden")) {
+    const closeAdd = () => {
       addChannelFormEl.classList.add("hidden");
       addChannelFormEl.innerHTML = "";
+      focusListRow(channelListEl, null, addChannelBtn);
+    };
+    if (!addChannelFormEl.classList.contains("hidden")) {
+      closeAdd();
       return;
     }
     const users = await api("/api/settings/users");
     addChannelFormEl.innerHTML = "";
     addChannelFormEl.appendChild(buildChannelForm(users, null, {
-      onCancel: () => {
-        addChannelFormEl.classList.add("hidden");
-        addChannelFormEl.innerHTML = "";
-      },
+      onCancel: closeAdd,
       onSave: async (body) => {
         await api("/api/settings/channels", { method: "POST", body: JSON.stringify(body) });
-        addChannelFormEl.classList.add("hidden");
-        addChannelFormEl.innerHTML = "";
+        closeAdd();
         await loadChannels();
       },
     }));
     addChannelFormEl.classList.remove("hidden");
+    focusListRow(channelListEl, addChannelFormEl, addChannelBtn);
   });
 }
 

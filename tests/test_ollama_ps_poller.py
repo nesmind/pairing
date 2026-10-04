@@ -10,7 +10,7 @@ import httpx
 import pytest
 from sqlalchemy import select
 
-from app.models import OllamaModelSnapshot
+from app.models import ModelSnapshot
 from app.services import ollama_pool, ollama_ps_poller
 
 
@@ -62,7 +62,7 @@ async def test_poll_once_writes_one_snapshot_row_per_loaded_model(monkeypatch, d
 
     await ollama_ps_poller._poll_once()
 
-    rows = (await db.execute(select(OllamaModelSnapshot))).scalars().all()
+    rows = (await db.execute(select(ModelSnapshot))).scalars().all()
     assert {r.model_name for r in rows} == {"llama3:latest", "moondream:1.8b"}
     assert all(r.host == "http://host-a:11434" for r in rows)
 
@@ -78,7 +78,7 @@ async def test_poll_once_skips_an_unreachable_host_but_still_polls_the_rest(monk
 
     await ollama_ps_poller._poll_once()
 
-    rows = (await db.execute(select(OllamaModelSnapshot))).scalars().all()
+    rows = (await db.execute(select(ModelSnapshot))).scalars().all()
     assert len(rows) == 1
     assert rows[0].host == "http://up:11434"
 
@@ -90,7 +90,7 @@ async def test_poll_once_writes_nothing_when_no_models_are_loaded_anywhere(monke
 
     await ollama_ps_poller._poll_once()
 
-    rows = (await db.execute(select(OllamaModelSnapshot))).scalars().all()
+    rows = (await db.execute(select(ModelSnapshot))).scalars().all()
     assert rows == []
 
 

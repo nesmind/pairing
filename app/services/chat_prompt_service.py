@@ -25,17 +25,23 @@ async def build_system_prompt(
     content: str,
     params: dict,
     attachments: list[AttachmentInfo],
-) -> tuple[str, list[str]]:
-    """Returns (system_prompt, source_filenames) for this one turn.
+) -> tuple[str, str, list[str]]:
+    """Returns (system_prompt, turn_context, source_filenames) for this one turn.
 
-    Layered in this order: explicit persona/rules/skill note pins (Notes
+    `system_prompt` holds only the notes, which stay identical turn after turn, so the engine's prompt
+    cache keeps matching the whole conversation. `turn_context` (RAG excerpts + text attachments) changes
+    every message, so the caller puts it in front of the newest user message instead (see
+    prepend_turn_context): in the system prompt it would sit before all the history and force a full
+    re-read of the chat on every turn.
+
+    The system prompt is the explicit persona/rules/skill note pins (Notes
     page or the chat page's icons), falling back to the user's default
-    note per slot (see app/services/note_service.py); then RAG context
-    (every chat automatically searches the shared knowledge base — no
+    note per slot (see app/services/note_service.py). The turn context is
+    RAG context (every chat automatically searches the shared knowledge base — no
     per-conversation on/off switch, only the rag_top_k "how many chunks"
     setting; degrades silently if the knowledge base is empty or the
     embedding model is unreachable, rather than failing the whole
-    request); then, last, any of a message's own ad-hoc attachments that
+    request), then any of a message's own ad-hoc attachments that
     are `type="text"` (an image attachment is handled separately — see
     chat_attachment_service.apply_image_attachment, called by
     chat_service after `history` is built from this function's result).
@@ -47,6 +53,7 @@ async def build_system_prompt(
     if any(notes_by_type.values()):
         system_prompt = build_pinned_system_prompt(notes_by_type)
 
+    turn_context = ""
     source_filenames: list[str] = []
     rag_scope_user_id = user.id if conversation.channel_id is None else None
     try:
@@ -54,7 +61,7 @@ async def build_system_prompt(
     except InferenceError:
         retrieved = []
     if retrieved:
-        system_prompt = build_augmented_system_prompt(system_prompt, retrieved)
+        turn_context = build_augmented_system_prompt("", retrieved).strip()
         # De-duplicated, in first-seen (best-match-first) order — a
         # document can contribute more than one chunk, but it should
         # only be listed once in the "Sources" note.
@@ -65,6 +72,16 @@ async def build_system_prompt(
                 source_filenames.append(chunk["filename"])
 
     if attachments:
-        system_prompt = chat_attachment_service.fold_text_attachments_into_prompt(system_prompt, attachments)
+        turn_context = chat_attachment_service.fold_text_attachments_into_prompt(turn_context, attachments).strip()
 
-    return system_prompt, source_filenames
+    return system_prompt, turn_context, source_filenames
+
+
+def prepend_turn_context(history: list[dict], turn_context: str) -> None:
+    """Puts `turn_context` in front of the newest user message in `history` (in place)."""
+    if not turn_context:
+        return
+    for message in reversed(history):
+        if message["role"] == "user":
+            message["content"] = f"{turn_context}\n\n---\n\n{message['content']}"
+            return

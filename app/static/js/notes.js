@@ -107,12 +107,21 @@ function collectPins(containerEl) {
   return pins;
 }
 
+/** While one note is being edited (or the new-note form is open), shows only it: hides the other rows, the
+ * search box, pagination, empty-state text and "+ New note". `row` null restores everything. */
+function focusNoteRow(row) {
+  for (const child of notesListEl.children) child.style.display = row && child !== row ? "none" : "";
+  const chrome = [addNoteBtn, notesSearchEl, notesEmptyEl, document.getElementById("notes-pagination")];
+  for (const el of chrome) el.style.display = row ? "none" : "";
+}
+
 function renderNoteRow(note) {
   const row = document.createElement("div");
   row.className = "rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-2";
 
   function renderView() {
     row.innerHTML = "";
+    if (row.parentElement) focusNoteRow(null);
     const top = document.createElement("div");
     top.className = "flex items-start justify-between gap-3";
     top.innerHTML = `
@@ -155,6 +164,7 @@ function renderNoteRow(note) {
   }
 
   async function renderEdit() {
+    focusNoteRow(row);
     row.innerHTML = `<p class="text-xs text-slate-500">Loading…</p>`;
     const conversations = await loadConversations();
     const pinsByConversationId = new Map(note.pins.map((pin) => [pin.conversation_id, pin]));
@@ -278,8 +288,13 @@ function resetNewNoteForm() {
   addNoteStatusEl.textContent = "";
 }
 
+function showNewNoteForm(open) {
+  newNoteFormEl.classList.toggle("hidden", !open);
+  focusNoteRow(open ? newNoteFormEl : null);
+}
+
 addNoteBtn.addEventListener("click", async () => {
-  newNoteFormEl.classList.toggle("hidden");
+  showNewNoteForm(newNoteFormEl.classList.contains("hidden"));
   if (!newNoteFormEl.classList.contains("hidden")) {
     resetNewNoteForm();
     const pickerEl = document.getElementById("new-note-pin-picker");
@@ -291,9 +306,7 @@ addNoteBtn.addEventListener("click", async () => {
   }
 });
 
-document.getElementById("cancel-add-note-btn").addEventListener("click", () => {
-  newNoteFormEl.classList.add("hidden");
-});
+document.getElementById("cancel-add-note-btn").addEventListener("click", () => showNewNoteForm(false));
 
 document.getElementById("create-note-btn").addEventListener("click", async () => {
   const title = document.getElementById("new-note-title").value.trim() || "Untitled note";
@@ -305,7 +318,7 @@ document.getElementById("create-note-btn").addEventListener("click", async () =>
   addNoteStatusEl.textContent = "Creating…";
   try {
     await api("/api/notes", { method: "POST", body: JSON.stringify({ title, content, pins }) });
-    newNoteFormEl.classList.add("hidden");
+    showNewNoteForm(false);
     await loadNotes();
   } catch (err) {
     addNoteStatusEl.textContent = err.message;

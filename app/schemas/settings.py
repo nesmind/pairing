@@ -74,6 +74,13 @@ class TitleMode(BaseModel):
     mode: Literal["simple", "smart"]
 
 
+class ChannelPlainMessages(BaseModel):
+    """Whether messages posted in a channel without asking the AI are included in what the model reads on a
+    later reply (see app.services.channel_history_setting). Admin-only, system-wide."""
+
+    include: bool
+
+
 class ChannelDeliveryMode(BaseModel):
     """How other members of a channel see an in-progress/finished reply
     while they're sitting in that chat — "cheap" (they poll

@@ -5,6 +5,8 @@ user" lookup every conversation/chat/notes endpoint relies on, and
 validating a model switch against what's actually installed.
 """
 
+import asyncio
+import logging
 from datetime import datetime
 
 from fastapi import HTTPException
@@ -17,12 +19,16 @@ from app.schemas import ConversationCreate, ConversationUpdate, MessagesLatestRe
 from app.services import (
     channel_service,
     chat_attachment_service,
+    engine_service,
     note_service,
     reply_broadcast_service,
     reply_generation_service,
 )
-from app.services.model_catalog_service import installed_chat_models, resolve_installed_model
+from app.services.matricxon_cache_persistence import MatricxonCachePersistenceService
+from app.services.model_catalog_service import HiddenModelTags, installed_chat_models, resolve_installed_model
 from app.services.settings_service import get_default_model, get_default_params
+
+logger = logging.getLogger("llama_chat")
 
 
 async def create_conversation(db: AsyncSession, body: ConversationCreate, user: User) -> Conversation:
@@ -41,6 +47,8 @@ async def create_conversation(db: AsyncSession, body: ConversationCreate, user: 
         installed = await installed_chat_models()
         if body.model not in installed:
             raise HTTPException(status_code=400, detail="Model is not installed")
+        if await HiddenModelTags(db).blocks(user, body.model):
+            raise HTTPException(status_code=400, detail="Model is disabled by an admin")
         model = body.model
     else:
         model = await resolve_installed_model(db, user, await get_default_model(db, user))
@@ -118,6 +126,8 @@ async def update_conversation(
         installed = await installed_chat_models()
         if body.model not in installed:
             raise HTTPException(status_code=400, detail="Model is not installed")
+        if await HiddenModelTags(db).blocks(user, body.model):
+            raise HTTPException(status_code=400, detail="Model is disabled by an admin")
         conversation.model = body.model
     if body.params is not None:
         conversation.params = body.params.model_dump()
@@ -286,5 +296,18 @@ async def delete_conversation(db: AsyncSession, conversation: Conversation) -> N
             reply_generation_service.mark_message_deleted(message.id)
             reply_generation_service.cancel_generation(message.id)
     chat_attachment_service.delete_conversation_attachments(conversation.id)
+    conversation_id = conversation.id
     await db.delete(conversation)
     await db.commit()
+    await _drop_engine_cache(conversation_id)
+
+
+async def _drop_engine_cache(conversation_id: str) -> None:
+    """Matricxon keeps each chat's prompt cache on disk; tell it the chat is gone. Never delays or fails
+    the delete for long: a slow or unreachable host is skipped."""
+    if engine_service.current_engine() != "matricxon":
+        return
+    try:
+        await asyncio.wait_for(MatricxonCachePersistenceService().forget_chat(conversation_id), timeout=3)
+    except TimeoutError:
+        logger.info("dropping a deleted chat's prompt cache timed out")

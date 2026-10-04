@@ -84,6 +84,12 @@ It is also important not to expose more models to users than the system RAM/VRAM
 - Private-per-user and shared/global scopes, with per-user storage
   quotas; answers cite which document they drew on.
 
+**Tools (MCP)**
+- Admins connect MCP tool servers (streamable HTTP) under Settings → Knowledge → Configure MCP, with
+  encrypted headers and a Test connection button, and can switch MCP off for everyone in Settings → System. Users switch **Tools** on per chat; the model can then call those
+  tools (up to 5 rounds per reply) and each call is shown under the reply. Works with Matricxon
+  (Qwen, Mistral, Llama 3.x and Gemma 4 templates) and with Ollama for models that support tools.
+
 **Live dashboards**
 - A real usage overview (conversations, messages, users, knowledge
   base).

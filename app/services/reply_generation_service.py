@@ -35,6 +35,8 @@ from app.services import (
     reply_cancellation_service,
     reply_cross_instance_service,
     reply_termination_service,
+    tool_event_service,
+    tool_loop_service,
 )
 from app.services.inference_client import InferenceError, chat_stream, stop_model
 
@@ -46,17 +48,14 @@ logger = logging.getLogger("llama_chat")
 _FLUSH_CHARS = 200
 _FLUSH_INTERVAL_SECONDS = 0.4
 
-# How often stream_reply's relay falls back to reading the database instead of only waiting on the broadcast
-# queue — see reply_cross_instance_service's own docstring for why (the common same-instance case never hits this).
+# How often stream_reply's relay also reads the database, not just the queue (see reply_cross_instance_service).
 _CROSS_INSTANCE_POLL_SECONDS = 3.0
 
 # Same reasoning as title_service._background_title_tasks: asyncio only holds a *weak* reference to a bare
 # asyncio.create_task() result, so without this the task could be garbage-collected mid-run.
 _background_generation_tasks: set[asyncio.Task] = set()
 
-# conversation_service.delete_message's way of stopping/removing a
-# still-streaming reply from outside this module — split out to
-# reply_cancellation_service (file-size rule), re-exported here.
+# delete_message's way of stopping a streaming reply — split out to reply_cancellation_service, re-exported here.
 cancel_generation = reply_cancellation_service.cancel_generation
 mark_message_deleted = reply_cancellation_service.mark_message_deleted
 
@@ -183,7 +182,12 @@ async def _run_generation(
             last_flush = time.monotonic()
             try:
                 async with asyncio.timeout(effective_timeout):
-                    async for chunk in chat_stream(model, ollama_messages, {**(params or {}), "request_id": message_id}):
+                    gen_params = {**(params or {}), "request_id": message_id, "cache_tag": conversation_id}
+                    tools = await tool_loop_service.tool_stream_or_none(db, model, ollama_messages, gen_params)
+                    async for chunk in tools if tools is not None else chat_stream(model, ollama_messages, gen_params):
+                        if isinstance(chunk, dict):  # a finished tool call (MCP), not text
+                            await tool_event_service.record(db, message, chunk["tool"], conversation_id)
+                            continue
                         full_reply += chunk
                         unflushed += chunk
                         reply_broadcast_service.publish_chunk(conversation_id, chunk)
@@ -194,48 +198,41 @@ async def _run_generation(
                             await db.commit()
                             unflushed = ""
                             last_flush = now
-                            # Cross-instance guard (see reply_cross_instance_service's own docstring) — also
-                            # stop_model (same as TimeoutError below): a bare `return` alone never stops the engine.
+                            # Cross-instance guard (see reply_cross_instance_service); stop_model too: a bare
+                            # `return` alone never stops the engine.
                             fresh = await reply_cross_instance_service.refresh_or_none(db, message)
                             if fresh is None or fresh.status == "deleted":
                                 await stop_model(model, request_id=message_id)
                                 return
             except InferenceError as exc:
-                # Keeps whatever was generated before the failure — true
-                # for a timeout below too, not just an outright loss.
+                # Keeps whatever was generated before the failure (a timeout too).
                 await reply_termination_service.mark_error(db, message, full_reply, conversation_id, str(exc))
                 return
             except TimeoutError:
-                # asyncio.timeout()'s own deadline firing, not a raw
-                # CancelledError — unlike task.cancel() below, it leaves
-                # cancellation state cleared, so `await`ing mark_error
-                # here works normally (see the CancelledError branch
-                # below for the trap this would otherwise hit).
+                # asyncio.timeout()'s own deadline, not a raw CancelledError: cancellation state is
+                # cleared, so `await` works here (unlike the CancelledError branch below).
                 await reply_termination_service.mark_error(
                     db, message, full_reply, conversation_id, f"Reply timed out after {timeout_seconds} seconds."
                 )
-                # See ollama_client.stop_model's own docstring: closing
-                # our side of the connection above doesn't reliably stop
-                # an in-progress llama.cpp compute phase on its own.
+                # Closing our side doesn't reliably stop an in-progress compute phase (see stop_model).
                 await stop_model(model, request_id=message_id)
                 return
             except asyncio.CancelledError:
-                # cancel_on_disconnect or cancel_generation. Cancellation
-                # is now pending, so any further `await` right here would
-                # just re-raise instead of running — the write has to
-                # happen in a freshly spawned, non-cancelled task instead.
-                # Re-raising after leaves this task correctly marked
-                # cancelled, not falsely "completed".
+                # cancel_on_disconnect or cancel_generation: cancellation is pending, so an `await` here would
+                # just re-raise — write from a fresh, non-cancelled task, then re-raise so this one stays cancelled.
                 reply_termination_service.schedule_cancelled_write(message_id, model, full_reply, conversation_id)
                 raise
 
             if reply_cancellation_service.is_message_deleted(message_id):
                 return  # rare: finished at the same instant as cancel_generation, no await left to catch it above
-            # Same check, reaching the database — the in-process one above
-            # only catches a delete_message call served by *this* instance
-            # (see reply_cross_instance_service).
+            # Same check via the database: the one above only sees deletes served by this instance.
             fresh = await reply_cross_instance_service.refresh_or_none(db, message)
             if fresh is None or fresh.status == "deleted":
+                return
+            if message.tool_events and not full_reply.strip():  # went quiet after using tools
+                await reply_termination_service.mark_error(
+                    db, message, full_reply, conversation_id, tool_event_service.NO_ANSWER
+                )
                 return
             message.content = full_reply
             message.status = "complete"

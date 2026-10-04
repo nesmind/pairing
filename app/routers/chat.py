@@ -25,6 +25,7 @@ from app.models import Message, MessageAttachment, User
 from app.services import chat_attachment_service, conversation_service, reply_broadcast_service
 from app.services.auth_service import get_current_user
 from app.services.chat_service import build_reply_stream
+from app.services.model_catalog_service import HiddenModelTags
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -39,6 +40,8 @@ async def stream_reply(
     user: User = Depends(get_current_user),
 ):
     conversation = await conversation_service.get_accessible_conversation_or_404(db, conversation_id, user)
+    if ask_ai and await HiddenModelTags(db).blocks(user, conversation.model):
+        raise HTTPException(status_code=409, detail="This model is disabled by an admin. Pick another model.")
 
     # Must be checked and raised here, before StreamingResponse is ever
     # constructed below — Starlette locks in this response's 200 status
@@ -173,6 +176,7 @@ async def subscribe_to_reply(
                             "content": state.content,
                             "status": state.status,
                             "sources": state.sources,
+                            "tool_events": state.tool_events,
                         }
                     )
                     + "\n\n"

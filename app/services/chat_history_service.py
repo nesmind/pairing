@@ -16,6 +16,21 @@ from app.models import Message
 _CHARS_PER_TOKEN = 4
 
 
+def only_addressed_to_ai(messages: list[Message]) -> list[Message]:
+    """Channel history without the messages posted without asking the AI (see channel_history_setting): a user
+    message stays only if an assistant reply answers it (a failed one counts). The question being asked right
+    now is added by the caller afterwards."""
+    answered = {m.reply_to_message_id for m in messages if m.role == "assistant" and m.reply_to_message_id}
+    return [m for m in messages if m.role != "user" or m.id in answered]
+
+
+def without_failed_replies(messages: list[Message]) -> list[Message]:
+    """Drops replies that failed or were cancelled (status "error"): their text is a partial or empty answer
+    plus a notice for the person, nothing the model should read again, and every such turn costs tokens on
+    every later message. The question it was answering stays, so the next reply can still answer it."""
+    return [m for m in messages if m.status != "error"]
+
+
 def trim_history(messages: list[Message], num_ctx: int, reserved_tokens: int = 512) -> list[dict]:
     """Keeps only as much recent history as should comfortably fit in the
     model's context window, so a long-running chat doesn't silently lose

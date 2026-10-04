@@ -270,6 +270,12 @@
         <p class="text-xs text-slate-500 -mt-2">
           Every chat automatically searches your knowledge base below — there's nothing to turn on.
         </p>
+        {% if is_admin %}
+        <p class="text-xs text-amber-400 -mt-1">
+          The RAG settings on this page apply only to your own chats, not to other users. Documents that
+          apply to all users are global RAG documents — see the Help docs.
+        </p>
+        {% endif %}
 
         <div>
           <div class="flex items-center justify-between mb-1">
@@ -362,9 +368,12 @@
       </section>
       </div>
 
-      <!-- MCP settings: not built yet. -->
       <div data-group="mcp" class="hidden space-y-8">
-        <p class="text-sm text-slate-400">MCP is not supported yet</p>
+        {% if is_admin %}
+        {% include "_mcp_servers.html" %}
+        {% else %}
+        <p class="text-sm text-slate-400">MCP tool servers are managed by an administrator.</p>
+        {% endif %}
       </div>
     </div>
 
@@ -910,13 +919,27 @@
           "Cheap" has other members' tabs check back every few seconds — no extra server load
           beyond that. "Real" pushes it to them live, token-by-token, but only reliably reaches
           everyone when running as a single app instance (Settings &gt; System &gt; instance count).
+          The second setting is whether the model also reads the messages members post to the channel
+          without asking it, when it answers a later question: "Skip" keeps its prompt shorter and faster.
         </p>
-        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3">
-          <select id="channel-delivery-mode"
-            class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
-            <option value="cheap">Cheap — other members poll every few seconds</option>
-            <option value="real">Real — pushed to other members live</option>
-          </select>
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 grid grid-cols-2 gap-3">
+          <label class="block">
+            <span class="text-xs text-slate-400">How members find out about a reply</span>
+            <select id="channel-delivery-mode"
+              class="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+              <option value="cheap">Cheap — other members poll every few seconds</option>
+              <option value="real">Real — pushed to other members live</option>
+            </select>
+          </label>
+          <label class="block">
+            <span class="text-xs text-slate-400">Messages posted without asking the AI</span>
+            <select id="channel-plain-messages"
+              class="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500"
+              title="Whether the model reads messages members post to the channel without asking it, when it answers a later question.">
+              <option value="include">Include — the model reads them</option>
+              <option value="skip">Skip — the model ignores them</option>
+            </select>
+          </label>
         </div>
         <div class="flex items-center gap-3">
           <button id="channel-delivery-mode-save-btn" type="button"
@@ -1000,6 +1023,8 @@
           <span id="retention-status" class="text-xs text-slate-500"></span>
         </div>
       </section>
+
+      {% include "_mcp_global_switch.html" %}
     </div>
 
     <!-- External servers tab: admin-only. Ollama and ComfyUI each get an
@@ -1332,7 +1357,7 @@
                 </div>
                 <div>
                   <label class="block text-xs font-medium text-slate-400 mb-1">Log level</label>
-                  <select data-field="log_level" title="0: warnings/errors only (Matricxon's own default). 1: coarse per-request pipeline milestones (model load, prompt build, each generated token, generation summary). 2: also adds a per-decoder-layer trace line for every forward pass — very verbose."
+                  <select data-field="log_level" title="0: warnings/errors only (Matricxon's own default). 1: coarse per-request pipeline milestones (model load, prompt build, each generated token, generation summary) and, when tools are on, the tool-use milestones (tools offered, stop token, tool calls parsed). 2: also adds a per-decoder-layer trace line for every forward pass, plus tool names and call arguments — very verbose."
                     class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
                     <option value="0">0 — warnings/errors only</option>
                     <option value="1">1 — pipeline milestones</option>
@@ -1621,5 +1646,6 @@
 <script src="/static/js/theme.js?v={{ static_version }}"></script>
 <script src="/static/js/settings.js?v={{ static_version }}"></script>
 <script src="/static/js/settings_cache_persistence.js?v={{ static_version }}"></script>
+{% if is_admin %}<script src="/static/js/settings_mcp_servers.js?v={{ static_version }}"></script>{% endif %}
 <script src="/static/js/settings_group_select.js?v={{ static_version }}"></script>
 {% endblock %}

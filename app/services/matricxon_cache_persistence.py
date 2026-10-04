@@ -3,12 +3,15 @@ Its limits live in Matricxon itself and change there instantly (GET/PUT/DELETE /
 there is nothing to save in this app's own database or to restart for. With several hosts configured every
 one is asked and the results combined — each host keeps its own cache on its own disk."""
 
+import logging
+
 import httpx
 
 from app.schemas import MatricxonCachePersistence, MatricxonCachePersistenceUpdate
 from app.services import matricxon_pool
 from app.services.matricxon_client import MatricxonError
 
+logger = logging.getLogger("llama_chat")
 _PATH = "/api/cache/persistence"
 _TIMEOUT = httpx.Timeout(30.0, connect=5.0)
 
@@ -27,14 +30,21 @@ class MatricxonCachePersistenceService:
     async def clear(self) -> MatricxonCachePersistence:
         return await self._call_all("DELETE")
 
-    async def _call_all(self, method: str, body: dict | None = None) -> MatricxonCachePersistence:
+    async def forget_chat(self, conversation_id: str) -> None:
+        """Best effort: drops a deleted chat's stored prompt caches on every host (see ChatRequest.cache_tag)."""
+        try:
+            await self._call_all("DELETE", path=f"{_PATH}/chats/{conversation_id}")
+        except MatricxonError as exc:
+            logger.info("could not drop the cached prompts of a deleted chat: %s", exc)
+
+    async def _call_all(self, method: str, body: dict | None = None, path: str = _PATH) -> MatricxonCachePersistence:
         results: list[dict] = []
         unreachable: list[str] = []
         errors: list[str] = []
         async with httpx.AsyncClient(timeout=_TIMEOUT, transport=self._transport) as client:
             for host in self._hosts:
                 try:
-                    resp = await client.request(method, host + _PATH, json=body)
+                    resp = await client.request(method, host + path, json=body)
                 except httpx.HTTPError as exc:
                     unreachable.append(host)
                     errors.append(f"{host}: {exc}")

@@ -153,3 +153,5 @@ class GenerationParams(BaseModel):
     # normal Settings-page save — which replaces `params` wholesale from
     # this model's own model_dump() — doesn't silently wipe it out.
     disabled_default_notes: list[PinType] = []
+    # Offer the admin-connected MCP tools to the model in this conversation (see tool_loop_service).
+    use_tools: bool = False

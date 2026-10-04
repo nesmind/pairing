@@ -6,7 +6,7 @@ from datetime import timedelta
 
 import pytest
 
-from app.models import OllamaModelSnapshot
+from app.models import ModelSnapshot
 from app.models._base import utcnow
 from app.services import ollama_snapshot_service
 
@@ -16,10 +16,10 @@ async def test_returns_only_the_newest_row_per_host_and_model(db):
     now = utcnow()
     db.add_all(
         [
-            OllamaModelSnapshot(
+            ModelSnapshot(
                 host="http://x:11434", model_name="llama3:latest", size_bytes=1, polled_at=now - timedelta(seconds=30)
             ),
-            OllamaModelSnapshot(host="http://x:11434", model_name="llama3:latest", size_bytes=2, polled_at=now),
+            ModelSnapshot(host="http://x:11434", model_name="llama3:latest", size_bytes=2, polled_at=now),
         ]
     )
     await db.commit()
@@ -35,9 +35,9 @@ async def test_distinguishes_different_hosts_and_models(db):
     now = utcnow()
     db.add_all(
         [
-            OllamaModelSnapshot(host="http://a:11434", model_name="llama3:latest", polled_at=now),
-            OllamaModelSnapshot(host="http://b:11434", model_name="llama3:latest", polled_at=now),
-            OllamaModelSnapshot(host="http://a:11434", model_name="moondream:1.8b", polled_at=now),
+            ModelSnapshot(host="http://a:11434", model_name="llama3:latest", polled_at=now),
+            ModelSnapshot(host="http://b:11434", model_name="llama3:latest", polled_at=now),
+            ModelSnapshot(host="http://a:11434", model_name="moondream:1.8b", polled_at=now),
         ]
     )
     await db.commit()
@@ -55,7 +55,7 @@ async def test_distinguishes_different_hosts_and_models(db):
 @pytest.mark.asyncio
 async def test_excludes_snapshots_outside_the_lookback_window(db):
     stale = utcnow() - timedelta(hours=1)
-    db.add(OllamaModelSnapshot(host="http://x:11434", model_name="llama3:latest", polled_at=stale))
+    db.add(ModelSnapshot(host="http://x:11434", model_name="llama3:latest", polled_at=stale))
     await db.commit()
 
     snapshots = await ollama_snapshot_service.get_latest_snapshots(db, "ollama")
@@ -70,14 +70,14 @@ async def test_empty_when_nothing_polled_yet(db):
 
 @pytest.mark.asyncio
 async def test_a_matricxon_snapshot_never_leaks_into_ollamas_results(db):
-    """The real feature this covers: both engines write to the same OllamaModelSnapshot table (see that model's
+    """The real feature this covers: both engines write to the same ModelSnapshot table (see that model's
     own docstring) — a Matricxon poll for the same host/model an Ollama poll also reported must not get mixed
     into Ollama's own "currently loaded" dashboard, and vice versa."""
     now = utcnow()
     db.add_all(
         [
-            OllamaModelSnapshot(engine="ollama", host="http://x:11434", model_name="llama3:latest", polled_at=now),
-            OllamaModelSnapshot(engine="matricxon", host="http://x:8420", model_name="ministral-3:3b", polled_at=now),
+            ModelSnapshot(engine="ollama", host="http://x:11434", model_name="llama3:latest", polled_at=now),
+            ModelSnapshot(engine="matricxon", host="http://x:8420", model_name="ministral-3:3b", polled_at=now),
         ]
     )
     await db.commit()

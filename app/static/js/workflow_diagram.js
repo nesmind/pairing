@@ -205,14 +205,16 @@ function initWorkflowDiagram() {
     .attr("fill-opacity", 0.14)
     .attr("stroke-width", 2);
 
-  // Top-right badge: "K" = native C kernels (CPU), "G" = can run on the GPU (experimental), "K|G" = either: the
+  // Top-right badge: "MCP" = tool-use stage, "K" = native C kernels (CPU), "G" = can run on the GPU (experimental), "K|G" = either: the
   // C kernels on the CPU, or the GPU when the engine runs on one.
+  // "MCP" = a stage that only runs when a chat uses MCP tools.
   const BADGE_TITLES = {
     K: "Runs on native C kernels",
     G: "Can run on the GPU (experimental, MATRICXON_DEVICE=cuda)",
     "K|G": "Runs on native C kernels on the CPU, or on the GPU (experimental) when the engine is set to use one",
+    MCP: "MCP stage: only runs when the chat has Tools turned on",
   };
-  const badgeOf = (d) => [d.native ? "K" : "", d.gpu ? "G" : ""].filter(Boolean).join("|");
+  const badgeOf = (d) => [d.native ? "K" : "", d.gpu ? "G" : "", d.mcp ? "MCP" : ""].filter(Boolean).join("|");
   // A small pill straddling the node's top-right border, so it never sits on the label text.
   const badges = nodeGroups
     .filter((d) => badgeOf(d))

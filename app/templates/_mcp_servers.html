@@ -1,0 +1,57 @@
+<!-- Settings > Knowledge > Configure MCP: the tool servers models can use. Wired by
+     app/static/js/settings_mcp_servers.js to /api/settings/mcp-servers (app/routers/mcp_admin.py). -->
+<section class="space-y-3" id="mcp-panel">
+  <h2 class="text-sm font-semibold text-slate-200">MCP servers</h2>
+  <p class="text-xs text-slate-500 -mt-2">
+    Connect tool servers (Model Context Protocol, streamable HTTP) so a model can look things up or take
+    actions for the person chatting. Users turn tools on per chat. Use only servers you trust: whatever a
+    tool returns is shown to the model. Header values (such as an API key) are stored encrypted and never
+    shown again.
+  </p>
+  <p class="text-xs text-amber-400 -mt-1">
+    These settings affect all users, not just your own chats.
+  </p>
+  <div id="mcp-list-header" class="flex items-center justify-between">
+    <p class="text-xs font-medium text-slate-400">Connected servers</p>
+    <button type="button" id="mcp-add"
+      class="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500 transition-colors">Add server</button>
+  </div>
+  <div id="mcp-list" class="space-y-2"></div>
+  <p id="mcp-empty" class="hidden text-xs text-slate-500">No MCP servers yet.</p>
+
+  <form id="mcp-form" class="hidden rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
+    <p id="mcp-form-title" class="text-sm text-slate-200">Add a server</p>
+    <div class="grid grid-cols-3 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1" for="mcp-name">Name</label>
+        <input id="mcp-name" required maxlength="40" pattern="[A-Za-z0-9_\-]{1,40}" placeholder="e.g. my-server"
+          title="A short label of your choice (letters, digits, _ and - only). Also the prefix of its tools' names."
+          class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+      </div>
+      <div class="col-span-2">
+        <label class="block text-xs font-medium text-slate-400 mb-1" for="mcp-url">URL</label>
+        <input id="mcp-url" required placeholder="http://localhost:9000/mcp"
+          class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+      </div>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-slate-400 mb-1" for="mcp-headers">Headers (one per line, <span class="font-mono">Name: value</span>)</label>
+      <textarea id="mcp-headers" rows="2" placeholder="Authorization: Bearer ..."
+        class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:border-brand-500"></textarea>
+      <p id="mcp-headers-hint" class="hidden text-xs text-slate-500 mt-1">Leave empty to keep the saved headers.</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-3">
+      <label class="flex items-center gap-2 text-sm text-slate-300">
+        <input type="checkbox" id="mcp-enabled" checked> Enabled
+      </label>
+      <button type="submit" id="mcp-save"
+        class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors disabled:opacity-40">Save</button>
+      <button type="button" id="mcp-test"
+        class="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800 transition-colors disabled:opacity-40">Test connection</button>
+      <button type="button" id="mcp-cancel"
+        class="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800 transition-colors">Cancel</button>
+    </div>
+    <p id="mcp-test-result" class="text-xs text-slate-400 break-words"></p>
+  </form>
+  <p id="mcp-status" class="text-xs text-slate-500"></p>
+</section>

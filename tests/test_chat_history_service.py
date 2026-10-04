@@ -67,3 +67,15 @@ def test_trim_history_merges_consecutive_user_messages_with_sender_prefixes():
     assert [m["role"] for m in trimmed] == ["user", "assistant", "user"]
     assert trimmed[0]["content"] == "first\nsecond"
     assert trimmed[2]["content"] == "third"
+
+
+def test_failed_replies_are_left_out_but_their_question_stays():
+    from app.services.chat_history_service import without_failed_replies
+
+    question = _msg("user", "q1")
+    failed = Message(role="assistant", content="part", status="error", error_message="Cancelled")
+    ok = Message(role="assistant", content="fine", status="done")
+
+    kept = without_failed_replies([question, failed, _msg("user", "q2"), ok])
+
+    assert [m.content for m in kept] == ["q1", "q2", "fine"]

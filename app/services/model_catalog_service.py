@@ -123,6 +123,10 @@ class HiddenModelTags:
         row = await self._db.get(AppSetting, (SYSTEM_OWNER_ID, self._KEY))
         return set(row.value["tags"]) if row else set()
 
+    async def blocks(self, user: User, model: str) -> bool:
+        """True when `model` is disabled and `user` isn't an admin (admins still see and use every model)."""
+        return user.role != "admin" and model in await self.get()
+
     async def set(self, tags: set[str]) -> None:
         row = await self._db.get(AppSetting, (SYSTEM_OWNER_ID, self._KEY))
         value = {"tags": sorted(tags)}

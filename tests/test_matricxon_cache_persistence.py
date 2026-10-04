@@ -123,3 +123,13 @@ async def test_every_endpoint_refuses_while_ollama_is_the_active_engine(db, call
     with pytest.raises(HTTPException) as caught:
         await calls[call]()
     assert caught.value.status_code == 409 and "Matricxon" in caught.value.detail
+
+
+@pytest.mark.asyncio
+async def test_forget_chat_deletes_on_every_host_and_never_raises() -> None:
+    service, seen = _service(lambda r: httpx.Response(200, json=_state()), [A, B])
+    await service.forget_chat("conv-1")
+    assert [(r.method, r.url.path) for r in seen] == [("DELETE", "/api/cache/persistence/chats/conv-1")] * 2
+
+    broken, _ = _service(lambda r: httpx.Response(500), [A])
+    await broken.forget_chat("conv-1")  # an unreachable/old host only gets logged
