@@ -1198,6 +1198,9 @@ async function loadRagAvailability() {
   const { available, reason } = await api("/api/settings/rag-availability");
   ragAvailable = available;
   ragUnavailableEl.classList.toggle("hidden", available);
+  // The `hidden` attribute too: the tab's space-y spacing skips only [hidden] siblings, so with just the class a
+  // hidden banner still left a blank gap above the next section.
+  ragUnavailableEl.hidden = available;
   if (reason) ragUnavailableReasonEl.textContent = reason;
   applyRagAvailabilityToKnowledgeTab();
 }
@@ -2407,6 +2410,7 @@ function collectServerConfig(server, section) {
       binary_path: section.querySelector('[data-field="binary_path"]').value.trim() || null,
       model_path: section.querySelector('[data-field="model_path"]').value.trim() || null,
       models_path: section.querySelector('[data-field="models_path"]').value.trim() || null,
+      images_path: section.querySelector('[data-field="images_path"]').value.trim() || null,
       extra_args: section.querySelector('[data-field="extra_args"]').value.trim() || null,
       build: section.querySelector('[data-field="build"]').value,
     };
@@ -2514,6 +2518,7 @@ async function loadServerSection(server) {
   } else if (server === "sdcpp") {
     section.querySelector('[data-field="binary_path"]').value = config.binary_path ?? "";
     section.querySelector('[data-field="models_path"]').value = config.models_path ?? "";
+    section.querySelector('[data-field="images_path"]').value = config.images_path ?? "";
     await populateSdcppModels(section, config.model_path);
     section.querySelector('[data-field="build"]').value = config.build ?? "auto";
     section.querySelector('[data-field="extra_args"]').value = config.extra_args ?? "";
@@ -2794,20 +2799,21 @@ for (const server of EXTERNAL_SERVERS) {
       // can't apply live: both only read their env-based config at their own process startup, so if either is
       // already running, saving must restart it — this confirms first, same as the old "Ollama concurrency" save
       // button already did.
-      const restartableEngines = { ollama: "Ollama", matricxon: "Matricxon" };
+      const restartableEngines = { ollama: "Ollama", matricxon: "Matricxon", sdcpp: "stable-diffusion.cpp" };
       const engineLabel = restartableEngines[server];
       const localStatus =
         engineLabel && body.mode === "local" ? await api(`/api/settings/${server}/status`) : null;
       if (localStatus?.running) {
         const confirmed = confirm(
-          `Saving restarts ${engineLabel} — every reply currently being generated, on every local ` +
-            "instance, will be interrupted. Continue?",
+          `Saving restarts ${engineLabel} — every ${server === "sdcpp" ? "image" : "reply"} currently being ` +
+            "generated, on every local instance, will be interrupted. Continue?",
         );
         if (!confirmed) {
           statusEl.textContent = "";
           return;
         }
         statusEl.textContent = `Restarting ${engineLabel}…`;
+        failedPrefix = "Not saved";
         renderServerStatus(
           section,
           await api(`/api/settings/${server}/apply`, { method: "POST", body: JSON.stringify(body) }),

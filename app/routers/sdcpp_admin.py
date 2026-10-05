@@ -44,24 +44,52 @@ async def get_config(db: AsyncSession = Depends(get_db), _admin: User = Depends(
     return await image_engine_service.get_sdcpp_config(db)
 
 
+async def _save_and_broadcast(db: AsyncSession, body: SdCppConfig) -> None:
+    """Persists `body`, applies it to this instance's own live pool immediately, and best-effort propagates the
+    same refresh to every other local instance (see app.services.server_pool_broadcast — each instance
+    independently routes its own image-generation requests through app.services.sdcpp_pool)."""
+    await image_engine_service.set_sdcpp_config(db, body)
+    sdcpp_pool.refresh_from_config(body)
+    failures = await server_pool_broadcast.broadcast_refresh("/api/settings/sdcpp/internal-refresh")
+    if failures:
+        logger.warning("Some instances did not pick up the new stable-diffusion.cpp config: %s", "; ".join(failures))
+
+
+def _check_images_folder(body: SdCppConfig) -> None:
+    try:
+        image_engine_service.check_images_dir(body.images_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.put("/config", response_model=SdCppConfig)
 async def update_config(
     body: SdCppConfig,
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),
 ):
-    """Persists the new config, applies it to this instance's own live
-    pool immediately, and best-effort propagates the same refresh to
-    every other local instance (see app.services.server_pool_broadcast —
-    each instance independently routes its own image-generation requests
-    through app.services.sdcpp_pool, so every one of them needs this,
-    not just whichever received this request)."""
-    await image_engine_service.set_sdcpp_config(db, body)
-    sdcpp_pool.refresh_from_config(body)
-    failures = await server_pool_broadcast.broadcast_refresh("/api/settings/sdcpp/internal-refresh")
-    if failures:
-        logger.warning("Some instances did not pick up the new stable-diffusion.cpp config: %s", "; ".join(failures))
+    """Persists the new config; does not restart a running sd-server (see POST /apply). 400 if the images folder
+    is missing or not writable."""
+    _check_images_folder(body)
+    await _save_and_broadcast(db, body)
     return body
+
+
+@router.post("/apply", response_model=SdCppStatus)
+async def apply_config(
+    body: SdCppConfig,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """Restarts a running sd-server on the new config and saves it only if that works — a model that can't
+    load is a 400 with the reason, nothing saved, the previous model running again."""
+    _check_images_folder(body)  # before touching the running server
+    try:
+        status = await sdcpp_service.apply(db, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _save_and_broadcast(db, body)
+    return status
 
 
 @router.post("/internal-refresh", response_model=OkResponse)

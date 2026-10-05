@@ -1,6 +1,6 @@
 """GET/PUT for Settings > Image's "Active image engine" picker — which engine the Images page uses."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -21,5 +21,8 @@ async def get_image_engine(db: AsyncSession = Depends(get_db), _admin: User = De
 async def set_image_engine(
     body: ImageEngineConfig, db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)
 ):
-    await image_engine_service.set_active_image_engine(db, body.active_image_engine)
+    try:
+        await image_engine_service.set_active_image_engine(db, body.active_image_engine)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return body

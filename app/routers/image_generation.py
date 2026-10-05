@@ -77,14 +77,19 @@ async def get_job_image(job_id: str, db: AsyncSession = Depends(get_db), user: U
     job = await _get_own_job_or_404(db, job_id, user)
     if job.image_path is None:
         raise HTTPException(status_code=404, detail="This job has no generated image yet")
-    return FileResponse(IMAGES_DIR / job.image_path, filename=job.image_filename, media_type="image/png")
+    path = await image_engine_service.find_image(db, IMAGES_DIR, job.image_path)
+    if path is None:
+        raise HTTPException(status_code=404, detail="The image file is missing (was the images folder changed?)")
+    return FileResponse(path, filename=job.image_filename, media_type="image/png")
 
 
 @router.delete("/jobs/{job_id}", response_model=OkResponse)
 async def delete_job(job_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     job = await _get_own_job_or_404(db, job_id, user)
     if job.image_path is not None:
-        (IMAGES_DIR / job.image_path).unlink(missing_ok=True)
+        path = await image_engine_service.find_image(db, IMAGES_DIR, job.image_path)
+        if path is not None:
+            path.unlink(missing_ok=True)
     await db.delete(job)
     await db.commit()
     return OkResponse(ok=True)

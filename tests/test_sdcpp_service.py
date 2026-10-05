@@ -175,3 +175,64 @@ def test_tracking_round_trips_and_tolerates_corruption(tmp_path):
     assert sdcpp_process.read_tracking() is None
     sdcpp_process.write_tracking(None)
     assert not (tmp_path / "sdcpp.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_start_surfaces_an_unsupported_model_and_clears_tracking(db, monkeypatch):
+    await _configure(db)
+
+    def fake_spawn(binary, model, extra):
+        raise sdcpp_process.StartupError("This model is not supported by the installed stable-diffusion.cpp")
+
+    monkeypatch.setattr(sdcpp_process, "spawn", fake_spawn)
+    sdcpp_process.write_tracking({"pid": 1})
+    monkeypatch.setattr(sdcpp_process, "is_alive", lambda pid, path: False)
+
+    with pytest.raises(ValueError, match="not supported"):
+        await sdcpp_service.start(db)
+    assert sdcpp_process.read_tracking() is None
+
+
+@pytest.mark.asyncio
+async def test_apply_leaves_a_stopped_server_stopped(db, monkeypatch):
+    await _configure(db)
+    monkeypatch.setattr(sdcpp_process, "spawn", lambda *_a: pytest.fail("must not start"))
+    assert (
+        await sdcpp_service.apply(db, SdCppConfig(binary_path="/opt/sd/sd-server", model_path="/n.gguf"))
+    ).running is False
+
+
+@pytest.mark.asyncio
+async def test_apply_restores_the_previous_model_when_the_new_one_fails(db, monkeypatch):
+    await _configure(db)
+    state = {"alive": True, "spawned": []}
+    monkeypatch.setattr(sdcpp_process, "is_alive", lambda pid, path: state["alive"])
+    monkeypatch.setattr(sdcpp_process, "terminate", lambda pid, path: state.update(alive=False))
+    monkeypatch.setattr(sdcpp_service, "_ping_health", _fake_ping(True))
+    sdcpp_process.write_tracking({"pid": 7})
+
+    def fake_spawn(binary, model, extra):
+        state["spawned"].append(model)
+        if model == "/bad.gguf":
+            raise sdcpp_process.StartupError("This model is not supported.")
+        state["alive"] = True
+        return 8
+
+    monkeypatch.setattr(sdcpp_process, "spawn", fake_spawn)
+    with pytest.raises(ValueError, match="not supported.*Nothing was saved.*running again"):
+        await sdcpp_service.apply(db, SdCppConfig(binary_path="/opt/sd/sd-server", model_path="/bad.gguf"))
+    assert state["spawned"] == ["/bad.gguf", "/opt/sd/models/m.gguf"]
+    assert (await image_engine_service.get_sdcpp_config(db)).model_path == "/opt/sd/models/m.gguf"
+
+
+@pytest.mark.asyncio
+async def test_apply_switches_model_when_it_loads(db, monkeypatch):
+    await _configure(db)
+    state = {"alive": True}
+    monkeypatch.setattr(sdcpp_process, "is_alive", lambda pid, path: state["alive"])
+    monkeypatch.setattr(sdcpp_process, "terminate", lambda pid, path: state.update(alive=False))
+    monkeypatch.setattr(sdcpp_service, "_ping_health", _fake_ping(True))
+    monkeypatch.setattr(sdcpp_process, "spawn", lambda *_a: state.update(alive=True) or 9)
+    sdcpp_process.write_tracking({"pid": 7})
+    status = await sdcpp_service.apply(db, SdCppConfig(binary_path="/opt/sd/sd-server", model_path="/ok.gguf"))
+    assert status.running and sdcpp_process.read_tracking() == {"pid": 9}

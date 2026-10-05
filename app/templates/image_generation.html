@@ -57,19 +57,19 @@
             <input id="gen-height" type="number" value="512" min="64" max="2048" step="64"
               class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
           </div>
-          <div>
+          <div title="Cleanup rounds. More = more detail but proportionally slower. Turbo models need only 1-4.">
             <label class="block text-xs font-medium text-slate-400 mb-1">Steps</label>
-            <input id="gen-steps" type="number" value="20" min="1" max="150"
+            <input id="gen-steps" title="Cleanup rounds. More = more detail but proportionally slower. Turbo models need only 1-4." type="number" value="1" min="1" max="150"
               class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
           </div>
-          <div>
+          <div title="How strictly the image follows the prompt. Above ~1 each step runs twice (slower). Turbo models: use 1.">
             <label class="block text-xs font-medium text-slate-400 mb-1">CFG</label>
-            <input id="gen-cfg" type="number" value="7" min="0" max="30" step="0.5"
+            <input id="gen-cfg" title="How strictly the image follows the prompt. Above ~1 each step runs twice (slower). Turbo models: use 1." type="number" value="1" min="0" max="30" step="0.5"
               class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
           </div>
-          <div>
+          <div title="Starting noise. -1 = random each time; a fixed number repeats the same image for the same settings.">
             <label class="block text-xs font-medium text-slate-400 mb-1">Seed</label>
-            <input id="gen-seed" type="number" value="-1" placeholder="-1 = random"
+            <input id="gen-seed" title="Starting noise. -1 = random each time; a fixed number repeats the same image for the same settings." type="number" value="-1" placeholder="-1 = random"
               class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
           </div>
         </div>

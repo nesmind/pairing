@@ -8,17 +8,21 @@ transition logic is to just await the same coroutine the background
 task would otherwise run. Every comfyui_client call is monkeypatched;
 no real ComfyUI instance is reachable in this environment."""
 
+import os
+
 import pytest
 
-from app.schemas import ImageGenerationRequest
+from app.schemas import ImageGenerationRequest, SdCppConfig
 from app.services import comfyui_client, image_engine_service, image_generation_service, sdcpp_client
 from app.services.comfyui_client import ComfyUIError
 from app.services.sdcpp_client import SdCppError
 
 
 @pytest.fixture(autouse=True)
-async def _comfyui_engine(db):
-    """The default engine is stable-diffusion.cpp; the ComfyUI-path tests below pin ComfyUI."""
+async def _comfyui_engine(db, monkeypatch):
+    """The default engine is stable-diffusion.cpp and ComfyUI is switched off in production (ahead of its removal);
+    the ComfyUI-path tests below re-enable it and pin it."""
+    monkeypatch.setattr(image_engine_service, "ENABLED_IMAGE_ENGINES", ("sdcpp", "comfyui"))
     await image_engine_service.set_active_image_engine(db, "comfyui")
 
 
@@ -203,6 +207,27 @@ async def test_run_job_uses_sdcpp_when_it_is_the_active_engine(db, user, tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_run_job_saves_into_the_configured_images_folder_per_user(db, user, tmp_path, monkeypatch):
+    import base64
+
+    default, custom = tmp_path / "default", tmp_path / "custom"
+    default.mkdir(), custom.mkdir()
+    monkeypatch.setattr(image_generation_service, "IMAGES_DIR", default)
+    await image_engine_service.set_active_image_engine(db, "sdcpp")
+    await image_engine_service.set_sdcpp_config(db, SdCppConfig(images_path=str(custom)))
+    done = {"status": "completed", "result": {"images": [{"b64_json": base64.b64encode(b"\x89PNG-x").decode()}]}}
+    _fake_sdcpp(monkeypatch, [done], {})
+
+    job = await image_generation_service.create_job(db, user.id, _request())
+    await image_generation_service._run_job(job.id)
+
+    await db.refresh(job)
+    assert job.status == "complete" and job.image_path == f"{user.id}/{job.id}.png"
+    assert (custom / user.id / f"{job.id}.png").read_bytes() == b"\x89PNG-x"
+    assert not any(default.iterdir())
+
+
+@pytest.mark.asyncio
 async def test_run_job_marks_error_when_the_sdcpp_job_fails(db, user, monkeypatch):
     await image_engine_service.set_active_image_engine(db, "sdcpp")
     _fake_sdcpp(monkeypatch, [{"status": "failed", "error": {"message": "out of memory"}}])
@@ -320,3 +345,44 @@ async def test_a_cancel_during_a_comfyui_run_interrupts_comfyui(db, user, monkey
     await image_generation_service._run_job(job.id)
     await db.refresh(job)
     assert job.status == "cancelled" and interrupted == [("http://h1:8188", "prompt-1")]
+
+
+@pytest.mark.parametrize("bad", ["relative/dir", "/definitely/not/here"])
+def test_check_images_dir_rejects_relative_and_missing_folders(bad):
+    with pytest.raises(ValueError, match="images folder"):
+        image_engine_service.check_images_dir(bad)
+
+
+def test_check_images_dir_accepts_blank_and_an_existing_writable_folder(tmp_path):
+    image_engine_service.check_images_dir(None)
+    image_engine_service.check_images_dir("")
+    image_engine_service.check_images_dir(str(tmp_path))
+
+
+def test_check_images_dir_rejects_a_read_only_folder(tmp_path):
+    tmp_path.chmod(0o500)
+    try:
+        if os.access(tmp_path, os.W_OK):  # running as root: permissions don't apply
+            pytest.skip("folder stays writable for this user")
+        with pytest.raises(ValueError, match="not writable"):
+            image_engine_service.check_images_dir(str(tmp_path))
+    finally:
+        tmp_path.chmod(0o700)
+
+
+@pytest.mark.asyncio
+async def test_images_root_and_find_image_follow_the_configured_folder(db, tmp_path):
+    default, custom = tmp_path / "default", tmp_path / "custom"
+    default.mkdir(), custom.mkdir()
+    assert await image_engine_service.images_root(db, default) == default
+
+    await image_engine_service.set_sdcpp_config(db, SdCppConfig(images_path=str(custom)))
+    assert await image_engine_service.images_root(db, default) == custom
+
+    (default / "u1").mkdir()
+    (default / "u1" / "old.png").write_bytes(b"x")
+    (custom / "u1").mkdir()
+    (custom / "u1" / "new.png").write_bytes(b"y")
+    assert await image_engine_service.find_image(db, default, "u1/new.png") == custom / "u1" / "new.png"
+    assert await image_engine_service.find_image(db, default, "u1/old.png") == default / "u1" / "old.png"  # made before
+    assert await image_engine_service.find_image(db, default, "u1/none.png") is None

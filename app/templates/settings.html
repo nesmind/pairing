@@ -279,6 +279,10 @@
          conversation/defaults target picked on the Behavior tab. -->
     <div id="tab-knowledge" class="hidden mx-auto max-w-3xl px-4 py-8 space-y-8">
       <div data-group="rag" class="space-y-8">
+      <!-- Why Knowledge is unavailable (RAG off, no embedding model…) — first thing on the tab so it's seen at once. -->
+      <div id="rag-unavailable" hidden class="hidden text-xs text-warning-400 bg-slate-900 border border-warning-500/50 rounded-lg px-3 py-2">
+        <span id="rag-unavailable-reason">No embedding model found yet — ask admin.</span>
+      </div>
       <section class="space-y-3">
         <h2 class="text-sm font-semibold text-slate-200">Document knowledge (RAG)</h2>
         <p class="text-xs text-slate-500 -mt-2">
@@ -325,10 +329,6 @@
             <div id="rag-quota-bar" class="h-full w-0 rounded-full bg-brand-600 transition-[width] duration-300"></div>
           </div>
           <ul id="rag-quota-details" class="text-xs text-slate-500 space-y-0.5 list-disc pl-4"></ul>
-        </div>
-
-        <div id="rag-unavailable" class="hidden text-xs text-warning-400 bg-slate-900 border border-warning-500/50 rounded-lg px-3 py-2">
-          <span id="rag-unavailable-reason">No embedding model found yet — ask admin.</span>
         </div>
 
         <!-- My documents: private, visible only to your own chats. Five
@@ -1072,7 +1072,7 @@
           <select id="external-group-select" data-group-select
             class="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
             <option value="models" selected>Choose models engine</option>
-            <option value="image">Choose image-generation engine</option>
+            <option value="image">Image-generation engine</option>
           </select>
         </div>
       </section>
@@ -1458,29 +1458,12 @@
       </div>
 
       <div data-group="image" class="hidden space-y-8">
-      <!-- Which image engine (below) the Images page uses — see app.services.image_engine_service. -->
-      <section class="space-y-3">
-        <h2 class="text-sm font-semibold text-slate-200">Active image engine</h2>
-        <p class="text-xs text-slate-500 -mt-2">
-          Which engine below generates images on the Images page. Each can be configured and started independently;
-          this only changes where new requests go.
-        </p>
-        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 flex items-center gap-3">
-          <select id="image-engine-select" title="Which image engine serves the Images page right now. Switching here doesn't start or stop either engine."
-            class="rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
-            <option value="sdcpp">stable-diffusion.cpp (light, CPU-friendly)</option>
-            <option value="comfyui">ComfyUI</option>
-          </select>
-          <button id="image-engine-save-btn" type="button"
-            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
-            Save
-          </button>
-          <span id="image-engine-status" class="text-xs text-slate-500"></span>
-        </div>
-      </section>
-
+      <!-- stable-diffusion.cpp is the only selectable image engine (app.services.image_engine_service.
+           ENABLED_IMAGE_ENGINES), so there is no engine picker. ComfyUI's section below is switched off with a Jinja
+           comment until its integration is removed for good. -->
       {% include "_sdcpp_server.html" %}
 
+      {# ComfyUI — disabled; the section stays here only until its removal.
       <section class="space-y-3" data-server="comfyui">
         <h2 class="text-sm font-semibold text-slate-200">ComfyUI</h2>
         <p class="text-xs text-slate-500 -mt-2">
@@ -1604,6 +1587,7 @@
           <span data-field="status" class="text-xs text-slate-500"></span>
         </div>
       </section>
+      #}
       </div>
     </div>
 
@@ -1707,7 +1691,6 @@
 <script src="/static/js/settings.js?v={{ static_version }}"></script>
 <script src="/static/js/settings_cache_persistence.js?v={{ static_version }}"></script>
 {% if is_admin %}<script src="/static/js/settings_mcp_servers.js?v={{ static_version }}"></script>{% endif %}
-{% if is_admin %}<script src="/static/js/settings_image_engine.js?v={{ static_version }}"></script>{% endif %}
 <script src="/static/js/settings_diffusion_models.js?v={{ static_version }}"></script>
 <script src="/static/js/settings_group_select.js?v={{ static_version }}"></script>
 {% endblock %}

@@ -112,7 +112,7 @@ async def _run_job(job_id: str) -> None:
             return  # cancelled just as it finished — no result
 
         try:
-            owner_dir = IMAGES_DIR / job.owner_id
+            owner_dir = await image_engine_service.images_root(db, IMAGES_DIR) / job.owner_id
             owner_dir.mkdir(parents=True, exist_ok=True)
             filename = f"{job.id}.png"
             (owner_dir / filename).write_bytes(image_bytes)

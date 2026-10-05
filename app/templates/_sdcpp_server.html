@@ -125,6 +125,12 @@
               + Add host
             </button>
           </div>
+
+          <div class="pt-1">
+            <label class="block text-xs font-medium text-slate-400 mb-1">Images folder (optional)</label>
+            <input data-field="images_path" type="text" placeholder="pAIring's own generated_images/ folder" title="Root folder for generated images; each user gets their own subfolder. It must already exist and be writable. Changing it does not move existing images (they stay available from the old location)."
+              class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+          </div>
         </div>
         <div data-field="actions-bar" class="hidden flex items-center gap-3">
           <button type="button" data-action="start"

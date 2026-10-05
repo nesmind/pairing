@@ -6,6 +6,12 @@ from app.services import image_generation_service, sdcpp_progress
 _LOAD = "  |######################                            | 294/686 - 2.33GB/s\x1b[K\r"
 _GEN = "[INFO   ] image.cpp:814  - generate_image 128x128\n"
 _COND = "[INFO   ] image.cpp:529  - get_learned_condition completed, taking 5.03s\n"
+_DECODING = "[INFO   ] image.cpp:554  - decoding 1 latents\n"
+_DONE = "[INFO   ] image.cpp:1050 - generate_image completed in 879.94s\n"
+
+
+def _bar(n, total):
+    return f"  |####                                              | {n}/{total} - 23.70MB/s\x1b[K\r"
 
 
 def _step(n, total=4, rate="24.81s/it"):
@@ -30,8 +36,9 @@ def test_stages_in_order(tmp_path):
         (_LOAD, "Loading the model", 15 * 294 / 686),
         (_GEN, "Encoding the prompt", 15),
         (_COND, "Starting to sample", 25),
-        (_step(1), "Sampling · step 1 of 4", 25 + 65 / 4),
-        (_step(4), "Decoding the image", 90),
+        (_step(1), "Sampling · step 1 of 4", 25 + 60 / 4),
+        (_step(4), "Sampling · step 4 of 4", 85),
+        (_DECODING, "Decoding the image", 85),
     ]
     text = ""
     for chunk, stage, pct in expected:
@@ -79,3 +86,21 @@ def test_progress_for_only_applies_to_running_sdcpp_jobs(tmp_path, monkeypatch):
     assert running["stage"] == "Sampling · step 2 of 4" and 0 < running["progress"] < 100
     assert image_generation_service.progress_for(ImageGenerationJob(status="complete", log_offset=0)) == {}
     assert image_generation_service.progress_for(ImageGenerationJob(status="running", log_offset=None)) == {}  # ComfyUI
+
+
+def test_a_lazy_weights_bar_stays_in_its_stage_instead_of_resetting(tmp_path):
+    path = _log(tmp_path, _GEN + _bar(186, 372))  # the text encoder loading after the job started
+    found = sdcpp_progress.read_progress(0, path)
+    assert found.stage == "Encoding the prompt" and abs(found.progress - 20) < 0.01
+
+    path.write_text(_GEN + _COND + _step(1, 1) + _DECODING + _bar(70, 140))  # the VAE loading before decode
+    found = sdcpp_progress.read_progress(0, path)
+    assert found.stage == "Decoding the image" and abs(found.progress - 87.5) < 0.01
+
+
+def test_progress_holds_through_a_long_decode_then_finishes(tmp_path):
+    path = _log(tmp_path, _GEN + _COND + _step(1, 1) + _DECODING + _bar(140, 140))
+    assert sdcpp_progress.read_progress(0, path).progress == 90
+    path.write_text(path.read_text() + _DONE)
+    found = sdcpp_progress.read_progress(0, path)
+    assert (found.stage, found.progress) == ("Finishing", 100)

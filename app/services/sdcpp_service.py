@@ -8,7 +8,7 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import IS_PRIMARY, SDCPP_HOST
-from app.schemas import SdCppStatus
+from app.schemas import SdCppConfig, SdCppStatus
 from app.services import image_engine_service, sdcpp_installer, sdcpp_process
 from app.services.image_model_service import ImageModelStore
 
@@ -40,7 +40,7 @@ async def _only_installed_model(db: AsyncSession) -> str | None:
 
 
 async def start(db: AsyncSession) -> SdCppStatus:
-    """Raises ValueError (router -> 400) if unconfigured or not the primary instance."""
+    """Raises ValueError (router -> 400) if unconfigured, not the primary instance, or the model fails to load."""
     if not IS_PRIMARY:
         raise ValueError("stable-diffusion.cpp can only be managed from the primary instance.")
     config = await image_engine_service.get_sdcpp_config(db)
@@ -55,13 +55,22 @@ async def start(db: AsyncSession) -> SdCppStatus:
             )
         await image_engine_service.set_sdcpp_config(db, config)
 
+    await _launch(config)
+    return await get_status(db)
+
+
+async def _launch(config: SdCppConfig) -> None:
+    """Spawns sd-server for `config` unless one already runs; StartupError if it can't come up."""
     async with _lock:
         tracked = sdcpp_process.read_tracking()
         if tracked and sdcpp_process.is_alive(tracked["pid"], config.binary_path):
-            return await get_status(db)
-        pid = sdcpp_process.spawn(config.binary_path, config.model_path, config.extra_args)
+            return
+        try:  # blocks until sd-server is listening - keep it off the event loop
+            pid = await asyncio.to_thread(sdcpp_process.spawn, config.binary_path, config.model_path, config.extra_args)
+        except sdcpp_process.StartupError:
+            sdcpp_process.write_tracking(None)
+            raise
         sdcpp_process.write_tracking({"pid": pid} if pid is not None else None)
-    return await get_status(db)
 
 
 async def stop(db: AsyncSession) -> SdCppStatus:
@@ -75,3 +84,29 @@ async def stop(db: AsyncSession) -> SdCppStatus:
             sdcpp_process.terminate(tracked["pid"], config.binary_path)
         sdcpp_process.write_tracking(None)
     return await get_status(db)
+
+
+async def apply(db: AsyncSession, new: SdCppConfig) -> SdCppStatus:
+    """Validates `new` by really starting it, before the caller saves anything: a running sd-server is
+    restarted on `new`; if that fails the previous config is brought back and ValueError says why. A stopped
+    server is left stopped (nothing to try it on - `start` reports the problem later)."""
+    if not (await get_status(db)).running:
+        return await get_status(db)
+    old = await image_engine_service.get_sdcpp_config(db)
+    await stop(db)
+    try:
+        await _launch(new)
+    except sdcpp_process.StartupError as exc:
+        restored = await _restore(old)
+        raise ValueError(
+            f"{exc} Nothing was saved{'; the previous model is running again' if restored else ''}."
+        ) from exc
+    return await get_status(db)
+
+
+async def _restore(old: SdCppConfig) -> bool:
+    try:
+        await _launch(old)
+    except (sdcpp_process.StartupError, ValueError, OSError):
+        return False
+    return True

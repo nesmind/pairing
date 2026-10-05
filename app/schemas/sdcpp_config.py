@@ -26,6 +26,8 @@ class SdCppConfig(BaseModel):
     extra_args: str | None = None
     # Where image models are stored; None = auto (a `diffusion` sibling of the Matricxon/Ollama models folder).
     models_path: str | None = None
+    # Root of the saved images (<root>/<user id>/<job id>.png), whichever mode; None = the IMAGES_DIR default.
+    images_path: str | None = None
     install_repo: str | None = None
     install_version: str | None = None
     build: SdCppBuild = "auto"

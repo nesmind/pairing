@@ -18,8 +18,8 @@ class ImageGenerationRequest(BaseModel):
     checkpoint: str = Field(min_length=1)
     width: int = Field(default=512, ge=64, le=2048)
     height: int = Field(default=512, ge=64, le=2048)
-    steps: int = Field(default=20, ge=1, le=150)
-    cfg: float = Field(default=7.0, ge=0.0, le=30.0)
+    steps: int = Field(default=1, ge=1, le=150)
+    cfg: float = Field(default=1.0, ge=0.0, le=30.0)
     seed: int = Field(default=-1)
 
 
