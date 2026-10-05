@@ -52,6 +52,12 @@ from app.schemas.engine_support import EngineSupportResponse
 from app.schemas.health import HealthStatus
 from app.schemas.http_proxy_config import HttpProxyConfig
 from app.schemas.image_generation import CheckpointList, ImageGenerationJobOut, ImageGenerationRequest
+from app.schemas.image_model import (
+    DiffusionModelCatalogResponse,
+    ImageModelFile,
+    ImageModelList,
+    ImageModelRequest,
+)
 from app.schemas.instances import InstancesConfig, InstanceStatus, InstancesUpdate, ProxyMode
 from app.schemas.matricxon_cache_persistence import (
     MatricxonCachePersistence,
@@ -96,6 +102,14 @@ from app.schemas.note import (
     NoteUpdate,
 )
 from app.schemas.ollama_server_config import OllamaAutoDetectedPath, OllamaServerConfig, OllamaServerStatus
+from app.schemas.sdcpp_config import (
+    DEFAULT_IMAGE_ENGINE,
+    ImageEngineConfig,
+    ImageEngineName,
+    SdCppBuild,
+    SdCppConfig,
+    SdCppStatus,
+)
 from app.schemas.settings import (
     ChannelDeliveryMode,
     DefaultModel,
@@ -146,6 +160,16 @@ __all__ = [
     "MessagesLatestResponse",
     "ComfyUIProcessConfig",
     "ComfyUIStatus",
+    "DEFAULT_IMAGE_ENGINE",
+    "ImageEngineConfig",
+    "DiffusionModelCatalogResponse",
+    "ImageModelFile",
+    "ImageModelList",
+    "ImageModelRequest",
+    "ImageEngineName",
+    "SdCppBuild",
+    "SdCppConfig",
+    "SdCppStatus",
     "ActiveEngineConfig",
     "AvailableVersions",
     "DEFAULT_ENGINE",

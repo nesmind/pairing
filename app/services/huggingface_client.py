@@ -65,6 +65,7 @@ class HuggingFaceCatalogSearch:
                 "downloads": repo.get("downloads", 0),
                 "likes": repo.get("likes", 0),
                 "gated": bool(repo.get("gated")),
+                "is_image": HuggingFaceCatalogSearch.is_image_repo(repo),
                 # Search results don't include cardData — only repo_files below does.
                 "license": None,
             }
@@ -132,9 +133,25 @@ class HuggingFaceCatalogSearch:
             "parameter_size": HuggingFaceCatalogSearch._format_param_count(gguf_meta.get("total")),
             "context_length": gguf_meta.get("context_length"),
             "gated": bool(repo.get("gated")),
+            "is_image": HuggingFaceCatalogSearch.is_image_repo(repo),
             "license": HuggingFaceCatalogSearch._license(repo.get("cardData") or {}),
             "files": files,
         }
+
+    # Hub pipeline tags / community tags that mark a text-to-image (diffusion) repo — such a model can't run on a
+    # chat engine (its GGUF has no `general.architecture`) and instead belongs to the image engine's own store
+    # (see app.services.image_model_service). "image-text-to-text" (a vision *chat* model) deliberately isn't here.
+    _IMAGE_PIPELINE_TAGS = frozenset({"text-to-image", "image-to-image"})
+    _IMAGE_REPO_TAGS = frozenset({"sd.cpp", "stable-diffusion.cpp"})
+
+    @staticmethod
+    def is_image_repo(repo: dict) -> bool:
+        """True for a diffusion-model repo, judged from the Hub's own `pipeline_tag`/`tags` (present in both the
+        search listing and the per-repo lookup) — some sd.cpp conversions have no pipeline_tag, so the
+        stable-diffusion.cpp community tags count too."""
+        return repo.get("pipeline_tag") in HuggingFaceCatalogSearch._IMAGE_PIPELINE_TAGS or bool(
+            HuggingFaceCatalogSearch._IMAGE_REPO_TAGS & set(repo.get("tags") or [])
+        )
 
     # GGUF files this app can't sensibly offer as a single pullable tag — sharded multi-part weights (e.g.
     # "-00001-of-00002.gguf") would need every shard pulled together, which neither engine's hf.co/ single-tag

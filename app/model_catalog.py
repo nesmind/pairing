@@ -82,9 +82,15 @@ class CuratedCatalog:
     flag: an embedding-only entry can never leak into the chat-model picker
     (app.services.model_catalog_service) or vice versa."""
 
-    def __init__(self, chat_models: list[CuratedModel], embedding_models: list[CuratedModel]) -> None:
+    def __init__(
+        self,
+        chat_models: list[CuratedModel],
+        embedding_models: list[CuratedModel],
+        diffusion_models: list[CuratedModel] | None = None,
+    ) -> None:
         self._chat_models = chat_models
         self._embedding_models = embedding_models
+        self._diffusion_models = diffusion_models or []
 
     @property
     def chat_models(self) -> list[CuratedModel]:
@@ -94,6 +100,12 @@ class CuratedCatalog:
     def embedding_models(self) -> list[CuratedModel]:
         return self._embedding_models
 
+    @property
+    def diffusion_models(self) -> list[CuratedModel]:
+        """Image (diffusion) models for the image engine — a third disjoint collection: they install into the
+        stable-diffusion.cpp models folder (see app.services.image_model_service), never into a chat engine."""
+        return self._diffusion_models
+
     def find(self, tag: str) -> CuratedModel | None:
         """Looks up a chat-model catalog entry by its exact model tag."""
         return next((entry for entry in self._chat_models if entry.tag == tag), None)
@@ -102,6 +114,9 @@ class CuratedCatalog:
         """Looks up an embedding-catalog entry by its exact model tag — mirrors find() above, kept separate
         since embedding_models is a deliberately distinct collection (see its own docstring)."""
         return next((entry for entry in self._embedding_models if entry.tag == tag), None)
+
+    def find_diffusion(self, tag: str) -> CuratedModel | None:
+        return next((entry for entry in self._diffusion_models if entry.tag == tag), None)
 
 
 class _CuratedModelJSON(BaseModel):
@@ -131,7 +146,7 @@ class CuratedCatalogLoader:
     @staticmethod
     def load(path: Path) -> CuratedCatalog:
         """Reads and validates `path` (default_models.json's own shape — {"chat_models": [...],
-        "embedding_models": [...]}), raising straight through on anything malformed (bad JSON syntax, a
+        "embedding_models": [...], "diffusion_models": [...]}), raising straight through on anything malformed (bad JSON syntax, a
         missing required field, a wrong type) — a broken hand-edit should fail loudly at import time with a
         clear, specific error pointing at the exact bad field, not silently drop an entry or fall back to an
         empty catalog that would make every model in Settings quietly disappear."""
@@ -139,6 +154,7 @@ class CuratedCatalogLoader:
         return CuratedCatalog(
             chat_models=[CuratedCatalogLoader._to_model(entry) for entry in raw["chat_models"]],
             embedding_models=[CuratedCatalogLoader._to_model(entry) for entry in raw["embedding_models"]],
+            diffusion_models=[CuratedCatalogLoader._to_model(entry) for entry in raw.get("diffusion_models", [])],
         )
 
     @staticmethod

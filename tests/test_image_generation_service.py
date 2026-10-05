@@ -11,8 +11,15 @@ no real ComfyUI instance is reachable in this environment."""
 import pytest
 
 from app.schemas import ImageGenerationRequest
-from app.services import comfyui_client, image_generation_service
+from app.services import comfyui_client, image_engine_service, image_generation_service, sdcpp_client
 from app.services.comfyui_client import ComfyUIError
+from app.services.sdcpp_client import SdCppError
+
+
+@pytest.fixture(autouse=True)
+async def _comfyui_engine(db):
+    """The default engine is stable-diffusion.cpp; the ComfyUI-path tests below pin ComfyUI."""
+    await image_engine_service.set_active_image_engine(db, "comfyui")
 
 
 def _request(**overrides) -> ImageGenerationRequest:
@@ -150,3 +157,166 @@ async def test_mark_interrupted_jobs_as_errored_sweeps_queued_and_running(db, us
     assert queued_job.status == "error"
     assert running_job.status == "error"
     assert complete_job.status == "complete"  # untouched
+
+
+def _fake_sdcpp(monkeypatch, states, seen=None, cancelled=None):
+    """submit_job returns job_1 on h1; get_job walks `states`; cancel_job records the call."""
+    it = iter(states)
+
+    async def fake_submit(params):
+        if seen is not None:
+            seen.update(params)
+        return "http://h1:8189", "job_1"
+
+    async def fake_get(_host, _job_id):
+        return next(it)
+
+    async def fake_cancel(host, job_id):
+        if cancelled is not None:
+            cancelled.append((host, job_id))
+
+    monkeypatch.setattr(sdcpp_client, "submit_job", fake_submit)
+    monkeypatch.setattr(sdcpp_client, "get_job", fake_get)
+    monkeypatch.setattr(sdcpp_client, "cancel_job", fake_cancel)
+    monkeypatch.setattr(image_generation_service, "_POLL_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr(image_generation_service, "_schedule", lambda _job_id: None)
+
+
+@pytest.mark.asyncio
+async def test_run_job_uses_sdcpp_when_it_is_the_active_engine(db, user, tmp_path, monkeypatch):
+    import base64
+
+    monkeypatch.setattr(image_generation_service, "IMAGES_DIR", tmp_path)
+    await image_engine_service.set_active_image_engine(db, "sdcpp")
+    seen = {}
+    done = {"status": "completed", "result": {"images": [{"b64_json": base64.b64encode(b"\x89PNG-sdcpp").decode()}]}}
+    _fake_sdcpp(monkeypatch, [{"status": "queued"}, {"status": "generating"}, done], seen)
+
+    job = await image_generation_service.create_job(db, user.id, _request(steps=4))
+    await image_generation_service._run_job(job.id)
+
+    await db.refresh(job)
+    assert job.status == "complete"
+    assert job.comfy_prompt_id == "job_1" and job.log_offset is not None
+    assert seen["steps"] == 4 and seen["prompt"] == "a cat"
+    assert (tmp_path / user.id / f"{job.id}.png").read_bytes() == b"\x89PNG-sdcpp"
+
+
+@pytest.mark.asyncio
+async def test_run_job_marks_error_when_the_sdcpp_job_fails(db, user, monkeypatch):
+    await image_engine_service.set_active_image_engine(db, "sdcpp")
+    _fake_sdcpp(monkeypatch, [{"status": "failed", "error": {"message": "out of memory"}}])
+    job = await image_generation_service.create_job(db, user.id, _request())
+    await image_generation_service._run_job(job.id)
+    await db.refresh(job)
+    assert job.status == "error" and "out of memory" in job.error_message
+
+
+@pytest.mark.asyncio
+async def test_run_job_marks_error_when_sdcpp_is_unreachable(db, user, monkeypatch):
+    monkeypatch.setattr(image_generation_service, "_schedule", lambda _job_id: None)
+    await image_engine_service.set_active_image_engine(db, "sdcpp")
+
+    async def fake_submit(_params):
+        raise SdCppError("sd-server is unreachable")
+
+    monkeypatch.setattr(sdcpp_client, "submit_job", fake_submit)
+    job = await image_generation_service.create_job(db, user.id, _request())
+    await image_generation_service._run_job(job.id)
+    await db.refresh(job)
+    assert job.status == "error" and "unreachable" in job.error_message
+
+
+@pytest.mark.asyncio
+async def test_a_cancel_during_an_sdcpp_run_stops_the_engine_and_keeps_the_cancelled_status(
+    db, user, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(image_generation_service, "IMAGES_DIR", tmp_path)
+    await image_engine_service.set_active_image_engine(db, "sdcpp")
+    cancelled = []
+
+    class _CancelOnSecondPoll:
+        calls = 0
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            type(self).calls += 1
+            return {"status": "generating"}
+
+    _fake_sdcpp(monkeypatch, _CancelOnSecondPoll(), cancelled=cancelled)
+    job = await image_generation_service.create_job(db, user.id, _request())
+    original = image_generation_service._is_cancelled
+    checks = {"n": 0}
+
+    async def cancelling_check(session, row):
+        checks["n"] += 1
+        if checks["n"] == 3:  # the user clicks Cancel while it's generating
+            await image_generation_service.cancel_job(session, row)
+        return await original(session, row)
+
+    monkeypatch.setattr(image_generation_service, "_is_cancelled", cancelling_check)
+    await image_generation_service._run_job(job.id)
+
+    await db.refresh(job)
+    assert job.status == "cancelled" and job.image_path is None
+    assert cancelled == [("http://h1:8189", "job_1")]
+
+
+@pytest.mark.asyncio
+async def test_a_job_cancelled_while_queued_never_starts(db, user, monkeypatch):
+    monkeypatch.setattr(image_generation_service, "_schedule", lambda _job_id: None)
+
+    def fail(*_a, **_kw):
+        raise AssertionError("a cancelled job must not reach the engine")
+
+    monkeypatch.setattr(sdcpp_client, "submit_job", fail)
+    job = await image_generation_service.create_job(db, user.id, _request())
+    await image_generation_service.cancel_job(db, job)
+    await image_generation_service._run_job(job.id)
+    await db.refresh(job)
+    assert job.status == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_cancel_leaves_a_finished_job_unchanged(db, user, monkeypatch):
+    monkeypatch.setattr(image_generation_service, "_schedule", lambda _job_id: None)
+    job = await image_generation_service.create_job(db, user.id, _request())
+    job.status = "complete"
+    await db.commit()
+    assert (await image_generation_service.cancel_job(db, job)).status == "complete"
+
+
+@pytest.mark.asyncio
+async def test_a_cancel_during_a_comfyui_run_interrupts_comfyui(db, user, monkeypatch):
+    monkeypatch.setattr(image_generation_service, "_schedule", lambda _job_id: None)
+    monkeypatch.setattr(image_generation_service, "_POLL_INTERVAL_SECONDS", 0)
+    interrupted = []
+
+    async def fake_submit_job(_params):
+        return "http://h1:8188", "prompt-1"
+
+    async def fake_get_history(_host, _prompt_id):
+        return None  # never finishes
+
+    async def fake_cancel(host, prompt_id):
+        interrupted.append((host, prompt_id))
+
+    monkeypatch.setattr(comfyui_client, "submit_job", fake_submit_job)
+    monkeypatch.setattr(comfyui_client, "get_history", fake_get_history)
+    monkeypatch.setattr(comfyui_client, "cancel_job", fake_cancel)
+    job = await image_generation_service.create_job(db, user.id, _request())
+    await image_generation_service.cancel_job(db, job)
+    job.status = "queued"  # let it start, then cancel on its first poll
+    await db.commit()
+    original = image_generation_service._is_cancelled
+
+    async def check(session, row):
+        await image_generation_service.cancel_job(session, row)
+        return await original(session, row)
+
+    monkeypatch.setattr(image_generation_service, "_is_cancelled", check)
+    await image_generation_service._run_job(job.id)
+    await db.refresh(job)
+    assert job.status == "cancelled" and interrupted == [("http://h1:8188", "prompt-1")]

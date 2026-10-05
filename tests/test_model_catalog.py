@@ -82,3 +82,22 @@ def test_load_raises_on_a_missing_top_level_key(tmp_path):
     path = _write(tmp_path, {"chat_models": [_VALID_ENTRY]})  # no "embedding_models" key at all
     with pytest.raises(KeyError):
         CuratedCatalogLoader.load(path)
+
+
+def test_default_models_json_ships_the_sd_turbo_diffusion_default():
+    from app.model_catalog import CATALOG
+
+    [entry] = CATALOG.diffusion_models
+    assert entry.tag == "hf.co/Green-Sky/SD-Turbo-GGUF:sd_turbo-f16-q8_0"
+    assert CATALOG.find_diffusion(entry.tag) is entry and CATALOG.find(entry.tag) is None  # never a chat model
+    assert CATALOG.find_embedding(entry.tag) is None
+
+
+def test_a_catalog_file_without_diffusion_models_still_loads(tmp_path):
+    import json
+
+    from app.model_catalog import CuratedCatalogLoader
+
+    path = tmp_path / "models.json"
+    path.write_text(json.dumps({"chat_models": [], "embedding_models": []}))
+    assert CuratedCatalogLoader.load(path).diffusion_models == []

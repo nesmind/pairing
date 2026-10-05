@@ -49,14 +49,23 @@ async def test_search_maps_real_search_response_fields(monkeypatch):
     body = [
         {"id": "Qwen/Qwen2.5-14B-Instruct-GGUF", "downloads": 12345, "likes": 42, "gated": False},
         {"id": "org/gated-repo", "downloads": 1, "likes": 0, "gated": "manual"},
+        {"id": "org/sd-gguf", "downloads": 3, "likes": 0, "gated": False, "pipeline_tag": "text-to-image"},
     ]
     _patch_client(monkeypatch, calls, response=_FakeResponse(200, body))
 
     results = await HuggingFaceCatalogSearch.search("qwen2.5", proxy_url=None)
 
     assert results == [
-        {"repo_id": "Qwen/Qwen2.5-14B-Instruct-GGUF", "downloads": 12345, "likes": 42, "gated": False, "license": None},
-        {"repo_id": "org/gated-repo", "downloads": 1, "likes": 0, "gated": True, "license": None},
+        {
+            "repo_id": "Qwen/Qwen2.5-14B-Instruct-GGUF",
+            "downloads": 12345,
+            "likes": 42,
+            "gated": False,
+            "is_image": False,
+            "license": None,
+        },
+        {"repo_id": "org/gated-repo", "downloads": 1, "likes": 0, "gated": True, "is_image": False, "license": None},
+        {"repo_id": "org/sd-gguf", "downloads": 3, "likes": 0, "gated": False, "is_image": True, "license": None},
     ]
     url, params = calls[0]
     assert url == hf.HF_API_BASE

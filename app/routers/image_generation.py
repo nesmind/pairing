@@ -2,7 +2,7 @@
 The image-generation JSON API: submit a prompt, poll a job's status,
 list your own past generations, and fetch the resulting file. See
 app/services/image_generation_service.py for the actual generation
-lifecycle these wrap, and app/services/comfyui_client.py for the ComfyUI
+lifecycle these wrap, and app/services/comfyui_client.py / sdcpp_client.py for the engine
 HTTP calls behind /checkpoints.
 """
 
@@ -15,9 +15,10 @@ from app.config import IMAGES_DIR
 from app.database import get_db
 from app.models import ImageGenerationJob, User
 from app.schemas import CheckpointList, ImageGenerationJobOut, ImageGenerationRequest, OkResponse
-from app.services import comfyui_client, image_generation_service
+from app.services import comfyui_client, image_engine_service, image_generation_service, sdcpp_client
 from app.services.auth_service import get_current_user
 from app.services.comfyui_client import ComfyUIError
+from app.services.sdcpp_client import SdCppError
 
 router = APIRouter(prefix="/api/image-generation", tags=["image-generation"])
 
@@ -55,7 +56,15 @@ async def list_jobs(db: AsyncSession = Depends(get_db), user: User = Depends(get
 
 @router.get("/jobs/{job_id}", response_model=ImageGenerationJobOut)
 async def get_job(job_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    return await _get_own_job_or_404(db, job_id, user)
+    job = await _get_own_job_or_404(db, job_id, user)
+    return ImageGenerationJobOut.model_validate(job).model_copy(update=image_generation_service.progress_for(job))
+
+
+@router.post("/jobs/{job_id}/cancel", response_model=ImageGenerationJobOut)
+async def cancel_job(job_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """Stops a queued or running generation (the engine is told to stop on the running instance's next poll — see
+    image_generation_service). Idempotent: a finished job is returned unchanged."""
+    return await image_generation_service.cancel_job(db, await _get_own_job_or_404(db, job_id, user))
 
 
 @router.get("/jobs/{job_id}/image")
@@ -82,9 +91,14 @@ async def delete_job(job_id: str, db: AsyncSession = Depends(get_db), user: User
 
 
 @router.get("/checkpoints", response_model=CheckpointList)
-async def list_checkpoints(_user: User = Depends(get_current_user)):
+async def list_checkpoints(db: AsyncSession = Depends(get_db), _user: User = Depends(get_current_user)):
+    """Models of whichever image engine is active (see Settings > Image's engine picker)."""
+    engine = await image_engine_service.get_active_image_engine(db)
     try:
-        checkpoints = await comfyui_client.list_checkpoints()
-    except ComfyUIError as exc:
+        if engine == "sdcpp":
+            checkpoints = await sdcpp_client.list_checkpoints()
+        else:
+            checkpoints = await comfyui_client.list_checkpoints()
+    except (ComfyUIError, SdCppError) as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return CheckpointList(checkpoints=checkpoints)

@@ -43,6 +43,9 @@ class ImageGenerationJob(Base):
     # ComfyUI's own /prompt response id — needed to poll GET /history/{id}
     # for this specific job. Null until the submit call succeeds.
     comfy_prompt_id = Column(String(64), nullable=True)
+    # stable-diffusion.cpp only: size of its log file when this job started running, so progress is read from
+    # only this job's own log lines (see app.services.sdcpp_progress). Null for any other engine.
+    log_offset = Column(Integer, nullable=True)
     # Relative to app.config.IMAGES_DIR (never absolute — see
     # ATTACHMENTS_DIR's identical convention), set only once status
     # becomes "complete".

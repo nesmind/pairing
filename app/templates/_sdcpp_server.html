@@ -1,0 +1,144 @@
+<!-- Settings > Image > stable-diffusion.cpp: same DOM contract as the ComfyUI section next to it; driven by
+     the generic External-servers controller in app/static/js/settings.js (data-server="sdcpp"). -->
+      <section class="space-y-3" data-server="sdcpp">
+        <h2 class="text-sm font-semibold text-slate-200">stable-diffusion.cpp</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          A light image engine that runs on a plain CPU (no GPU or PyTorch needed). <span class="font-mono">Local</span>
+          lets this app download (a prebuilt release from GitHub) and start/stop its <span class="font-mono">sd-server</span>
+          on this machine; it serves one model at a time — put a model file (.gguf / .safetensors) in its models folder
+          and set its path below. <span class="font-mono">Remote</span> points at external sd-server(s) instead.
+        </p>
+        <div data-field="fetch-panel" class="relative rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Mode</label>
+            <select data-field="mode" title="Local: this app installs and starts/stops stable-diffusion.cpp itself on this machine. Remote: point at one or more stable-diffusion.cpp servers already running elsewhere." class="server-mode-select w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+              <option value="local">Local — this app manages the process</option>
+              <option value="remote">Remote — external server(s)</option>
+            </select>
+          </div>
+
+          <div data-mode-section="local" class="space-y-3">
+            <p data-field="status-line" class="text-xs text-slate-400 font-mono"></p>
+
+            <div data-field="install-controls" class="space-y-3">
+              <div data-field="install-idle" class="space-y-2">
+                <div class="flex items-center gap-3">
+                  <button type="button" data-action="install"
+                    class="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-800 transition-colors">
+                    Install from GitHub
+                  </button>
+                  <select data-field="build" title="Which prebuilt release to install. Auto: the Vulkan (GPU) build when a GPU and Vulkan drivers are detected, otherwise the CPU build. Vulkan works on NVIDIA, AMD and Intel GPUs and falls back to CPU if the GPU is unusable. ROCm is AMD-only (large download)."
+                    class="rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs focus:outline-none focus:border-brand-500">
+                    <option value="auto">Auto (GPU if available)</option>
+                    <option value="cpu">CPU only</option>
+                    <option value="vulkan">GPU — Vulkan (NVIDIA / AMD / Intel)</option>
+                    <option value="rocm">GPU — ROCm (AMD)</option>
+                  </select>
+                  <span data-field="install-version-label" class="text-xs text-slate-500"></span>
+                </div>
+                <p data-field="install-os-note" class="hidden text-xs text-warning-400"></p>
+                <button type="button" data-action="toggle-install-source"
+                  class="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors">
+                  Use a different version or repo
+                </button>
+                <div data-field="install-source-panel" class="hidden space-y-2 rounded-md bg-slate-950 border border-slate-800 px-3 py-3">
+                  <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">GitHub repo</label>
+                    <input data-field="install_repo" type="text" placeholder="leejet/stable-diffusion.cpp" title="Which GitHub repo to install stable-diffusion.cpp from. Leave blank to use the default pinned repo."
+                      class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Version / tag</label>
+                    <input data-field="install_version" type="text" placeholder="master-929-3f8527a" list="sdcpp-version-options" title="Which release tag to install. Leave blank to use the default pinned version — start typing to pick from real tags fetched live from GitHub, or enter any tag/branch by hand."
+                      class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+                    <datalist id="sdcpp-version-options" data-field="install-version-datalist"></datalist>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <button type="button" data-action="save-install-source"
+                      class="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 transition-colors">
+                      Save
+                    </button>
+                    <button type="button" data-action="reset-install-source"
+                      class="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors">
+                      Reset to default
+                    </button>
+                    <span data-field="install-source-status" class="text-xs text-slate-500"></span>
+                  </div>
+                </div>
+              </div>
+              <div data-field="install-progress-panel" class="hidden space-y-2 rounded-md bg-slate-950 border border-slate-800 px-3 py-3">
+                <div class="flex items-center justify-between">
+                  <span data-field="install-step-label" class="text-xs font-medium text-slate-300"></span>
+                  <span data-field="install-percent" class="text-xs text-slate-500"></span>
+                </div>
+                <progress data-field="install-bar" class="w-full h-1.5 accent-brand-500" max="100"></progress>
+                <div data-field="install-log" class="max-h-32 overflow-hidden text-[11px] font-mono text-slate-500 space-y-0.5"></div>
+              </div>
+            </div>
+
+            <div data-field="local-not-installed" class="space-y-3">
+              <button type="button" data-action="manual-path-entry"
+                class="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors">
+                Already have stable-diffusion.cpp installed elsewhere? Enter its path manually instead.
+              </button>
+            </div>
+
+            <div data-field="local-installed" class="hidden space-y-3">
+              <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">sd-server path</label>
+                <input data-field="binary_path" type="text" placeholder="/opt/stable-diffusion.cpp/sd-server" title="Path to the sd-server executable, inside its installed release folder."
+                  class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Models folder (optional)</label>
+                <input data-field="models_path" type="text" placeholder="" title="Where image models are downloaded to and listed from. Leave blank for the default: a diffusion folder next to your Matricxon/Ollama models folder (models/ollama, models/matricxon, models/diffusion)."
+                  class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Model</label>
+                <select data-field="model_path" title="The model sd-server loads at launch. It serves one model at a time — change it and restart to switch. A distilled model (SD-Turbo, SDXS, an LCM model) needs only 1-4 steps, far faster on a CPU."
+                  class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+                  <option value="">— choose a model —</option>
+                </select>
+                <p data-field="model-hint" class="hidden mt-1 text-xs text-slate-500">
+                  No image models yet — download one under Settings &gt; Model &gt; Browse more models (search e.g.
+                  "sd-turbo"; image models are detected and installed here automatically).
+                </p>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Extra launch args (optional)</label>
+                <input data-field="extra_args" type="text" placeholder="--threads 4 --vae-tiling" title="Additional sd-server command-line arguments, e.g. --threads 4, --fa or --vae /path/to/vae.safetensors. Leave blank for none."
+                  class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+              </div>
+              <button type="button" data-action="manual-path-entry-back"
+                class="hidden text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors">
+                ← Back to installing from GitHub instead
+              </button>
+            </div>
+          </div>
+
+          <div data-mode-section="remote" class="hidden space-y-2">
+            <p class="text-xs text-slate-500">Up to 120 hosts — load-balanced across whichever is least busy.</p>
+            <div data-field="remote-hosts-list" class="space-y-1.5"></div>
+            <button type="button" data-action="add-host"
+              class="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 transition-colors">
+              + Add host
+            </button>
+          </div>
+        </div>
+        <div data-field="actions-bar" class="hidden flex items-center gap-3">
+          <button type="button" data-action="start"
+            class="rounded-lg bg-[rgb(var(--solid-emerald))] px-4 py-2 text-sm font-medium text-white hover:bg-[rgb(var(--solid-emerald-hover))] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            Start
+          </button>
+          <button type="button" data-action="stop"
+            class="rounded-lg bg-[rgb(var(--solid-rose))] px-4 py-2 text-sm font-medium text-white hover:bg-[rgb(var(--solid-rose-hover))] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            Stop
+          </button>
+          <button type="button" data-action="save"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save
+          </button>
+          <span data-field="status" class="text-xs text-slate-500"></span>
+        </div>
+      </section>

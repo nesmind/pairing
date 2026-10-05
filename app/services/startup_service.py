@@ -16,6 +16,7 @@ from app.services import (
     comfyui_pool,
     connector_config_cache,
     engine_service,
+    image_engine_service,
     instance_pool,
     instance_service,
     matricxon_pool,
@@ -26,6 +27,7 @@ from app.services import (
     ollama_ps_poller,
     ollama_telemetry,
     retention_poller,
+    sdcpp_pool,
     settings_service,
     system_metrics_poller,
 )
@@ -121,6 +123,7 @@ async def run_startup_tasks() -> None:
         # ML engine connectivity check right after this block runs.
         ollama_pool.refresh_from_config(await settings_service.get_ollama_server_config(db))
         comfyui_pool.refresh_from_config(await settings_service.get_comfyui_config(db))
+        sdcpp_pool.refresh_from_config(await image_engine_service.get_sdcpp_config(db))
         matricxon_config = await settings_service.get_matricxon_server_config(db)
         matricxon_pool.refresh_from_config(matricxon_config)
         # Which of the two feeds app.services.inference_client's dispatch — see

@@ -200,6 +200,17 @@
         <p class="text-xs text-slate-500 -mt-2">Powers the Knowledge base (RAG) feature on the Knowledge tab — not used for chat.</p>
         <div id="embedding-model-catalog" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
       </section>
+
+      <!-- Diffusion models: the image models for the Images page — same list whichever chat engine is active. They
+           install into the stable-diffusion.cpp models folder, never into Ollama/Matricxon (see
+           app/services/image_model_service.py). Image repos found through "Browse more models" land here.
+           Wired by app/static/js/settings_diffusion_models.js. -->
+      <section id="diffusion-models-section" class="space-y-3 border-t border-slate-800 pt-6">
+        <h2 class="text-sm font-semibold text-slate-200">Diffusion models</h2>
+        <p class="text-xs text-slate-500 -mt-2">Image generation models for the Images page (stable-diffusion.cpp) — installed into its own models folder, not Ollama/Matricxon. Search Hugging Face under Browse more models to add more.</p>
+        <p id="diffusion-model-note" class="hidden text-xs text-warning-400"></p>
+        <div id="diffusion-model-catalog" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+      </section>
       </div>
 
     </div>
@@ -1447,6 +1458,29 @@
       </div>
 
       <div data-group="image" class="hidden space-y-8">
+      <!-- Which image engine (below) the Images page uses — see app.services.image_engine_service. -->
+      <section class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Active image engine</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          Which engine below generates images on the Images page. Each can be configured and started independently;
+          this only changes where new requests go.
+        </p>
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 flex items-center gap-3">
+          <select id="image-engine-select" title="Which image engine serves the Images page right now. Switching here doesn't start or stop either engine."
+            class="rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+            <option value="sdcpp">stable-diffusion.cpp (light, CPU-friendly)</option>
+            <option value="comfyui">ComfyUI</option>
+          </select>
+          <button id="image-engine-save-btn" type="button"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save
+          </button>
+          <span id="image-engine-status" class="text-xs text-slate-500"></span>
+        </div>
+      </section>
+
+      {% include "_sdcpp_server.html" %}
+
       <section class="space-y-3" data-server="comfyui">
         <h2 class="text-sm font-semibold text-slate-200">ComfyUI</h2>
         <p class="text-xs text-slate-500 -mt-2">
@@ -1673,5 +1707,7 @@
 <script src="/static/js/settings.js?v={{ static_version }}"></script>
 <script src="/static/js/settings_cache_persistence.js?v={{ static_version }}"></script>
 {% if is_admin %}<script src="/static/js/settings_mcp_servers.js?v={{ static_version }}"></script>{% endif %}
+{% if is_admin %}<script src="/static/js/settings_image_engine.js?v={{ static_version }}"></script>{% endif %}
+<script src="/static/js/settings_diffusion_models.js?v={{ static_version }}"></script>
 <script src="/static/js/settings_group_select.js?v={{ static_version }}"></script>
 {% endblock %}

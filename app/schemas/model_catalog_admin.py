@@ -74,6 +74,8 @@ class HfSearchResult(BaseModel):
     likes: int
     gated: bool
     license: str | None
+    # A text-to-image (diffusion) repo — installs into the image engine, not Ollama/Matricxon.
+    is_image: bool = False
 
 
 class SearchHfModelsResponse(BaseModel):
@@ -108,4 +110,5 @@ class HfRepoFilesResponse(BaseModel):
     context_length: int | None
     gated: bool
     license: str | None
+    is_image: bool = False
     files: list[HfFileOption]

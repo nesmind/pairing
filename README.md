@@ -130,7 +130,8 @@ It is also important not to expose more models to users than the system RAM/VRAM
 
 **Image generation**
 - Optional text-to-image Image generation,
-  with browsable generation history (requires ComfyUI installed).
+  with browsable generation history. Two engines, installable from Settings > Image: stable-diffusion.cpp
+  (default — light, runs on a plain CPU) or ComfyUI.
   
 **Nothing exotic to run**
 - Plain HTML/CSS/JS + Tailwind's browser build — no Node, no build

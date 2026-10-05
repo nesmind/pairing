@@ -127,6 +127,10 @@ class CatalogEntry(BaseModel):
     # that a duplicate model pulled under an unfamiliar repo name showed up as a bare "Phi2 · unknown" row with
     # nothing explaining why it looked so different from every other entry.
     is_auto_discovered: bool = False
+    # A diffusion model installed into the image engine's own store (see app.services.image_model_service), not
+    # an Ollama/Matricxon chat model: the frontend offers Pull/Uninstall (via /api/settings/image-models) but no
+    # Select/Disable, and no chat-engine support badge.
+    is_image: bool = False
 
     # --- Backward-compatible views onto engine_support above -----------------------------------------------
     # Computed, not settable at construction time — every producer builds engine_support directly instead (see

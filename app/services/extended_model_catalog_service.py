@@ -109,9 +109,13 @@ class ExtendedModelCatalog:
         way the installed-models list above it already is, full stop - an entry an admin found and added while
         Ollama was active has no business resurfacing as a fresh suggestion the moment Matricxon becomes
         active, whether this app noticed it on disk or the admin searched for it by hand."""
+        from app.services.image_model_service import ImageModelStore  # lazy: it imports this module
+
         tag = self.build_tag(repo_id, filename)
         entries = await self.list()
-        already_installed = tag in {m["name"] for m in await list_models()}
+        already_installed = tag in {m["name"] for m in await list_models()} or (
+            await ImageModelStore.open(self._db)
+        ).is_installed(tag)
         if not already_installed and any(e["tag"] == tag for e in entries):
             raise ValueError(f'"{tag}" is already in the catalog.')
 
@@ -143,6 +147,17 @@ class ExtendedModelCatalog:
         matched = next((f for f in repo["files"] if f["filename"] == filename), None)
         if matched is None:
             return None
+        if repo.get("is_image"):
+            # A diffusion model: no chat-engine GGUF header to probe — it installs into the image engine's own
+            # store (see ImageModelStore), whatever chat engine is active.
+            return {
+                "tag": tag,
+                "kind": "image",
+                "family": self._repo_display_name(repo_id),
+                "parameter_size": None,
+                "download_gb": matched["download_gb"],
+                "note": None,
+            }
         probed = await HuggingFaceModelProbe.probe(repo_id, filename, proxy_url)
         architecture = probed["architecture"]
         is_projector = architecture == "clip" if architecture else matched.get("is_projector", False)
@@ -175,7 +190,10 @@ class ExtendedModelCatalog:
         switch or restart. Auto-registered entries (ALREADY_INSTALLED_NOTE) are kept: they're never shown as
         suggestions (see build), but they cache an installed model's real name/size, and dropping them made the
         next Model tab load re-look-up every installed model on Hugging Face (~30s, confirmed live)."""
-        kept = [e for e in await self.list() if e.get("note") == self.ALREADY_INSTALLED_NOTE]
+        # Image-model entries are engine-independent (they install into the image engine), so they survive too.
+        kept = [
+            e for e in await self.list() if e.get("note") == self.ALREADY_INSTALLED_NOTE or e.get("kind") == "image"
+        ]
         await self._save(kept)
 
     async def backfill_discovered_via_engine(self, tag: str, engine_name: str) -> None:
@@ -223,6 +241,8 @@ class ExtendedModelCatalog:
             tag = entry["tag"]
             if tag in hidden_tags and not is_admin:
                 continue
+            if entry.get("kind") == "image":
+                continue  # shown in Settings > Model's own Diffusion models section instead (see ImageModelStore)
             if tag in installed_tags:
                 continue
             if entry.get("note") == self.ALREADY_INSTALLED_NOTE:

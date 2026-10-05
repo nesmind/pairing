@@ -32,7 +32,9 @@ from app.routers import (
     engine_admin,
     health,
     http_proxy_admin,
+    image_engine_admin,
     image_generation,
+    image_model_admin,
     instances_admin,
     matricxon_admin,
     matricxon_cache_admin,
@@ -43,6 +45,7 @@ from app.routers import (
     ollama_admin,
     pages,
     proxy_admin,
+    sdcpp_admin,
     settings,
     stats,
     system_metrics,
@@ -141,6 +144,9 @@ app.include_router(health.router)
 app.include_router(instances_admin.router)
 app.include_router(image_generation.router)
 app.include_router(comfyui_admin.router)
+app.include_router(image_engine_admin.router)
+app.include_router(image_model_admin.router)
+app.include_router(sdcpp_admin.router)
 app.include_router(proxy_admin.router)
 app.include_router(http_proxy_admin.router)
 app.include_router(ollama_admin.router)

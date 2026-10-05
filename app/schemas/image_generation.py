@@ -41,6 +41,12 @@ class ImageGenerationJobOut(BaseModel):
     url: str | None = None
     error_message: str | None
     created_at: datetime
+    # Live progress while status="running" (stable-diffusion.cpp reports it from its own log): 0-100, what it's
+    # doing, and a rough seconds-left. All None when the engine gives no progress — the page then shows an
+    # indeterminate bar with an elapsed timer instead.
+    progress: float | None = None
+    stage: str | None = None
+    eta_seconds: int | None = None
 
 
 class CheckpointList(BaseModel):

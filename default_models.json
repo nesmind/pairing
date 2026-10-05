@@ -168,5 +168,23 @@
       "embedding_dim": 384,
       "note": "Highest-downloaded (402k) community GGUF conversion of sentence-transformers' all-MiniLM-L6-v2 — confirmed live: arch \"bert\", 22.6M params, 512 ctx, 384-dim embeddings, Capabilities: embedding. A real /api/embed call returned a correct 384-dim vector. Offered as the lighter/faster alternative, not the default."
     }
+  ],
+  "diffusion_models": [
+    {
+      "family": "SD-Turbo",
+      "vendor": "Stability AI",
+      "tag": "hf.co/Green-Sky/SD-Turbo-GGUF:sd_turbo-f16-q8_0",
+      "parameter_size": "",
+      "context_length": null,
+      "download_gb": 2.02,
+      "min_ram_gb": 3,
+      "locally_runnable": true,
+      "architecture": "sd2",
+      "quantizations": ["Q8_0", "F16"],
+      "vision": false,
+      "unavailable_reason": null,
+      "embedding_dim": null,
+      "note": "A distilled Stable Diffusion 2.1 that makes a usable 512x512 image in 1-4 steps (use cfg ~1.0) — the lightest practical choice for a CPU-only machine. Green-Sky's stable-diffusion.cpp conversion of stabilityai/sd-turbo (mixed f16/q8_0, ~2 GB); confirmed live to load in sd-server and complete a sampling step on a 2011-era laptop CPU. An image model: installs into the stable-diffusion.cpp models folder (see Settings > Image), never into Ollama/Matricxon."
+    }
   ]
 }

@@ -84,8 +84,8 @@ async def connectors_page(request: Request, db: AsyncSession = Depends(get_db)):
 
 @router.get("/images", response_class=HTMLResponse)
 async def image_generation_page(request: Request, db: AsyncSession = Depends(get_db)):
-    """The Image generation screen — type a prompt, get a ComfyUI-backed
-    text-to-image result, browse past generations (see
+    """The Image generation screen — type a prompt, get an image from the active image
+    engine, browse past generations (see
     app/routers/image_generation.py and
     app/services/image_generation_service.py)."""
     auth = await PageAuth(request, db).resolve()

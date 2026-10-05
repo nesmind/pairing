@@ -113,6 +113,16 @@ async def submit_job(params: dict) -> tuple[str, str]:
         raise ComfyUIError(f"Could not submit job to ComfyUI: {exc}") from exc
 
 
+async def cancel_job(host: str, prompt_id: str) -> None:
+    """Best-effort: drops a still-queued prompt and interrupts whatever is executing on `host`."""
+    try:
+        async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
+            await client.post(f"{host}/queue", json={"delete": [prompt_id]})
+            await client.post(f"{host}/interrupt")
+    except httpx.HTTPError:
+        pass
+
+
 async def get_history(host: str, prompt_id: str) -> dict | None:
     """Returns {"outputs": {...}} once `prompt_id` has finished, or None
     while it's still queued/running (an absent or empty entry — ComfyUI

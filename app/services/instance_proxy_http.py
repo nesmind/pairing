@@ -40,6 +40,8 @@ EXEMPT_PREFIXES = (
     # doesn't own) or silently read/write that *sibling's* own separate
     # comfyui.json instead of the primary's.
     "/api/settings/comfyui",
+    # stable-diffusion.cpp's sd-server — same primary-only process state as ComfyUI above.
+    "/api/settings/sdcpp",
     # Matricxon process state (app/services/matricxon_process.py) only exists meaningfully on the primary — same
     # reasoning as Ollama/ComfyUI above. This one was missing outright (confirmed live: a start/stop call that
     # happened to round-robin onto a sibling 400'd with "Matricxon can only be managed from the primary instance",

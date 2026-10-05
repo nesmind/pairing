@@ -275,6 +275,7 @@ function selectModel(entry) {
  * if it's actually been loaded at least once (browsing it is opt-in — see toggleBrowseMoreModels), not fetched
  * just to immediately discard an unopened panel's result. */
 async function refreshCatalogs() {
+  document.dispatchEvent(new Event("pairing:models-changed")); // the Diffusion models section reloads itself
   currentCatalog = null;
   await loadCatalog();
   renderModelCatalog();
@@ -291,7 +292,7 @@ async function pullModel(entry, button, progressEl, onDone = refreshCatalogs, co
   progressEl.textContent = "Starting…";
 
   try {
-    const response = await fetch("/api/settings/pull-model", {
+    const response = await fetch(entry.is_image ? "/api/settings/image-models/pull" : "/api/settings/pull-model", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tag: entry.tag, confirm_duplicate: confirmDuplicate }),
@@ -361,7 +362,7 @@ async function uninstallModel(entry, button, progressEl, onDone = refreshCatalog
   progressEl.textContent = "";
 
   try {
-    await api("/api/settings/delete-model", {
+    await api(entry.is_image ? "/api/settings/image-models/delete" : "/api/settings/delete-model", {
       method: "POST",
       body: JSON.stringify({ tag: entry.tag }),
     });
@@ -888,6 +889,7 @@ function renderHfSearchResults(results) {
       "block w-full text-left rounded-md border border-slate-800 px-2.5 py-1.5 text-sm hover:bg-slate-800 transition-colors";
     const metaParts = [`${repo.downloads.toLocaleString()} downloads`, `${repo.likes.toLocaleString()} likes`];
     if (repo.gated) metaParts.push("gated");
+    if (repo.is_image) metaParts.unshift("Image model → Diffusion models");
     row.innerHTML =
       `<span class="block truncate font-medium text-slate-100">${escapeHtml(repo.repo_id)}</span>` +
       `<span class="block truncate text-xs text-slate-500">${escapeHtml(metaParts.join(" · "))}</span>`;
@@ -910,6 +912,7 @@ function renderHfRepoFiles(repo) {
 
   const metaParts = [repo.parameter_size, formatContextLength(repo.context_length) && `${formatContextLength(repo.context_length)} ctx`, repo.license]
     .filter(Boolean);
+  if (repo.is_image) metaParts.unshift("Image model — added under Diffusion models (installs into the stable-diffusion.cpp engine)");
   if (repo.gated) metaParts.push("gated — may need a Hugging Face token Ollama doesn't have, could fail to pull");
   const header = document.createElement("div");
   header.innerHTML =
@@ -2162,7 +2165,7 @@ if (httpProxySaveBtn) {
 // one place their local-mode "Install" buttons genuinely differ (what
 // happens once each one's own install finishes).
 
-const EXTERNAL_SERVERS = ["ollama", "matricxon", "comfyui"];
+const EXTERNAL_SERVERS = ["ollama", "matricxon", "comfyui", "sdcpp"];
 const MAX_REMOTE_HOSTS = 120; // mirrors app.schemas.common.MAX_REMOTE_HOSTS
 
 function serverSectionEl(server) {
@@ -2177,6 +2180,7 @@ const REMOTE_HOST_EXAMPLE = {
   ollama: { port: "11434", name: "Ollama" },
   matricxon: { port: "8420", name: "Matricxon" },
   comfyui: { port: "8188", name: "ComfyUI" },
+  sdcpp: { port: "8189", name: "stable-diffusion.cpp" },
 };
 
 function addRemoteHostRow(section, value = "") {
@@ -2397,12 +2401,43 @@ function collectServerConfig(server, section) {
       gpu_weight_mode: isRemote ? "dequantized" : section.querySelector('[data-field="gpu_weight_mode"]').value,
     };
   }
+  if (server === "sdcpp") {
+    return {
+      ...base,
+      binary_path: section.querySelector('[data-field="binary_path"]').value.trim() || null,
+      model_path: section.querySelector('[data-field="model_path"]').value.trim() || null,
+      models_path: section.querySelector('[data-field="models_path"]').value.trim() || null,
+      extra_args: section.querySelector('[data-field="extra_args"]').value.trim() || null,
+      build: section.querySelector('[data-field="build"]').value,
+    };
+  }
   return {
     ...base,
     python_path: section.querySelector('[data-field="python_path"]').value.trim() || null,
     main_py_path: section.querySelector('[data-field="main_py_path"]').value.trim() || null,
     extra_args: section.querySelector('[data-field="extra_args"]').value.trim() || null,
   };
+}
+
+/** stable-diffusion.cpp's build choice (CPU/Vulkan/ROCm) rides along as a query param, so it applies without a prior Save. */
+function installQuery(server, section) {
+  const build = server === "sdcpp" ? section.querySelector('[data-field="build"]')?.value : null;
+  return build ? `?build=${encodeURIComponent(build)}` : "";
+}
+
+/** Fills stable-diffusion.cpp's Model dropdown from the local models folder (see app/services/image_model_service.py);
+ * a saved path that isn't in the folder (set before this dropdown existed) stays selectable so it isn't lost. */
+async function populateSdcppModels(section, savedPath) {
+  const select = section.querySelector('[data-field="model_path"]');
+  const hint = section.querySelector('[data-field="model-hint"]');
+  const { models, folder } = await api("/api/settings/image-models");
+  section.querySelector('[data-field="models_path"]').placeholder = folder; // what blank resolves to
+  const options = models.map((m) => ({ value: m.path, label: `${m.name} (${m.size_gb} GB)` }));
+  if (savedPath && !options.some((o) => o.value === savedPath)) options.push({ value: savedPath, label: savedPath });
+  select.innerHTML = `<option value="">— choose a model —</option>` +
+    options.map((o) => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join("");
+  select.value = savedPath ?? "";
+  hint.classList.toggle("hidden", models.length > 0 || !!savedPath);
 }
 
 function renderInstallSource(section, config, defaults) {
@@ -2476,6 +2511,12 @@ async function loadServerSection(server) {
     section.querySelector('[data-field="device"]').value = (config.device ?? "cpu").startsWith("cuda") ? "cuda" : "cpu";
     section.querySelector('[data-field="gpu_weight_mode"]').value = config.gpu_weight_mode ?? "dequantized";
     syncMatricxonKernelSelect(section);
+  } else if (server === "sdcpp") {
+    section.querySelector('[data-field="binary_path"]').value = config.binary_path ?? "";
+    section.querySelector('[data-field="models_path"]').value = config.models_path ?? "";
+    await populateSdcppModels(section, config.model_path);
+    section.querySelector('[data-field="build"]').value = config.build ?? "auto";
+    section.querySelector('[data-field="extra_args"]').value = config.extra_args ?? "";
   } else {
     section.querySelector('[data-field="python_path"]').value = config.python_path ?? "";
     section.querySelector('[data-field="main_py_path"]').value = config.main_py_path ?? "";
@@ -2777,6 +2818,8 @@ for (const server of EXTERNAL_SERVERS) {
       }
       await api(`/api/settings/${server}/config`, { method: "PUT", body: JSON.stringify(body) });
       statusEl.textContent = "Saved.";
+      // A new Models folder changes what the Model dropdown lists — re-read it.
+      if (server === "sdcpp") await loadServerSection(server);
       // Not running (stopped by hand, or a previous restart failed - e.g. a GPU device that isn't there): saving
       // alone changes nothing visible, which reads as "nothing happened" - offer to start it with the new settings.
       if (localStatus && localStatus.installed && !localStatus.running) {
@@ -2878,7 +2921,7 @@ for (const server of EXTERNAL_SERVERS) {
       const status = lastServerStatus[server];
       const wasRunning = !!status?.running;
       if (wasRunning) {
-        const engineLabel = { ollama: "Ollama", matricxon: "Matricxon", comfyui: "ComfyUI" }[server] || server;
+        const engineLabel = { ollama: "Ollama", matricxon: "Matricxon", comfyui: "ComfyUI", sdcpp: "stable-diffusion.cpp" }[server] || server;
         if (!confirm(`${engineLabel} is currently running — reinstalling stops it first. Continue?`)) return;
         installBtn.disabled = true;
         try {
@@ -3012,7 +3055,7 @@ async function installServer(server, section, restartAfter = false) {
   setInstallBarIndeterminate(barEl, true);
 
   try {
-    const response = await fetch(`/api/settings/${server}/install`, { method: "POST" });
+    const response = await fetch(`/api/settings/${server}/install${installQuery(server, section)}`, { method: "POST" });
     if (!response.ok || !response.body) {
       const body = await response.json().catch(() => ({}));
       throw new Error(body.detail || `Install failed (${response.status})`);
@@ -3095,6 +3138,17 @@ async function installServer(server, section, restartAfter = false) {
       await api("/api/settings/comfyui/config", {
         method: "PUT",
         body: JSON.stringify(collectServerConfig("comfyui", section)),
+      });
+    }
+    // stable-diffusion.cpp: same as ComfyUI above — save the just-installed sd-server path so Start works. The
+    // model file is the admin's own (see the models folder named in the log), so it's left as entered.
+    if (server === "sdcpp" && doneEvent) {
+      section.querySelector('[data-field="binary_path"]').value = doneEvent.binary_path;
+      appendLog(`Installed the ${doneEvent.build} build.`);
+      appendLog("Next: download an image model under Settings > Model > Browse more models, then pick it below.");
+      await api("/api/settings/sdcpp/config", {
+        method: "PUT",
+        body: JSON.stringify(collectServerConfig("sdcpp", section)),
       });
     }
     // Matricxon has no fixed path to auto-discover the way Ollama's managed binary does either — same reasoning

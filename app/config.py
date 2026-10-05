@@ -160,6 +160,9 @@ MAX_AVATAR_MB = 2
 # UI. *How to launch* ComfyUI (venv python + main.py path) is a separate, admin-configurable AppSetting instead
 # (see settings_service.get_comfyui_config), settable from Settings live.
 COMFYUI_HOST = os.environ.get("COMFYUI_HOST", "http://localhost:8188")
+# Same idea for stable-diffusion.cpp's own `sd-server` (the default, lighter, CPU-friendly image engine) — see
+# app/services/sdcpp_client.py. Its listen port is derived from this URL at launch.
+SDCPP_HOST = os.environ.get("SDCPP_HOST", "http://localhost:8189")
 
 # Where generated images are saved — same idiom as ATTACHMENTS_DIR/KNOWLEDGE_DIR above: a plain folder, with only a
 # relative path ever stored in the DB, so moving this later never strands a row.
@@ -175,6 +178,8 @@ OLLAMA_GITHUB_REPO = "ollama/ollama"
 OLLAMA_PINNED_VERSION = "v0.33.3"
 COMFYUI_GITHUB_REPO = "comfyanonymous/ComfyUI"
 COMFYUI_PINNED_VERSION = "v0.35.1"
+SDCPP_GITHUB_REPO = "leejet/stable-diffusion.cpp"
+SDCPP_PINNED_VERSION = "master-929-3f8527a"
 MATRICXON_GITHUB_REPO = "nesmind/matricxon"
 # The one exception to "never latest" above: Matricxon is developed alongside this app, so an install/reinstall
 # defaults to the newest code on its main branch. A specific tag (e.g. "v1.2") or branch can still be chosen in
