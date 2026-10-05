@@ -518,7 +518,7 @@ function renderModelRow(entry, pairing = null, compact = false) {
   if (!entry.hardware_ok) {
     const badge = document.createElement("span");
     badge.className = "text-xs font-medium text-warning-400";
-    badge.textContent = "Unavailable";
+    badge.textContent = "RAM shortage";
     action.appendChild(badge);
   } else if (entry.installed) {
     // A vision projector is never itself a selectable chat model (see CatalogEntry.is_projector's own
