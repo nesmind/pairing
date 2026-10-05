@@ -146,9 +146,9 @@ class CuratedCatalogLoader:
     @staticmethod
     def load(path: Path) -> CuratedCatalog:
         """Reads and validates `path` (default_models.json's own shape — {"chat_models": [...],
-        "embedding_models": [...], "diffusion_models": [...]}), raising straight through on anything malformed (bad JSON syntax, a
-        missing required field, a wrong type) — a broken hand-edit should fail loudly at import time with a
-        clear, specific error pointing at the exact bad field, not silently drop an entry or fall back to an
+        "embedding_models": [...], "diffusion_models": [...]}), raising straight through on anything malformed
+        (bad JSON syntax, a missing required field, a wrong type) — a broken hand-edit should fail loudly at import
+        time with a clear, specific error pointing at the exact bad field, not silently drop an entry or fall back to an
         empty catalog that would make every model in Settings quietly disappear."""
         raw = json.loads(path.read_text())
         return CuratedCatalog(

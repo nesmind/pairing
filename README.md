@@ -35,8 +35,9 @@ Supports MySQL migration and multi-server deployment.
 
 1. Go to **Settings → External servers** and choose your inference engine. Ollama and Matricxon are supported (Matricxon has many more options but still has some important limitations — see the Matricxon repository for details). Both can be pulled and installed directly from there.
 2. After configuring the engine, go to **Settings → Models** and download some models. Embedding models are needed for RAG support, and vision projectors are needed for image understanding in chats and channels.
-3. Once the models are ready, go to **Settings → System** and set the important parameters (such as the default vision model).
-4. Run a few tests.
+3. Want images? Go to **Settings → Image**, press **Install from GitHub** for stable-diffusion.cpp, then download a diffusion model (SD-Turbo is a good start) under **Settings → Models → Diffusion models**, choose it in the engine's *Model* dropdown and press **Start**.
+4. Once the models are ready, go to **Settings → System** and set the important parameters (such as the default vision model).
+5. Run a few tests.
 
 **Production notes**
 
@@ -121,7 +122,7 @@ It is also important not to expose more models to users than the system RAM/VRAM
 - Or, if you'd rather test it for enterprise use, use a reverse proxy (nginx, Caddy, ...) to balance across a ring of pAIring servers — that works too. All configurable directly from the UI.
 
 **Connectors**
-- Extend the system with connectors, which add support for more inference engines, such as cloud services that offer GPU and serverless ML. pAIring is intended to run privately or locally without external services and providers (except for downloading models), but this is a much appreciated optional extra.
+- Extend the system with connectors, which add support for more inference engines, such as cloud services that offer GPU and serverless ML. pAIring is intended to run privately or locally without external services and providers (except for downloading models or outer MCP tools), but this is a much appreciated optional extra.
 - At the moment there is only one connector, for RunPod.
 
 **Guardrails for admin changes**
@@ -129,10 +130,10 @@ It is also important not to expose more models to users than the system RAM/VRAM
 - If something's out of sync with what's actually running (like a hand-edited config file), you get updated.
 
 **Image generation**
-- Optional text-to-image Image generation,
-  with browsable generation history. Two engines, installable from Settings > Image: stable-diffusion.cpp
-  (default — light, runs on a plain CPU) or ComfyUI.
-  
+- Basic text-to-image on the **Images** page via [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) (plain CPU or GPU), with a progress bar, Cancel and generation history. Image generation isn't our focus right now — it's deliberately basic and we'll improve it later.
+- Install it with one click from **Settings → External Servers → Image Engine** (picks a Vulkan GPU or CPU build), or point it at remote sd-server hosts.
+- Diffusion models (SD-Turbo built in, more from Hugging Face) are managed under **Settings → Models → Diffusion models**.
+
 **Nothing exotic to run**
 - Plain HTML/CSS/JS + Tailwind's browser build — no Node, no build
   step, no extra services beyond the app itself.
