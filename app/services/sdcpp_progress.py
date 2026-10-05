@@ -51,6 +51,16 @@ def read_progress(offset: int, path: Path = LOG_PATH) -> Progress | None:
     return state
 
 
+def for_job(job: object) -> dict:
+    """ImageGenerationJobOut's progress/stage/eta fields for a running stable-diffusion.cpp job, else {}."""
+    if job.status != "running" or job.log_offset is None:
+        return {}
+    found = read_progress(job.log_offset)
+    if found is None:
+        return {}
+    return {"progress": round(found.progress, 1), "stage": found.stage, "eta_seconds": found.eta_seconds}
+
+
 def _advance(line: str, state: Progress | None) -> Progress | None:
     phase = state.phase if state else "load"
     if "|" in line and (m := _LOAD_RE.search(line)):

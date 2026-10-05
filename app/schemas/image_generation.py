@@ -2,9 +2,23 @@
 app/services/image_generation_service.py for the actual generation
 lifecycle (queued/running/complete/error) these describe."""
 
+import base64
+import binascii
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+GenerationMode = Literal["text_to_image", "image_to_image"]
+_MAX_INIT_IMAGE_B64 = 20_000_000
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+
+def _png_size(data: bytes) -> tuple[int, int] | None:
+    """(width, height) from a PNG's IHDR, or None if `data` isn't a PNG."""
+    if len(data) < 24 or data[:8] != _PNG_SIGNATURE or data[12:16] != b"IHDR":
+        return None
+    return int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
 
 
 class ImageGenerationRequest(BaseModel):
@@ -21,6 +35,28 @@ class ImageGenerationRequest(BaseModel):
     steps: int = Field(default=1, ge=1, le=150)
     cfg: float = Field(default=1.0, ge=0.0, le=30.0)
     seed: int = Field(default=-1)
+    mode: GenerationMode = "text_to_image"
+    # image_to_image only: a base64 PNG already sized width x height (the page resizes it), and how far the result
+    # may move away from it (0-1; near 0 keeps the picture, 1 nearly ignores it).
+    init_image: str | None = Field(default=None, max_length=_MAX_INIT_IMAGE_B64)
+    strength: float = Field(default=0.75, gt=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _check_source_image(self) -> "ImageGenerationRequest":
+        if self.mode == "text_to_image":
+            self.init_image = None
+            return self
+        if not self.init_image:
+            raise ValueError("Image-to-image needs a source image.")
+        try:
+            size = _png_size(base64.b64decode(self.init_image, validate=True))
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError("The source image is not valid base64.") from exc
+        if size is None:
+            raise ValueError("The source image must be a PNG.")
+        if size != (self.width, self.height):
+            raise ValueError(f"The source image is {size[0]}x{size[1]} but the request is {self.width}x{self.height}.")
+        return self
 
 
 class ImageGenerationJobOut(BaseModel):
@@ -36,6 +72,8 @@ class ImageGenerationJobOut(BaseModel):
     steps: int
     cfg: float
     seed: int
+    mode: str = "text_to_image"
+    strength: float | None = None
     # Populated only once status="complete" — see
     # app.models.image_generation.ImageGenerationJob.url.
     url: str | None = None

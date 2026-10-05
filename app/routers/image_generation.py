@@ -15,7 +15,7 @@ from app.config import IMAGES_DIR
 from app.database import get_db
 from app.models import ImageGenerationJob, User
 from app.schemas import CheckpointList, ImageGenerationJobOut, ImageGenerationRequest, OkResponse
-from app.services import comfyui_client, image_engine_service, image_generation_service, sdcpp_client
+from app.services import comfyui_client, image_engine_service, image_generation_service, sdcpp_client, sdcpp_progress
 from app.services.auth_service import get_current_user
 from app.services.comfyui_client import ComfyUIError
 from app.services.sdcpp_client import SdCppError
@@ -57,7 +57,7 @@ async def list_jobs(db: AsyncSession = Depends(get_db), user: User = Depends(get
 @router.get("/jobs/{job_id}", response_model=ImageGenerationJobOut)
 async def get_job(job_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     job = await _get_own_job_or_404(db, job_id, user)
-    return ImageGenerationJobOut.model_validate(job).model_copy(update=image_generation_service.progress_for(job))
+    return ImageGenerationJobOut.model_validate(job).model_copy(update=sdcpp_progress.for_job(job))
 
 
 @router.post("/jobs/{job_id}/cancel", response_model=ImageGenerationJobOut)

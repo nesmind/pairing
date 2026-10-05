@@ -101,10 +101,7 @@ function renderTile(job) {
   tile.dataset.jobId = job.id;
 
   if (job.status === "complete" && job.url) {
-    tile.innerHTML = `<img src="${job.url}" alt="${escapeHtml(job.prompt)}" class="h-full w-full object-cover">
-      <div class="absolute inset-x-0 bottom-0 bg-black/60 px-2 py-1 text-xs text-slate-200 truncate opacity-0 group-hover:opacity-100 transition-opacity">
-        ${escapeHtml(job.prompt)}
-      </div>`;
+    tile.innerHTML = window.completeTileHtml(job); // picture + Save link; click-to-enlarge in image_generation_viewer.js
   } else if (job.status === "error") {
     tile.innerHTML = `<div class="h-full w-full flex flex-col items-center justify-center gap-1 p-2 text-center">
         <span class="text-xs text-red-400">Failed</span>
@@ -219,6 +216,17 @@ generateBtn.addEventListener("click", async () => {
     cfg: parseFloat(document.getElementById("gen-cfg").value),
     seed: parseInt(document.getElementById("gen-seed").value, 10),
   };
+
+  const sourceControls = window.generationSource;
+  if (sourceControls.isImageMode()) {
+    if (!sourceControls.hasImage()) {
+      statusEl.textContent = "Choose a source image first.";
+      return;
+    }
+    body.mode = "image_to_image";
+    body.init_image = sourceControls.pngBase64(body.width, body.height);
+    body.strength = sourceControls.strength();
+  }
 
   generateBtn.disabled = true;
   statusEl.textContent = "Submitting…";

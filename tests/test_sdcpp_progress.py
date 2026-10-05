@@ -1,7 +1,7 @@
 """Unit tests for app/services/sdcpp_progress.py — real sd.cpp log excerpts (progress bars are \\r-separated)."""
 
 from app.models import ImageGenerationJob
-from app.services import image_generation_service, sdcpp_progress
+from app.services import sdcpp_progress
 
 _LOAD = "  |######################                            | 294/686 - 2.33GB/s\x1b[K\r"
 _GEN = "[INFO   ] image.cpp:814  - generate_image 128x128\n"
@@ -77,15 +77,15 @@ def _job(**kw):
     return ImageGenerationJob(status="running", log_offset=0, **kw)
 
 
-def test_progress_for_only_applies_to_running_sdcpp_jobs(tmp_path, monkeypatch):
+def test_for_job_only_applies_to_running_sdcpp_jobs(tmp_path, monkeypatch):
     path = _log(tmp_path, _GEN + _COND + _step(2))
     real = sdcpp_progress.read_progress
     monkeypatch.setattr(sdcpp_progress, "read_progress", lambda offset: real(offset, path))
 
-    running = image_generation_service.progress_for(_job())
+    running = sdcpp_progress.for_job(_job())
     assert running["stage"] == "Sampling · step 2 of 4" and 0 < running["progress"] < 100
-    assert image_generation_service.progress_for(ImageGenerationJob(status="complete", log_offset=0)) == {}
-    assert image_generation_service.progress_for(ImageGenerationJob(status="running", log_offset=None)) == {}  # ComfyUI
+    assert sdcpp_progress.for_job(ImageGenerationJob(status="complete", log_offset=0)) == {}
+    assert sdcpp_progress.for_job(ImageGenerationJob(status="running", log_offset=None)) == {}  # ComfyUI
 
 
 def test_a_lazy_weights_bar_stays_in_its_stage_instead_of_resetting(tmp_path):

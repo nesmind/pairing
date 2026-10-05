@@ -40,6 +40,10 @@ class ImageGenerationJob(Base):
     steps = Column(Integer, nullable=False)
     cfg = Column(Float, nullable=False)
     seed = Column(Integer, nullable=False)
+    # "text_to_image" or "image_to_image"; strength (0-1, how far the result may move from the source image) is set
+    # only for the latter. The source image itself is never stored - see app.services.image_init.
+    mode = Column(String(20), nullable=False, default="text_to_image", server_default="text_to_image")
+    strength = Column(Float, nullable=True)
     # ComfyUI's own /prompt response id — needed to poll GET /history/{id}
     # for this specific job. Null until the submit call succeeds.
     comfy_prompt_id = Column(String(64), nullable=True)

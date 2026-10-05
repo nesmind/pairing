@@ -30,6 +30,9 @@ async def submit_job(params: dict) -> tuple[str, str]:
         "batch_count": 1,
         "sample_params": {"sample_steps": params["steps"], "guidance": {"txt_cfg": params["cfg"]}},
     }
+    if params.get("init_image"):  # image-to-image: a base64 PNG sized width x height, plus how far to move from it
+        payload["init_image"] = params["init_image"]
+        payload["strength"] = params["strength"]
 
     async def _call(host: str) -> tuple[str, str]:
         async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:

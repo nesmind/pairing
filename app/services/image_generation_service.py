@@ -24,7 +24,7 @@ from app.config import IMAGES_DIR
 from app.database import AsyncSessionLocal
 from app.models import ImageGenerationJob
 from app.schemas import ImageGenerationRequest
-from app.services import comfyui_client, image_engine_service, sdcpp_client, sdcpp_progress
+from app.services import comfyui_client, image_engine_service, image_init, sdcpp_client, sdcpp_progress
 from app.services.comfyui_client import ComfyUIError
 from app.services.sdcpp_client import SdCppError
 
@@ -59,10 +59,14 @@ async def create_job(db: AsyncSession, owner_id: str, request: ImageGenerationRe
         steps=request.steps,
         cfg=request.cfg,
         seed=seed,
+        mode=request.mode,
+        strength=request.strength if request.mode == "image_to_image" else None,
     )
     db.add(job)
     await db.commit()
     await db.refresh(job)
+    if request.init_image:
+        image_init.stash(job.id, request.init_image)
     _schedule(job.id)
     return job
 
@@ -80,6 +84,7 @@ async def _run_job(job_id: str) -> None:
     async with AsyncSessionLocal() as db:
         job = await db.get(ImageGenerationJob, job_id)
         if job is None or job.status == "cancelled":
+            image_init.discard(job_id)
             return  # deleted, or cancelled while still queued
 
         engine = await image_engine_service.get_active_image_engine(db)
@@ -98,6 +103,11 @@ async def _run_job(job_id: str) -> None:
             "cfg": job.cfg,
             "seed": job.seed,
         }
+        try:
+            params.update(image_init.init_params(job, engine))
+        except ValueError as exc:
+            await _mark_error(db, job, str(exc))
+            return
         try:
             if engine == "sdcpp":
                 image_bytes = await _sdcpp_image_bytes(db, job, params)
@@ -215,16 +225,6 @@ async def _mark_error(db: AsyncSession, job: ImageGenerationJob, message: str) -
     job.status = "error"
     job.error_message = message
     await db.commit()
-
-
-def progress_for(job: ImageGenerationJob) -> dict:
-    """ImageGenerationJobOut's progress/stage/eta fields for a running stable-diffusion.cpp job, else {}."""
-    if job.status != "running" or job.log_offset is None:
-        return {}
-    found = sdcpp_progress.read_progress(job.log_offset)
-    if found is None:
-        return {}
-    return {"progress": round(found.progress, 1), "stage": found.stage, "eta_seconds": found.eta_seconds}
 
 
 async def mark_interrupted_jobs_as_errored(db: AsyncSession) -> int:
