@@ -19,6 +19,7 @@ from app.models import User
 from app.schemas import ChannelCreate, ChannelOut, ChannelSummary, ChannelUpdate, OkResponse
 from app.services import channel_service
 from app.services.auth_service import get_current_user, require_admin
+from app.services.channel_reset_service import ChannelResetService
 
 router = APIRouter(prefix="/api/settings/channels", tags=["channels"])
 member_router = APIRouter(prefix="/api/channels", tags=["channels"])
@@ -63,6 +64,18 @@ async def delete_channel(
     return OkResponse()
 
 
+@router.post("/{channel_id}/reset", response_model=OkResponse)
+async def reset_channel(
+    channel_id: str,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """Clears the channel's chat history; the channel, members and notes stay."""
+    channel = await channel_service.get_channel_or_404(db, channel_id)
+    await ChannelResetService.reset(db, channel)
+    return OkResponse()
+
+
 @member_router.get("", response_model=list[ChannelSummary])
 async def list_my_channels(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     """The channels `user` is currently a member of — powers the
@@ -74,7 +87,9 @@ async def list_my_channels(db: AsyncSession = Depends(get_db), user: User = Depe
             id=c.id,
             name=c.name,
             conversation_id=c.conversation.id,
-            is_manager=next(m.is_manager for m in c.members if m.user_id == user.id),
+            is_manager=is_manager,
+            can_manage=is_manager or user.role == "admin",
         )
         for c in channels
+        for is_manager in [next(m.is_manager for m in c.members if m.user_id == user.id)]
     ]

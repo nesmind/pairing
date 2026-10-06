@@ -33,6 +33,8 @@ class ChannelSummary(BaseModel):
     name: str
     conversation_id: str
     is_manager: bool
+    # Admins and this channel's managers may change its settings (Behavior tab); true for either.
+    can_manage: bool = False
 
 
 class ChannelCreate(BaseModel):

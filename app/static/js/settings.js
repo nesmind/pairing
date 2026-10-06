@@ -1748,6 +1748,27 @@ async function populateConversationSelect() {
     conversationSelect.appendChild(option);
   }
 
+  // Channels this user may reconfigure: admins and that channel's managers only (the server enforces it too —
+  // see conversation_service.update_conversation). Plain members never get the group.
+  const known = new Set(conversations.map((c) => c.id));
+  let channels = [];
+  try {
+    channels = (await api("/api/channels")).filter((c) => c.can_manage && !known.has(c.conversation_id));
+  } catch (_err) {
+    // Channels unavailable — the personal chats above still work.
+  }
+  if (channels.length) {
+    const group = document.createElement("optgroup");
+    group.label = "Channels";
+    for (const channel of channels) {
+      const option = document.createElement("option");
+      option.value = channel.conversation_id;
+      option.textContent = `#${channel.name}`;
+      group.appendChild(option);
+    }
+    conversationSelect.appendChild(group);
+  }
+
   // Always opens on "Defaults for new chats", not whichever conversation
   // was last open in chat — a specific conversation's own settings are
   // just as reachable one click away in the dropdown.
@@ -4376,6 +4397,7 @@ function renderChannelRow(channel) {
           ${managerCount} manager${managerCount === 1 ? "" : "s"}
         </span>
         <button type="button" class="edit-channel-btn rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800 transition-colors">Edit</button>
+        <button type="button" class="reset-channel-btn rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:border-red-500 hover:text-red-400 transition-colors" title="Clear this channel's chat history (members and notes stay)">Reset</button>
         <button type="button" class="delete-channel-btn rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:border-red-500 hover:text-red-400 transition-colors">Delete</button>
       </span>
     `;
@@ -4393,6 +4415,15 @@ function renderChannelRow(channel) {
           renderView();
         },
       }));
+    });
+    wrap.querySelector(".reset-channel-btn").addEventListener("click", async () => {
+      if (!confirm(`Reset "#${channel.name}"? This permanently deletes its whole chat history for every member. Members and notes are kept. This cannot be undone.`)) return;
+      try {
+        await api(`/api/settings/channels/${channel.id}/reset`, { method: "POST" });
+        alert(`"#${channel.name}" was reset.`);
+      } catch (err) {
+        alert(`Failed to reset: ${err.message}`);
+      }
     });
     wrap.querySelector(".delete-channel-btn").addEventListener("click", async () => {
       if (!confirm(`Permanently delete "#${channel.name}"? This deletes its chat history for every member. This cannot be undone.`)) return;
