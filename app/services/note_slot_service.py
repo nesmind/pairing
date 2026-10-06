@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Conversation, Note, NotePin, User
 from app.schemas import NoteSlotOut
-from app.services.note_service import DEFAULT_NOTE_SEEDS, get_default_note
+from app.services.note_service import DEFAULT_NOTE_SEEDS, default_notes_owner_id, get_default_note
 
 
 def save_disabled_slots(conversation: Conversation, disabled: set[str]) -> None:
@@ -53,7 +53,7 @@ async def resolve_slot(db: AsyncSession, conversation: Conversation, user: User,
     disabled = set((conversation.params or {}).get("disabled_default_notes", []))
     is_active = pin_type not in disabled
 
-    default_note = await get_default_note(db, user.id, pin_type)
+    default_note = await get_default_note(db, default_notes_owner_id(conversation, user.id), pin_type)
     if default_note is None:
         return NoteSlotOut(pin_type=pin_type, active=is_active, is_override=False)
     return NoteSlotOut(
@@ -100,6 +100,9 @@ async def update_slot_content(
         )
     ).scalar_one_or_none()
 
+    # A channel's notes belong to the channel, not to whoever edits: its default notes are one stable
+    # member's (see default_notes_owner_id), so an edit there is always pinned to the channel itself.
+    only_this_chat = only_this_chat or conversation.channel_id is not None
     if only_this_chat:
         if pin is not None:
             pin.note.content = content

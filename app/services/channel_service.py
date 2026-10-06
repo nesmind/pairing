@@ -136,6 +136,9 @@ async def create_channel(db: AsyncSession, body: ChannelCreate, creator: User) -
 
     await db.commit()
     await db.refresh(channel)
+    # The channel's notes are configured once, here (copied from the creator's defaults; see freeze_channel_notes).
+    await note_service.freeze_channel_notes(db, channel.conversation, body.name, creator.id)
+    await db.commit()
     return channel
 
 

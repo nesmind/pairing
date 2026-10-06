@@ -68,11 +68,12 @@ async def delete_channel(
 async def reset_channel(
     channel_id: str,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    admin: User = Depends(require_admin),
 ):
-    """Clears the channel's chat history; the channel, members and notes stay."""
+    """Clears the channel's chat history and re-sets its notes from the admin's defaults; the channel and
+    its members stay."""
     channel = await channel_service.get_channel_or_404(db, channel_id)
-    await ChannelResetService.reset(db, channel)
+    await ChannelResetService.reset(db, channel, admin)
     return OkResponse()
 
 

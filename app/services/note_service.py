@@ -20,7 +20,7 @@ import (this module already imports app.services.channel_service).
 """
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -95,6 +95,63 @@ async def seed_initial_disabled_notes(db: AsyncSession, user: User, params: dict
     return params
 
 
+def default_notes_owner_id(conversation: Conversation, user_id: str) -> str:
+    """Whose default notes a conversation falls back to. A personal chat: the user's own. A channel is
+    shared, so the same notes must apply whoever asks - else every member's own defaults make a different
+    system prompt and the model's prompt cache is thrown away each time the speaker changes. It uses one
+    stable member: the first admin in the channel, else its first manager, else any member (lowest id)."""
+    channel = conversation.channel
+    if channel is None or not channel.members:
+        return user_id
+    members = channel.members
+    admins = [m.user_id for m in members if m.user is not None and m.user.role == "admin"]
+    managers = [m.user_id for m in members if m.is_manager]
+    return min(admins or managers or [m.user_id for m in members])
+
+
+async def freeze_channel_notes(
+    db: AsyncSession, conversation: Conversation, label: str, source_user_id: str, replace: bool = False
+) -> None:
+    """Configures a channel's notes once: copies `source_user_id`'s default notes into the channel as its
+    own pinned notes (every slot not turned off for it), so the channel's system prompt no longer depends
+    on anyone's later edits or on who is asking - which keeps the model's prompt cache valid. Done when the
+    channel is created and when it is reset; `replace` swaps notes already pinned (a clean start), else
+    they are kept. Doesn't commit."""
+    disabled = set((conversation.params or {}).get("disabled_default_notes", []))
+    for slot in NOTE_SLOTS:
+        if slot in disabled:
+            continue
+        pin = (
+            await db.execute(
+                select(NotePin)
+                .options(joinedload(NotePin.note))
+                .where(NotePin.conversation_id == conversation.id, NotePin.pin_type == slot)
+            )
+        ).scalar_one_or_none()
+        if pin is not None and not replace:
+            continue
+        default_note = await get_default_note(db, source_user_id, slot)
+        if default_note is None:
+            continue
+        if pin is not None:
+            old_note = pin.note
+            await db.delete(pin)
+            if old_note.default_type is None:  # a per-chat copy nobody else uses
+                others = await db.scalar(
+                    select(func.count()).select_from(NotePin).where(NotePin.note_id == old_note.id)
+                )
+                if others == 1:
+                    await db.delete(old_note)
+            await db.flush()
+        title, _ = DEFAULT_NOTE_SEEDS[slot]
+        note = Note(
+            owner_id=source_user_id, title=f"{title} — {label}", content=default_note.content, default_type=None
+        )
+        db.add(note)
+        await db.flush()
+        db.add(NotePin(note_id=note.id, conversation_id=conversation.id, pin_type=slot))
+
+
 async def get_default_note(db: AsyncSession, owner_id: str, pin_type: str) -> Note | None:
     """`owner_id`'s protected default note for one slot — the note
     app.services.chat_service falls back to when a conversation has no
@@ -137,6 +194,7 @@ async def resolve_conversation_notes(
         by_type.setdefault(pin.pin_type, []).append(pin.note)
 
     disabled = set((conversation.params or {}).get("disabled_default_notes", []))
+    owner_id = default_notes_owner_id(conversation, owner_id)
     for slot in NOTE_SLOTS:
         if not by_type[slot] and slot not in disabled:
             default_note = await get_default_note(db, owner_id, slot)

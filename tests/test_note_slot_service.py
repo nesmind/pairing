@@ -232,3 +232,98 @@ async def test_update_slot_content_global_creates_default_note_if_somehow_missin
     slot = await note_slot_service.resolve_slot(db, conversation, user, "persona")
     assert slot.content == "First ever content."
     assert slot.is_override is False
+
+
+async def _channel_with_different_default_notes(db, admin_user, user, channel_manager_user):
+    from app.services import note_service
+
+    channel = await channel_service.create_channel(
+        db,
+        ChannelCreate(
+            name="Shared",
+            member_user_ids=[user.id, channel_manager_user.id, admin_user.id],
+            manager_user_ids=[channel_manager_user.id],
+        ),
+        admin_user,
+    )
+    channel.conversation.params = {**channel.conversation.params, "disabled_default_notes": []}  # notes on
+    for member, text in ((user, "alice's persona"), (channel_manager_user, "carol's persona"), (admin_user, "admin's")):
+        await note_service.seed_default_notes(db, member)
+        (await note_service.get_default_note(db, member.id, "persona")).content = text
+    await db.commit()
+    conversation_id = channel.conversation.id
+    db.expunge_all()  # reload like a real request does, with the channel and its members loaded
+    return await db.get(Conversation, conversation_id)
+
+
+@pytest.mark.asyncio
+async def test_a_channel_uses_the_same_default_notes_whoever_is_asking(db, admin_user, user, channel_manager_user):
+    """Different system prompts per sender would make the model's prompt cache start over every time the
+    speaker changes."""
+    from app.services import note_service
+
+    conversation = await _channel_with_different_default_notes(db, admin_user, user, channel_manager_user)
+
+    prompts = []
+    for asker in (user, channel_manager_user, admin_user):
+        notes = await note_service.resolve_conversation_notes(db, conversation, asker.id)
+        prompts.append(note_service.build_pinned_system_prompt(notes))
+    slots = [(await note_slot_service.resolve_slot(db, conversation, u, "persona")).content for u in (user, admin_user)]
+
+    assert len(set(prompts)) == 1 and "admin's" in prompts[0]  # the channel's admin's, not the manager's
+    assert slots == ["admin's"] * 2
+
+
+@pytest.mark.asyncio
+async def test_a_personal_chat_still_uses_its_own_users_default_notes(db, user, admin_user):
+    from app.services import note_service
+
+    await note_service.seed_default_notes(db, user)
+    (await note_service.get_default_note(db, user.id, "persona")).content = "alice's persona"
+    conversation = Conversation(owner_id=user.id, params={})
+    db.add(conversation)
+    await db.commit()
+    await db.refresh(conversation)
+
+    notes = await note_service.resolve_conversation_notes(db, conversation, user.id)
+
+    assert notes["persona"][0].content == "alice's persona"
+
+
+@pytest.mark.asyncio
+async def test_editing_a_channel_note_always_pins_it_to_the_channel(db, admin_user, user, channel_manager_user):
+    from app.services import note_service
+
+    conversation = await _channel_with_different_default_notes(db, admin_user, user, channel_manager_user)
+
+    await note_slot_service.update_slot_content(
+        db, conversation, user, "persona", "New channel text.", only_this_chat=False
+    )
+    await db.commit()
+
+    assert (await note_service.get_default_note(db, user.id, "persona")).content == "alice's persona"  # untouched
+    assert (await note_service.get_default_note(db, admin_user.id, "persona")).content == "admin's"  # too
+    notes = await note_service.resolve_conversation_notes(db, conversation, admin_user.id)
+    assert notes["persona"][0].content == "New channel text."
+
+
+@pytest.mark.asyncio
+async def test_a_channel_without_an_admin_member_uses_its_first_manager_notes(
+    db, admin_user, user, channel_manager_user
+):
+    from app.services import note_service
+
+    channel = await channel_service.create_channel(
+        db,
+        ChannelCreate(
+            name="NoAdmin",
+            member_user_ids=[user.id, channel_manager_user.id],
+            manager_user_ids=[channel_manager_user.id],
+        ),
+        admin_user,
+    )
+    conversation_id = channel.conversation.id
+    db.expunge_all()
+    conversation = await db.get(Conversation, conversation_id)
+
+    assert note_service.default_notes_owner_id(conversation, user.id) == channel_manager_user.id
