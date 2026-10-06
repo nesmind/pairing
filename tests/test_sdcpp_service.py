@@ -145,9 +145,24 @@ async def test_stop_rejects_on_a_non_primary_instance(db, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_status_reports_installed_when_a_binary_path_is_configured(db):
-    await _configure(db)
+async def test_status_reports_installed_when_a_configured_binary_exists(db, tmp_path, monkeypatch):
+    monkeypatch.setattr(sdcpp_service.sdcpp_installer, "is_installed", lambda: False)  # not the real install
+    binary = tmp_path / "sd-server"
+    binary.write_text("x")
+    await _configure(db, binary_path=str(binary))
     assert (await sdcpp_service.get_status(db)).installed is True
+
+
+@pytest.mark.asyncio
+async def test_status_reports_not_installed_when_the_saved_binary_is_gone(db, tmp_path, monkeypatch):
+    monkeypatch.setattr(sdcpp_service.sdcpp_installer, "is_installed", lambda: False)  # not the real install
+    await _configure(db, binary_path=str(tmp_path / "removed-sd-server"))
+    assert (await sdcpp_service.get_status(db)).installed is False
+
+
+def test_build_argv_split_model_uses_diffusion_model_flag():
+    argv = sdcpp_process.build_argv("/b/sd-server", "/m/z.gguf", "--llm /m/q.gguf --vae /m/v.safetensors")
+    assert argv[argv.index("/m/z.gguf") - 1] == "--diffusion-model"
 
 
 def test_build_argv_uses_the_configured_host_port_and_extra_args(monkeypatch):
@@ -236,3 +251,11 @@ async def test_apply_switches_model_when_it_loads(db, monkeypatch):
     sdcpp_process.write_tracking({"pid": 7})
     status = await sdcpp_service.apply(db, SdCppConfig(binary_path="/opt/sd/sd-server", model_path="/ok.gguf"))
     assert status.running and sdcpp_process.read_tracking() == {"pid": 9}
+
+
+@pytest.mark.asyncio
+async def test_status_lists_the_missing_source_build_tools(db, monkeypatch):
+    monkeypatch.setattr(sdcpp_service.sdcpp_source_build, "missing_tools", lambda: ["cmake"])
+    assert (await sdcpp_service.get_status(db)).source_build_missing == ["cmake"]
+    monkeypatch.setattr(sdcpp_service.sdcpp_source_build, "missing_tools", lambda: [])
+    assert (await sdcpp_service.get_status(db)).source_build_missing == []

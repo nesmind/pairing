@@ -38,7 +38,7 @@ class DiffusionModelsSection {
 
   renderRow(entry, local) {
     const row = document.createElement("div");
-    row.className = "rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm flex flex-col justify-between gap-1.5";
+    row.className = "rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm relative flex flex-col justify-between gap-1.5";
     row.dataset.tag = entry.tag; // lets "Add" from the Hugging Face search scroll straight to it
     row.title = entry.tag;
 
@@ -66,11 +66,98 @@ class DiffusionModelsSection {
       action.appendChild(this.textSpan("Not installed — ask an admin", "text-xs text-slate-500"));
     }
 
+
     const top = document.createElement("div");
     top.className = "flex flex-col gap-1.5";
+    if (entry.companions?.length) {
+      const { toggle, box } = this.renderCompanions(entry, local && isAdmin, progress, reload);
+      action.appendChild(toggle); // same line as Installed/Pull, so the row keeps its height
+      row.appendChild(box);
+    }
     top.append(label, action);
-    row.append(top, progress);
+    row.prepend(top);
+    row.append(progress);
     return row;
+  }
+
+  // Split models need a text encoder/VAE too. Never fetched automatically: the admin ticks what to download,
+  // or supplies their own via Settings > Image > extra args (--llm/--vae). Collapsed to one line until clicked.
+  renderCompanions(entry, canPull, progress, reload) {
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "ml-auto text-xs text-slate-500 hover:text-slate-300 transition-colors";
+    toggle.title = "Extra models needed to run";
+    toggle.textContent = "Extra models ▸";
+    const box = document.createElement("div");
+    // Floats over what is below, so opening it never resizes this row or the one beside it.
+    box.className = "hidden absolute inset-x-0 top-full z-20 mt-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-400 space-y-1 shadow-lg";
+    toggle.addEventListener("click", () => {
+      const open = box.classList.toggle("hidden") === false;
+      toggle.textContent = `Extra models ${open ? "▾" : "▸"}`;
+    });
+    box.append(this.textSpan("Extra models needed to run", "block font-medium text-slate-300"));
+
+    if (!entry.installed) {
+      const names = entry.companions.map((c) => `${c.label} (${formatSize(c.size_gb)})`).join(", ");
+      box.append(`${names}. You choose what to download after installing.`);
+      return { toggle, box };
+    }
+    const missing = entry.companions.filter((c) => !c.installed);
+    for (const c of entry.companions.filter((c) => c.installed)) {
+      box.appendChild(this.textSpan(`✓ ${c.label} (${formatSize(c.size_gb)}) — installed`, "block text-emerald-400"));
+    }
+    if (!missing.length) return { toggle, box };
+    const checks = missing.map((c) => {
+      const label = document.createElement("label");
+      label.className = "flex items-center gap-1.5";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.value = c.flag;
+      input.disabled = !canPull;
+      label.append(input, `${c.label} (${formatSize(c.size_gb)})`);
+      box.appendChild(label);
+      return input;
+    });
+    if (canPull) {
+      box.appendChild(this.button("Download selected", (btn) => this.pullCompanions(entry, checks, btn, progress, reload)));
+    }
+    return { toggle, box };
+  }
+
+  async pullCompanions(entry, checks, btn, progress, reload) {
+    const flags = checks.filter((c) => c.checked).map((c) => c.value);
+    if (!flags.length) return;
+    btn.disabled = true;
+    progress.classList.remove("hidden");
+    progress.textContent = "Starting…";
+    try {
+      const response = await fetch("/api/settings/image-models/companions/pull", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tag: entry.tag, flags }),
+      });
+      if (!response.ok || !response.body) throw new Error((await response.json().catch(() => ({}))).detail || `Failed (${response.status})`);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop();
+        for (const frame of frames) {
+          if (!frame.startsWith("data:")) continue;
+          const ev = JSON.parse(frame.slice(5).trim());
+          if (ev.error) throw new Error(ev.error);
+          if (ev.total) progress.textContent = `${ev.status} — ${Math.round((ev.completed / ev.total) * 100)}%`;
+        }
+      }
+      await reload();
+    } catch (err) {
+      progress.textContent = `Failed: ${err.message}`;
+      btn.disabled = false;
+    }
   }
 
   textSpan(text, className) {

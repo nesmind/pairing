@@ -3,13 +3,14 @@ comfyui_service — explicit imperative start/stop, primary instance only, never
 (see that module's docstring for why)."""
 
 import asyncio
+from pathlib import Path
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import IS_PRIMARY, SDCPP_HOST
 from app.schemas import SdCppConfig, SdCppStatus
-from app.services import image_engine_service, sdcpp_installer, sdcpp_process
+from app.services import image_engine_service, sdcpp_installer, sdcpp_process, sdcpp_source_build
 from app.services.image_model_service import ImageModelStore
 
 _HEALTH_CHECK_TIMEOUT = httpx.Timeout(3.0, connect=2.0)
@@ -27,10 +28,18 @@ async def _ping_health() -> bool:
 async def get_status(db: AsyncSession) -> SdCppStatus:
     tracked = sdcpp_process.read_tracking()
     config = await image_engine_service.get_sdcpp_config(db)
-    installed = sdcpp_installer.is_installed() or bool(config.binary_path)
+    # A saved path counts only while the file is still there (a removed install left it behind).
+    installed = sdcpp_installer.is_installed() or bool(config.binary_path and Path(config.binary_path).is_file())
+    missing = sdcpp_source_build.missing_tools()
     if tracked is None or not config.binary_path or not sdcpp_process.is_alive(tracked["pid"], config.binary_path):
-        return SdCppStatus(running=False, installed=installed)
-    return SdCppStatus(running=True, installed=installed, pid=tracked["pid"], healthy=await _ping_health())
+        return SdCppStatus(running=False, installed=installed, source_build_missing=missing)
+    return SdCppStatus(
+        running=True,
+        installed=installed,
+        pid=tracked["pid"],
+        healthy=await _ping_health(),
+        source_build_missing=missing,
+    )
 
 
 async def _only_installed_model(db: AsyncSession) -> str | None:

@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 from app.config import DATA_DIR, SDCPP_HOST
 from app.services.comfyui_process import is_alive, terminate
+from app.services.image_companions import ImageCompanions
 
 __all__ = ["is_alive", "terminate", "read_tracking", "write_tracking", "spawn", "StartupError"]
 
@@ -63,18 +64,27 @@ def write_tracking(info: dict | None) -> None:
         _TRACKING_FILE.write_text(json.dumps(info))
 
 
+_SPLIT_FLAGS = {"--llm", "--vae", "--t5xxl", "--clip_l", "--clip_g", "--clip_vision", "--qwen2vl"}
+
+
 def build_argv(binary_path: str, model_path: str, extra_args: str | None) -> list[str]:
-    """Listens on SDCPP_HOST's port (loopback only unless extra_args overrides -l)."""
+    """Listens on SDCPP_HOST's port (loopback only unless extra_args overrides -l). Split models (separate
+    text encoder/VAE given) load via --diffusion-model: bare-named tensors need its name prefix to be detected."""
     port = urlparse(SDCPP_HOST).port or 8189
+    extra = shlex.split(extra_args or "")
+    for flag, path in ImageCompanions.args(Path(model_path)).items():  # a known split model's encoder/VAE
+        if flag not in extra:
+            extra += [flag, path]
+    model_flag = "--diffusion-model" if _SPLIT_FLAGS & set(extra) else "-m"
     return [
         binary_path,
         "-l",
         "127.0.0.1",
         "--listen-port",
         str(port),
-        "-m",
+        model_flag,
         model_path,
-        *shlex.split(extra_args or ""),
+        *extra,
     ]
 
 

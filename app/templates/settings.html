@@ -191,10 +191,11 @@
 
       <!-- Embedding model: powers the Knowledge base (RAG) feature on the Knowledge tab, never used for chat —
            kept as its own small section here rather than mixed into the chat-model catalog above (see
-           app.model_catalog.EMBEDDING_CATALOG's own docstring for why it's a wholly separate list). Visible to
-           every user (installed status isn't admin-secret, same as the #rag-unavailable banner on the Knowledge
-           tab this mirrors); only the Pull button itself is admin-gated. -->
-      <div{% if not is_admin %} class="hidden"{% endif %}>
+           app.model_catalog.EMBEDDING_CATALOG's own docstring for why it's a wholly separate list). Rendered on the
+           admin page only (an admin's own /settings page doesn't get the embedding and diffusion sections either);
+           regular users see their chat models only. -->
+      {% if admin_page %}
+      <div>
       <section class="space-y-3 border-t border-slate-800 pt-6">
         <h2 class="text-sm font-semibold text-slate-200">Embedding model</h2>
         <p class="text-xs text-slate-500 -mt-2">Powers the Knowledge base (RAG) feature on the Knowledge tab — not used for chat.</p>
@@ -212,6 +213,7 @@
         <div id="diffusion-model-catalog" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
       </section>
       </div>
+      {% endif %}
 
     </div>
 
@@ -295,7 +297,7 @@
             <label class="text-xs font-medium text-slate-300">Chunks retrieved per question</label>
             <span class="text-xs font-mono text-slate-400" id="rag-top-k-value">4</span>
           </div>
-          <input type="range" id="rag-top-k" min="1" max="10" step="1" value="4" class="w-full accent-brand-600">
+          <input type="range" id="rag-top-k" min="1" max="10" step="1" value="4" class="slim-slider slim-slider-ring block w-full">
           <p class="mt-1 text-xs text-slate-500">More chunks give the model more potentially-relevant context, but also more noise and a larger prompt.</p>
         </div>
       </section>

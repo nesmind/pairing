@@ -20,6 +20,7 @@ import httpx
 from app.config import EXTERNAL_DIR, SDCPP_GITHUB_REPO, SDCPP_PINNED_VERSION
 from app.hardware import local_install_supported
 from app.schemas import SdCppBuild
+from app.services import sdcpp_source_build
 
 logger = logging.getLogger("llama_chat")
 
@@ -122,6 +123,7 @@ async def install_stream(
     build: SdCppBuild = "auto",
 ) -> AsyncIterator[dict]:
     """Same event shape as the other installers ({"status"...}, then {"done": True, ...} or {"error": ...})."""
+    version_override = version  # a source build follows the default branch unless the admin pinned a ref
     repo = repo or SDCPP_GITHUB_REPO
     version = version or SDCPP_PINNED_VERSION
     build = resolve_build(build)
@@ -133,6 +135,11 @@ async def install_stream(
                 'stable-diffusion.cpp yourself, then use "Enter its paths manually", or use Remote mode.'
             )
         }
+        return
+
+    if build == "source":
+        async for event in sdcpp_source_build.build_stream(repo, version_override, proxy_url, install_dir()):
+            yield event
         return
 
     download_meta = {"step": _STEP_DOWNLOAD, "total_steps": _TOTAL_STEPS, "step_label": "Downloading"}
@@ -171,7 +178,7 @@ async def install_stream(
     preserved = _preserve_models_dir(target_dir)
     try:
         for child in target_dir.iterdir():
-            if child == archive_path:
+            if child == archive_path or child.name in ("src", "build"):  # a source build's kept clone and build tree
                 continue
             if child.is_dir():
                 shutil.rmtree(child)

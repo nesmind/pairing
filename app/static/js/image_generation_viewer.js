@@ -30,9 +30,12 @@
 
   function openViewer(img) {
     viewer ??= buildViewer();
-    viewer.querySelector("[data-viewer-img]").src = img.src;
-    viewer.querySelector("[data-viewer-img]").alt = img.alt;
-    viewer.querySelector("[data-viewer-caption]").textContent = img.alt;
+    const big = viewer.querySelector("[data-viewer-img]");
+    const caption = viewer.querySelector("[data-viewer-caption]");
+    big.onload = () => (caption.textContent = `${img.alt} (${big.naturalWidth}×${big.naturalHeight})`);
+    big.src = img.src;
+    big.alt = img.alt;
+    caption.textContent = img.alt;
     viewer.classList.remove("hidden");
   }
 

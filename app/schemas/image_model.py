@@ -34,3 +34,10 @@ class DiffusionModelCatalogResponse(BaseModel):
 
 class ImageModelRequest(BaseModel):
     tag: str
+
+
+class CompanionPullRequest(BaseModel):
+    """The companion files (by flag, e.g. "--llm") the user chose to download for a model."""
+
+    tag: str
+    flags: list[str]

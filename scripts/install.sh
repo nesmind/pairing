@@ -253,6 +253,21 @@ agent (systemd's closest macOS equivalent) — scripts/pairing.service is
 a Linux-only systemd template, not applicable here.
 EOF
 fi
+if [ "$OS_NAME" = "Linux" ]; then
+    MISSING_BUILD_TOOLS=""
+    for tool in git cmake; do
+        command -v "$tool" > /dev/null 2>&1 || MISSING_BUILD_TOOLS="$MISSING_BUILD_TOOLS $tool"
+    done
+    if ! command -v g++ > /dev/null 2>&1 && ! command -v c++ > /dev/null 2>&1; then
+        MISSING_BUILD_TOOLS="$MISSING_BUILD_TOOLS g++"
+    fi
+    if [ -n "$MISSING_BUILD_TOOLS" ]; then
+        echo
+        info "Optional: Settings > Image can compile stable-diffusion.cpp from source, which needs:$MISSING_BUILD_TOOLS"
+        info "  Debian/Ubuntu: sudo apt install git cmake build-essential"
+        info "  (the one-click prebuilt download works without them)"
+    fi
+fi
 if [ "$OLLAMA_FOUND" = false ]; then
     echo
     warn "Remember: Ollama still isn't installed — pAIring will start and you then can download and install it from pAIring UI, on macOS you will have to install it yourself later on"

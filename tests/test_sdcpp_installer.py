@@ -152,6 +152,20 @@ async def test_reinstall_preserves_downloaded_models_and_replaces_old_files(tmp_
 
 
 @pytest.mark.asyncio
+async def test_a_download_reinstall_keeps_a_source_builds_clone_and_build_tree(tmp_path, monkeypatch):
+    target = tmp_path / "stable-diffusion.cpp"
+    for kept in ("src", "build"):
+        (target / kept).mkdir(parents=True)
+        (target / kept / "file.txt").write_text(kept)
+    _install_fake_github(monkeypatch, _ASSETS, _zip_bytes({"sd-server": b"bin"}))
+
+    assert (await _collect())[-1]["done"] is True
+
+    assert (target / "src" / "file.txt").read_text() == "src"
+    assert (target / "build" / "file.txt").read_text() == "build"
+
+
+@pytest.mark.asyncio
 async def test_install_stream_reports_a_corrupt_archive(monkeypatch):
     _install_fake_github(monkeypatch, _ASSETS, b"not a zip")
     events = await _collect()

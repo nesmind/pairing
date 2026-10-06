@@ -87,7 +87,7 @@ def test_load_raises_on_a_missing_top_level_key(tmp_path):
 def test_default_models_json_ships_the_sd_turbo_diffusion_default():
     from app.model_catalog import CATALOG
 
-    [entry] = CATALOG.diffusion_models
+    entry = CATALOG.diffusion_models[0]
     assert entry.tag == "hf.co/Green-Sky/SD-Turbo-GGUF:sd_turbo-f16-q8_0"
     assert CATALOG.find_diffusion(entry.tag) is entry and CATALOG.find(entry.tag) is None  # never a chat model
     assert CATALOG.find_embedding(entry.tag) is None

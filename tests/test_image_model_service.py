@@ -11,13 +11,15 @@ from fastapi import HTTPException
 
 from app.routers import image_model_admin
 from app.schemas import ImageModelRequest, SdCppConfig
-from app.services import image_engine_service, image_model_service
+from app.services import hf_download, image_engine_service, image_model_service, sdcpp_process
 from app.services.extended_model_catalog_service import ExtendedModelCatalog
 from app.services.huggingface_client import HuggingFaceCatalogSearch
+from app.services.image_companions import ImageCompanions
 from app.services.image_model_service import ImageModelStore
 
 _REAL_CLIENT = httpx.AsyncClient
 _TAG = "hf.co/Green-Sky/SD-Turbo-GGUF:sd_turbo-f16-q8_0"
+_Z_TAG = "hf.co/leejet/Z-Image-Turbo-GGUF:z_image_turbo-Q4_0"
 _REPO = "Green-Sky/SD-Turbo-GGUF"
 _FILE = "sd_turbo-f16-q8_0.gguf"
 
@@ -44,7 +46,7 @@ def _fake_hf(monkeypatch, body=b"weights", status=200):
         return httpx.Response(status, content=body, headers={"content-length": str(len(body))})
 
     monkeypatch.setattr(
-        image_model_service.httpx,
+        hf_download.httpx,
         "AsyncClient",
         lambda **kw: _REAL_CLIENT(transport=httpx.MockTransport(handler), **kw),
     )
@@ -154,7 +156,8 @@ async def test_the_curated_default_is_pullable_without_any_admin_registration(db
 
 @pytest.mark.asyncio
 async def test_catalog_lists_the_curated_default_first_not_installed(db):
-    [entry] = await (await ImageModelStore.open(db)).catalog_entries()
+    entries = await (await ImageModelStore.open(db)).catalog_entries()
+    entry = entries[0]
     assert entry.tag == _TAG and entry.is_image and not entry.installed and not entry.removable
     assert entry.family == "SD-Turbo" and entry.download_gb == 2.02
 
@@ -164,7 +167,7 @@ async def test_catalog_marks_an_installed_model_and_ignores_untagged_files(db, m
     (models_root / _REPO).mkdir(parents=True)
     (models_root / _REPO / _FILE).write_bytes(b"x" * 10)
     (models_root / "loose.gguf").write_bytes(b"x")
-    [entry] = await (await ImageModelStore.open(db)).catalog_entries()
+    entry = next(e for e in await (await ImageModelStore.open(db)).catalog_entries() if e.tag == _TAG)
     assert entry.installed and entry.tag == _TAG
 
 
@@ -178,11 +181,11 @@ async def test_catalog_adds_admin_added_and_otherwise_installed_models_after_the
 
     entries = await (await ImageModelStore.open(db)).catalog_entries(is_admin=True)
 
-    assert [e.tag for e in entries] == [_TAG, added, "hf.co/org/Other-GGUF:other"]
+    assert [e.tag for e in entries] == [_TAG, _Z_TAG, added, "hf.co/org/Other-GGUF:other"]
     by_tag = {e.tag: e for e in entries}
     assert by_tag[added].removable and not by_tag[added].installed  # an admin may drop a not-installed addition
     assert not by_tag["hf.co/org/Other-GGUF:other"].removable and by_tag["hf.co/org/Other-GGUF:other"].installed
-    assert not (await (await ImageModelStore.open(db)).catalog_entries())[1].removable  # not for a non-admin
+    assert not (await (await ImageModelStore.open(db)).catalog_entries())[2].removable  # not for a non-admin
 
 
 def test_is_image_repo_detection():
@@ -249,7 +252,7 @@ async def test_router_list_pull_and_delete(db, models_root, monkeypatch):
     _fake_hf(monkeypatch)
 
     catalog = await image_model_admin.get_diffusion_model_catalog(db=db, user=SimpleNamespace(role="admin"))
-    assert catalog.local is True and [e.tag for e in catalog.entries] == [_TAG]
+    assert catalog.local is True and [e.tag for e in catalog.entries] == [_TAG, _Z_TAG]
     listing = await image_model_admin.list_image_models(db=db, _admin=None)
     assert listing.models == [] and listing.local is True
 
@@ -297,3 +300,66 @@ async def test_router_catalog_reports_a_remote_engine_as_not_local(db):
     await image_engine_service.set_sdcpp_config(db, SdCppConfig(mode="remote", remote_hosts=["http://h:1"]))
     catalog = await image_model_admin.get_diffusion_model_catalog(db=db, user=SimpleNamespace(role="user"))
     assert catalog.local is False
+
+
+@pytest.mark.asyncio
+async def test_pull_never_fetches_companions_until_the_user_picks_them(db, models_root, monkeypatch):
+    _fake_hf(monkeypatch)
+    store = await ImageModelStore.open(db)
+    assert (await _download(store, _Z_TAG))[-1] == {"done": True}
+    model = store.path_for(_Z_TAG)
+    assert ImageCompanions.args(model) == {}
+    assert [(c.flag, c.installed) for c in store.companions_for(_Z_TAG)] == [("--llm", False), ("--vae", False)]
+
+    events = [e async for e in store.download_companions(_Z_TAG, ["--vae"], None)]
+    assert events[-1] == {"done": True}
+    assert sorted(ImageCompanions.args(model)) == ["--vae"]  # only the ticked one
+    assert [f.name for f in store.list_files()] == [f"leejet/Z-Image-Turbo-GGUF/{model.name}"]  # not companions
+    await store.delete(_Z_TAG)
+    assert not model.parent.exists()
+
+
+def test_build_argv_adds_companions_found_beside_the_model(tmp_path):
+    model = tmp_path / "z_image_turbo-Q4_0.gguf"
+    comp = tmp_path / "_companions"
+    comp.mkdir()
+    (comp / "ae.safetensors").write_bytes(b"x")
+    argv = sdcpp_process.build_argv("/b/sd-server", str(model), None)
+    assert argv[argv.index(str(model)) - 1] == "--diffusion-model"
+    assert argv[argv.index("--vae") + 1] == str(comp / "ae.safetensors") and "--llm" not in argv
+
+
+@pytest.mark.asyncio
+async def test_router_companions_pull_downloads_only_the_chosen_flags(db, models_root, monkeypatch):
+    from app.schemas import CompanionPullRequest
+
+    _fake_hf(monkeypatch)
+    entry = next(e for e in await (await ImageModelStore.open(db)).catalog_entries() if e.tag == _Z_TAG)
+    assert [(c.flag, c.installed) for c in entry.companions] == [("--llm", False), ("--vae", False)]
+
+    response = await image_model_admin.pull_image_model_companions(
+        CompanionPullRequest(tag=_Z_TAG, flags=["--llm"]), db=db, _admin=None
+    )
+    frames = [chunk async for chunk in response.body_iterator]
+    assert '"done": true' in frames[-1]
+    model = (await ImageModelStore.open(db)).path_for(_Z_TAG)
+    assert list(ImageCompanions.args(model)) == ["--llm"]
+
+
+@pytest.mark.asyncio
+async def test_delete_keeps_companions_while_another_quant_shares_them(db, models_root):
+    store = await ImageModelStore.open(db)
+    model = store.path_for(_Z_TAG)
+    sibling = model.with_name("z_image_turbo-Q8_0.gguf")
+    comp = ImageCompanions.dir_for(model)
+    comp.mkdir(parents=True)
+    model.write_bytes(b"x")
+    sibling.write_bytes(b"x")
+    (comp / "ae.safetensors").write_bytes(b"x")
+
+    await store.delete(_Z_TAG)
+    assert comp.is_dir()  # the Q8_0 file still needs them
+    sibling.unlink()
+    model.write_bytes(b"x")
+    await store.delete(_Z_TAG)
+    assert not comp.exists()

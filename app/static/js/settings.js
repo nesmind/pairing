@@ -167,7 +167,7 @@ function renderSliders(params) {
         <span class="text-xs font-mono text-slate-400" data-value-for="${def.key}">${params[def.key]}</span>
       </div>
       <input type="range" data-param="${def.key}" min="${def.min}" max="${def.max}" step="${def.step}"
-        value="${params[def.key]}" class="w-full accent-brand-600">
+        value="${params[def.key]}" class="slim-slider slim-slider-ring block w-full">
       <p class="mt-1 text-xs text-slate-500">${def.help}</p>
     `;
     paramSlidersEl.appendChild(row);
@@ -1221,6 +1221,7 @@ function applyRagAvailabilityToKnowledgeTab() {
 }
 
 async function loadEmbeddingCatalog() {
+  if (!embeddingModelCatalogEl) return; // the section exists on the admin page only
   currentEmbeddingCatalog = await api("/api/settings/embedding-model-catalog");
   renderEmbeddingCatalog();
 }
@@ -2300,6 +2301,13 @@ function applyServerVisibility(server, section) {
   if (installControls) installControls.classList.toggle("hidden", mode !== "local" || manualOverride);
   const installBtn = section.querySelector('[data-action="install"]');
   if (installBtn) installBtn.textContent = status.installed ? "Reinstall from GitHub" : "Install from GitHub";
+  const sourceBtn = section.querySelector('[data-action="build-source"]');
+  if (sourceBtn) {
+    const missing = status.source_build_missing ?? [];
+    sourceBtn.textContent = status.installed ? "Rebuild from source" : "Build from source";
+    sourceBtn.disabled = missing.length > 0;
+    if (missing.length) sourceBtn.title = `Needs ${missing.join(", ")} - on Debian/Ubuntu: sudo apt install git cmake build-essential`;
+  }
 
   const notInstalledPanel = section.querySelector('[data-field="local-not-installed"]');
   const installedPanel = section.querySelector('[data-field="local-installed"]');
@@ -2424,8 +2432,8 @@ function collectServerConfig(server, section) {
 }
 
 /** stable-diffusion.cpp's build choice (CPU/Vulkan/ROCm) rides along as a query param, so it applies without a prior Save. */
-function installQuery(server, section) {
-  const build = server === "sdcpp" ? section.querySelector('[data-field="build"]')?.value : null;
+function installQuery(server, section, buildOverride = null) {
+  const build = buildOverride || (server === "sdcpp" ? section.querySelector('[data-field="build"]')?.value : null);
   return build ? `?build=${encodeURIComponent(build)}` : "";
 }
 
@@ -2917,34 +2925,33 @@ for (const server of EXTERNAL_SERVERS) {
   }
 
   const installBtn = section.querySelector('[data-action="install"]');
-  if (installBtn) {
-    installBtn.addEventListener("click", async () => {
-      // Reinstalling overwrites the managed install directory outright (see app.services.ollama_installer/
-      // comfyui_installer/matricxon_installer's own shutil.rmtree on the existing target_dir) — doing that out
-      // from under an actively-running process is exactly the kind of thing that leaves it in a broken half-
-      // updated state, so this always stops it first if it's up, same confirm-before-interrupting convention
-      // the Save button already uses for a local-mode restart.
-      const status = lastServerStatus[server];
-      const wasRunning = !!status?.running;
-      if (wasRunning) {
-        const engineLabel = { ollama: "Ollama", matricxon: "Matricxon", comfyui: "ComfyUI", sdcpp: "stable-diffusion.cpp" }[server] || server;
-        if (!confirm(`${engineLabel} is currently running — reinstalling stops it first. Continue?`)) return;
-        installBtn.disabled = true;
-        try {
-          renderServerStatus(section, await api(`/api/settings/${server}/stop`, { method: "POST" }));
-        } catch (err) {
-          alert(`Could not stop ${engineLabel} first: ${err.message}`);
-          installBtn.disabled = false;
-          return;
-        }
-        installBtn.disabled = false;
+  const sourceBtn = section.querySelector('[data-action="build-source"]');
+  // Reinstalling overwrites the managed install directory outright — doing that out from under an actively-running
+  // process leaves it half-updated, so this always stops it first if it's up (confirmed, same convention as Save).
+  async function startInstall(button, buildOverride = null) {
+    const status = lastServerStatus[server];
+    const wasRunning = !!status?.running;
+    if (wasRunning) {
+      const engineLabel = { ollama: "Ollama", matricxon: "Matricxon", comfyui: "ComfyUI", sdcpp: "stable-diffusion.cpp" }[server] || server;
+      const buildNote = buildOverride === "source" ? " Building from source can take 10-30 minutes, and it stays stopped meanwhile." : "";
+      if (!confirm(`${engineLabel} is currently running — reinstalling stops it first.${buildNote} Continue?`)) return;
+      button.disabled = true;
+      try {
+        renderServerStatus(section, await api(`/api/settings/${server}/stop`, { method: "POST" }));
+      } catch (err) {
+        alert(`Could not stop ${engineLabel} first: ${err.message}`);
+        button.disabled = false;
+        return;
       }
-      // Only restart afterward if *this* click is the reason it's stopped — a first-time install (nothing was
-      // running before) leaves it stopped on purpose, matching Ollama/ComfyUI's existing convention of a
-      // separate, deliberate first Start click.
-      await installServer(server, section, wasRunning);
-    });
+      button.disabled = false;
+    }
+    // Only restart afterward if *this* click is the reason it's stopped — a first-time install (nothing was
+    // running before) leaves it stopped on purpose, matching Ollama/ComfyUI's existing convention of a
+    // separate, deliberate first Start click.
+    await installServer(server, section, wasRunning, buildOverride);
   }
+  installBtn?.addEventListener("click", () => startInstall(installBtn));
+  sourceBtn?.addEventListener("click", () => startInstall(sourceBtn, "source"));
 }
 
 /**
@@ -3033,7 +3040,7 @@ function setInstallBarIndeterminate(barEl, indeterminate) {
   barEl.classList.toggle("hidden", indeterminate);
 }
 
-async function installServer(server, section, restartAfter = false) {
+async function installServer(server, section, restartAfter = false, buildOverride = null) {
   const installIdle = section.querySelector('[data-field="install-idle"]');
   const progressPanel = section.querySelector('[data-field="install-progress-panel"]');
   const stepLabelEl = section.querySelector('[data-field="install-step-label"]');
@@ -3061,7 +3068,7 @@ async function installServer(server, section, restartAfter = false) {
   setInstallBarIndeterminate(barEl, true);
 
   try {
-    const response = await fetch(`/api/settings/${server}/install${installQuery(server, section)}`, { method: "POST" });
+    const response = await fetch(`/api/settings/${server}/install${installQuery(server, section, buildOverride)}`, { method: "POST" });
     if (!response.ok || !response.body) {
       const body = await response.json().catch(() => ({}));
       throw new Error(body.detail || `Install failed (${response.status})`);

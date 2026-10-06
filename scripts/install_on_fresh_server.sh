@@ -64,10 +64,11 @@ fi
 success "Detected: $PRETTY_NAME"
 
 # ---------------------------------------------------------------------------
-step "2. Installing system packages (python3, venv)"
+step "2. Installing system packages (python3, venv, build tools)"
 # ---------------------------------------------------------------------------
 apt-get update -qq
-apt-get install -y -qq python3 python3-venv python3-pip rsync
+# git/cmake/build-essential: for Settings > Image > "Build from source" (stable-diffusion.cpp), optional but cheap
+apt-get install -y -qq python3 python3-venv python3-pip rsync git cmake build-essential
 success "System packages installed."
 
 # ---------------------------------------------------------------------------

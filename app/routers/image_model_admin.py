@@ -10,7 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import User
-from app.schemas import DiffusionModelCatalogResponse, ImageModelList, ImageModelRequest, OkResponse
+from app.schemas import (
+    CompanionPullRequest,
+    DiffusionModelCatalogResponse,
+    ImageModelList,
+    ImageModelRequest,
+    OkResponse,
+)
 from app.services import http_proxy_service
 from app.services.auth_service import get_current_user, require_admin
 from app.services.extended_model_catalog_service import ExtendedModelCatalog
@@ -50,6 +56,29 @@ async def pull_image_model(
 
     async def event_stream():
         async for event in store.download(repo_id, filename, dest, proxy_url):
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/companions/pull")
+async def pull_image_model_companions(
+    body: CompanionPullRequest, db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)
+):
+    """Downloads only the companion files (text encoder, VAE) the admin ticked — SSE like /pull."""
+    store = await ImageModelStore.open(db)
+    try:
+        await store.prepare_pull(body.tag)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    proxy_url = (await http_proxy_service.get_http_proxy_config(db)).proxy_url()
+
+    async def event_stream():
+        async for event in store.download_companions(body.tag, body.flags, proxy_url):
             yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(

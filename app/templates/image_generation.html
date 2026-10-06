@@ -71,32 +71,41 @@
           <select id="gen-checkpoint"
             class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500"></select>
         </div>
-        <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          <div>
-            <label class="block text-xs font-medium text-slate-400 mb-1">Width</label>
-            <input id="gen-width" type="number" value="512" min="64" max="2048" step="64"
-              class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+          <div title="Image width in pixels.">
+            <div class="flex items-center justify-between mb-1">
+              <label for="gen-width" class="text-xs font-medium text-slate-400">Width</label>
+              <span id="gen-width-value" class="text-[11px] font-mono text-slate-500">512</span>
+            </div>
+            <input type="range" id="gen-width" data-slider min="64" max="2048" step="64" value="512" class="slim-slider slim-slider-ring block w-full">
           </div>
-          <div>
-            <label class="block text-xs font-medium text-slate-400 mb-1">Height</label>
-            <input id="gen-height" type="number" value="512" min="64" max="2048" step="64"
-              class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+          <div title="Image height in pixels.">
+            <div class="flex items-center justify-between mb-1">
+              <label for="gen-height" class="text-xs font-medium text-slate-400">Height</label>
+              <span id="gen-height-value" class="text-[11px] font-mono text-slate-500">512</span>
+            </div>
+            <input type="range" id="gen-height" data-slider min="64" max="2048" step="64" value="512" class="slim-slider slim-slider-ring block w-full">
           </div>
           <div title="Cleanup rounds. More = more detail but proportionally slower. Turbo models need only 1-4.">
-            <label class="block text-xs font-medium text-slate-400 mb-1">Steps</label>
-            <input id="gen-steps" title="Cleanup rounds. More = more detail but proportionally slower. Turbo models need only 1-4." type="number" value="1" min="1" max="150"
-              class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+            <div class="flex items-center justify-between mb-1">
+              <label for="gen-steps" class="text-xs font-medium text-slate-400">Steps</label>
+              <span id="gen-steps-value" class="text-[11px] font-mono text-slate-500">1</span>
+            </div>
+            <input type="range" id="gen-steps" data-slider min="1" max="150" step="1" value="1" class="slim-slider slim-slider-ring block w-full">
           </div>
           <div title="How strictly the image follows the prompt. Above ~1 each step runs twice (slower). Turbo models: use 1.">
-            <label class="block text-xs font-medium text-slate-400 mb-1">CFG</label>
-            <input id="gen-cfg" title="How strictly the image follows the prompt. Above ~1 each step runs twice (slower). Turbo models: use 1." type="number" value="1" min="0" max="30" step="0.5"
-              class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+            <div class="flex items-center justify-between mb-1">
+              <label for="gen-cfg" class="text-xs font-medium text-slate-400">CFG</label>
+              <span id="gen-cfg-value" class="text-[11px] font-mono text-slate-500">1</span>
+            </div>
+            <input type="range" id="gen-cfg" data-slider min="0" max="30" step="0.5" value="1" class="slim-slider slim-slider-ring block w-full">
           </div>
-          <div title="Starting noise. -1 = random each time; a fixed number repeats the same image for the same settings.">
-            <label class="block text-xs font-medium text-slate-400 mb-1">Seed</label>
-            <input id="gen-seed" title="Starting noise. -1 = random each time; a fixed number repeats the same image for the same settings." type="number" value="-1" placeholder="-1 = random"
-              class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
-          </div>
+        </div>
+        <div class="flex items-center gap-2" title="Starting noise. -1 = random each time; a fixed number repeats the same image for the same settings.">
+          <label for="gen-seed" class="text-xs font-medium text-slate-400 shrink-0">Seed</label>
+          <input id="gen-seed" type="number" value="-1" placeholder="-1 = random"
+            class="w-36 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs focus:outline-none focus:border-brand-500">
+          <button id="gen-seed-random" type="button" class="text-xs text-slate-500 hover:text-slate-300 transition-colors">Random</button>
         </div>
         <div class="flex items-center gap-3 pt-1">
           <button id="gen-generate-btn" type="button"
@@ -121,6 +130,7 @@
 <script src="/static/js/app.js?v={{ static_version }}"></script>
 <script src="/static/js/theme.js?v={{ static_version }}"></script>
 <script src="/static/js/account_panel.js?v={{ static_version }}"></script>
+<script src="/static/js/image_generation_sliders.js?v={{ static_version }}"></script>
 <script src="/static/js/image_generation_source.js?v={{ static_version }}"></script>
 <script src="/static/js/image_generation_viewer.js?v={{ static_version }}"></script>
 <script src="/static/js/image_generation.js?v={{ static_version }}"></script>

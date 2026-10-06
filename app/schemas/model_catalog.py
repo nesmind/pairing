@@ -25,6 +25,15 @@ class EngineModelSupport(BaseModel):
     min_ram_gb: float | None = None
 
 
+class CompanionFile(BaseModel):
+    """An extra file a split image model needs (text encoder, VAE) — offered, never downloaded automatically."""
+
+    flag: str
+    label: str
+    size_gb: float
+    installed: bool
+
+
 class CatalogEntry(BaseModel):
     """One model Settings can offer — either already pulled into the ML engine,
     pullable-and-compatible, or blocked by hardware. See
@@ -131,6 +140,8 @@ class CatalogEntry(BaseModel):
     # an Ollama/Matricxon chat model: the frontend offers Pull/Uninstall (via /api/settings/image-models) but no
     # Select/Disable, and no chat-engine support badge.
     is_image: bool = False
+    # Image models only: extra files the model needs beside its weights, and whether each is on disk.
+    companions: list[CompanionFile] = Field(default_factory=list)
 
     # --- Backward-compatible views onto engine_support above -----------------------------------------------
     # Computed, not settable at construction time — every producer builds engine_support directly instead (see

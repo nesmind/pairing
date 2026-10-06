@@ -16,17 +16,17 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from urllib.parse import quote
 
-import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.model_catalog import CATALOG
-from app.schemas import CatalogEntry, ImageModelFile
+from app.schemas import CatalogEntry, CompanionFile, ImageModelFile
 from app.services import image_engine_service, sdcpp_installer, settings_service
 from app.services.extended_model_catalog_service import ExtendedModelCatalog
+from app.services.hf_download import stream_file
+from app.services.image_companions import FOLDER as COMPANIONS_DIR, ImageCompanions
 
 logger = logging.getLogger("llama_chat")
 
-_DOWNLOAD_TIMEOUT = httpx.Timeout(None, connect=10.0)
 _REPO_RE = re.compile(r"^[\w.-]+/[\w.-]+$")
 # Rough working-set multiplier over the file size for a CPU diffusion run (weights + activations + VAE).
 _RAM_MULTIPLIER = 1.3
@@ -94,7 +94,9 @@ class ImageModelStore:
         root = self.root
         if not root.is_dir():
             return []
-        files = [p for p in root.rglob("*") if p.is_file() and p.suffix in self.EXTENSIONS]
+        files = [
+            p for p in root.rglob("*") if p.is_file() and p.suffix in self.EXTENSIONS and COMPANIONS_DIR not in p.parts
+        ]
         return [
             ImageModelFile(
                 name=str(p.relative_to(root)),
@@ -144,6 +146,7 @@ class ImageModelStore:
                     text_capable=False,
                     removable=is_admin and tag in added and file is None,
                     is_image=True,
+                    companions=self.companions_for(tag),
                 )
             )
         return entries
@@ -166,31 +169,26 @@ class ImageModelStore:
         {"status","completed","total"} progress events a chat-model pull emits; the last event is either
         {"done": True} or {"error": ...}. On success, an unset engine Model is pointed at it."""
         url = f"https://huggingface.co/{repo_id}/resolve/main/{quote(filename)}"
-        part = dest.with_name(dest.name + ".part")
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            async with httpx.AsyncClient(timeout=_DOWNLOAD_TIMEOUT, follow_redirects=True, proxy=proxy_url) as client:
-                async with client.stream("GET", url) as resp:
-                    if resp.status_code in (401, 403):
-                        yield {"error": f"{repo_id} is gated on Hugging Face — it can't be downloaded without a token."}
-                        return
-                    resp.raise_for_status()
-                    total = int(resp.headers.get("content-length", 0)) or None
-                    completed, last_pct = 0, -1
-                    with open(part, "wb") as f:
-                        async for chunk in resp.aiter_bytes(chunk_size=1024 * 1024):
-                            f.write(chunk)
-                            completed += len(chunk)
-                            if total and completed * 100 // total != last_pct:
-                                last_pct = completed * 100 // total
-                                yield {"status": "Downloading", "completed": completed, "total": total}
-            part.replace(dest)
-        except (httpx.HTTPError, OSError) as exc:
-            part.unlink(missing_ok=True)
-            yield {"error": f"Could not download {filename}: {exc}"}
-            return
+        async for event in stream_file(url, dest, proxy_url, filename):
+            yield event
+            if "error" in event:
+                return
         await self._default_model_if_unset(dest)
         yield {"done": True}
+
+    async def download_companions(self, tag: str, flags: list[str], proxy_url: str | None) -> AsyncIterator[dict]:
+        """Downloads only the companion files the user ticked (see image_companions); same event format."""
+        async for event in ImageCompanions.download(self.path_for(tag), flags, proxy_url):
+            yield event
+        yield {"done": True}
+
+    def companions_for(self, tag: str) -> list[CompanionFile]:
+        path = self.path_for(tag)
+        missing = {c.flag for c in ImageCompanions.missing(path)}
+        return [
+            CompanionFile(flag=c.flag, label=c.label, size_gb=c.size_gb, installed=c.flag not in missing)
+            for c in ImageCompanions.for_model(path)
+        ]
 
     async def _default_model_if_unset(self, path: Path) -> None:
         config = await image_engine_service.get_sdcpp_config(self._db)
@@ -205,6 +203,10 @@ class ImageModelStore:
             raise ValueError(self.LOCAL_ONLY_MESSAGE)
         path = self.path_for(tag)
         path.unlink(missing_ok=True)
+        if not any(  # companions are shared by every quant in this folder: keep them while another remains
+            f.is_file() and f.suffix in self.EXTENSIONS for f in path.parent.iterdir()
+        ):
+            ImageCompanions.remove(path)
         for parent in path.parents:
             if parent == self.root or any(parent.iterdir()):
                 break

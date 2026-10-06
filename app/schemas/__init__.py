@@ -53,6 +53,7 @@ from app.schemas.health import HealthStatus
 from app.schemas.http_proxy_config import HttpProxyConfig
 from app.schemas.image_generation import CheckpointList, ImageGenerationJobOut, ImageGenerationRequest
 from app.schemas.image_model import (
+    CompanionPullRequest,
     DiffusionModelCatalogResponse,
     ImageModelFile,
     ImageModelList,
@@ -70,6 +71,7 @@ from app.schemas.matricxon_server_config import (
 )
 from app.schemas.model_catalog import (
     CatalogEntry,
+    CompanionFile,
     EmbeddingCatalogEntry,
     EmbeddingModelCatalogResponse,
     EngineModelSupport,
@@ -165,6 +167,7 @@ __all__ = [
     "DiffusionModelCatalogResponse",
     "ImageModelFile",
     "ImageModelList",
+    "CompanionPullRequest",
     "ImageModelRequest",
     "ImageEngineName",
     "SdCppBuild",
@@ -229,6 +232,7 @@ __all__ = [
     "OllamaServerStatus",
     "AddExtendedModelRequest",
     "CatalogEntry",
+    "CompanionFile",
     "DeleteModelResponse",
     "EmbeddingCatalogEntry",
     "EmbeddingModelCatalogResponse",

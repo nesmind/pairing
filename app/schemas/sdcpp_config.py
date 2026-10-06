@@ -10,8 +10,9 @@ from pydantic import BaseModel, Field, model_validator
 from app.schemas.common import MAX_REMOTE_HOSTS, ServerMode
 
 ImageEngineName = Literal["sdcpp", "comfyui"]
-# Which prebuilt release the installer fetches; "auto" picks Vulkan when a GPU + Vulkan loader are present.
-SdCppBuild = Literal["auto", "cpu", "vulkan", "rocm"]
+# Which prebuilt release the installer fetches ("auto" picks Vulkan when a GPU + Vulkan loader are present), or
+# "source": compile it here with CMake (Linux; see app.services.sdcpp_source_build).
+SdCppBuild = Literal["auto", "cpu", "vulkan", "rocm", "source"]
 DEFAULT_IMAGE_ENGINE: ImageEngineName = "sdcpp"
 
 
@@ -47,6 +48,8 @@ class SdCppStatus(BaseModel):
     installed: bool = False
     pid: int | None = None
     healthy: bool | None = None
+    # Build tools missing for "Build from source" (empty = it can be used).
+    source_build_missing: list[str] = Field(default_factory=list)
 
 
 class ImageEngineConfig(BaseModel):

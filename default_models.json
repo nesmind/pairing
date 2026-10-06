@@ -185,6 +185,22 @@
       "unavailable_reason": null,
       "embedding_dim": null,
       "note": "A distilled Stable Diffusion 2.1 that makes a usable 512x512 image in 1-4 steps (use cfg ~1.0) — the lightest practical choice for a CPU-only machine. Green-Sky's stable-diffusion.cpp conversion of stabilityai/sd-turbo (mixed f16/q8_0, ~2 GB); confirmed live to load in sd-server and complete a sampling step on a 2011-era laptop CPU. An image model: installs into the stable-diffusion.cpp models folder (see Settings > Image), never into Ollama/Matricxon."
+    },
+    {
+      "family": "Z-Image-Turbo",
+      "vendor": "Tongyi-MAI",
+      "tag": "hf.co/leejet/Z-Image-Turbo-GGUF:z_image_turbo-Q4_0",
+      "parameter_size": "6B",
+      "context_length": null,
+      "download_gb": 6.5,
+      "min_ram_gb": 10,
+      "locally_runnable": true,
+      "architecture": "z-image",
+      "quantizations": ["Q4_0"],
+      "vision": false,
+      "unavailable_reason": null,
+      "embedding_dim": null,
+      "note": "Fast, high-quality 6B image model (8 steps, cfg 1.0). A split model: the Qwen3-4B text encoder (~2.5 GB) and VAE (~0.3 GB) are downloaded with it and passed to sd-server automatically (see image_companions). An image model: installs into the stable-diffusion.cpp models folder."
     }
   ]
 }

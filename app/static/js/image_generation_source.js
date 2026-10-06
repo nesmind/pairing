@@ -29,7 +29,12 @@
     const img = new Image();
     img.onload = () => {
       source = img;
-      [document.getElementById("gen-width").value, document.getElementById("gen-height").value] = sizeFor(img);
+      const [width, height] = sizeFor(img);
+      for (const [id, value] of [["gen-width", width], ["gen-height", height]]) {
+        const slider = document.getElementById(id);
+        slider.value = value;
+        slider.dispatchEvent(new Event("input"));
+      }
       preview.src = url;
       preview.classList.remove("hidden");
     };

@@ -54,3 +54,48 @@ body {
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: rgb(var(--color-slate-700)); border-radius: 9999px; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* Slim range sliders with a small thumb (Behavior, Knowledge, Images). */
+.slim-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 14px;
+  background: transparent;
+  cursor: pointer;
+}
+.slim-slider::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: rgb(51 65 85);
+}
+.slim-slider::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: rgb(51 65 85);
+}
+.slim-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  border: 0;
+  background: rgb(var(--color-brand-500));
+}
+.slim-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 0;
+  background: rgb(var(--color-brand-500));
+}
+
+/* Optional ring around the thumb. */
+.slim-slider-ring::-webkit-slider-thumb {
+  box-sizing: border-box;
+  border: 2px solid rgb(226 232 240);
+}
+.slim-slider-ring::-moz-range-thumb {
+  box-sizing: border-box;
+  border: 2px solid rgb(226 232 240);
+}
