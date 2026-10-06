@@ -165,7 +165,10 @@ async def build_reply_stream(
     if not is_personal and not await channel_history_setting.get_include_plain_messages(db):
         past = chat_history_service.only_addressed_to_ai(past)
     history = chat_history_service.trim_history(
-        [*chat_history_service.without_failed_replies(past), user_message], params["num_ctx"]
+        [*chat_history_service.without_failed_replies(past), user_message],
+        params["num_ctx"],
+        # Room for a full reply (num_predict) - else a long chat leaves less than that and the reply is cut short.
+        reserved_tokens=max(512, params.get("num_predict", 0)),
     )
 
     # See chat_prompt_service.build_system_prompt's own docstring for the
