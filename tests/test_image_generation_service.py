@@ -9,6 +9,7 @@ task would otherwise run. Every comfyui_client call is monkeypatched;
 no real ComfyUI instance is reachable in this environment."""
 
 import os
+from types import SimpleNamespace
 
 import pytest
 
@@ -386,3 +387,22 @@ async def test_images_root_and_find_image_follow_the_configured_folder(db, tmp_p
     assert await image_engine_service.find_image(db, default, "u1/new.png") == custom / "u1" / "new.png"
     assert await image_engine_service.find_image(db, default, "u1/old.png") == default / "u1" / "old.png"  # made before
     assert await image_engine_service.find_image(db, default, "u1/none.png") is None
+
+
+@pytest.mark.asyncio
+async def test_sdcpp_job_times_out_after_the_configured_minutes(db, user, monkeypatch):
+    await image_engine_service.set_active_image_engine(db, "sdcpp")
+    config = await image_engine_service.get_sdcpp_config(db)
+    config.timeout_minutes = 1
+    await image_engine_service.set_sdcpp_config(db, config)
+    cancelled = []
+    _fake_sdcpp(monkeypatch, iter(lambda: {"status": "generating"}, None), cancelled=cancelled)
+    clock = iter(range(0, 1000, 20))  # 20 s per reading: past the 60 s limit on the 5th
+    monkeypatch.setattr(image_generation_service, "time", SimpleNamespace(monotonic=lambda: next(clock)))
+
+    job = await image_generation_service.create_job(db, user.id, _request())
+    await image_generation_service._run_job(job.id)
+
+    await db.refresh(job)
+    assert job.status == "error" and "timed out" in job.error_message
+    assert cancelled == [("http://h1:8189", "job_1")]

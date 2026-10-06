@@ -22,6 +22,7 @@ from app.services import (
     chat_history_service,
     chat_prompt_service,
     chat_settings_service,
+    context_window_setting,
     conversation_service,
     model_catalog_service,
     reply_generation_service,
@@ -98,7 +99,8 @@ async def build_reply_stream(
     channels never have one).
     """
     attachments = attachments or []
-    params = conversation.params
+    # num_ctx is one system-wide value (Settings > System > Context window), not a per-chat one.
+    params = {**conversation.params, "num_ctx": await context_window_setting.get_num_ctx(db)}
     is_personal = conversation.channel_id is None
     title_mode = await chat_settings_service.get_title_mode(db) if is_personal else None
     # A personal chat always asks the AI, regardless of what a caller
@@ -214,6 +216,7 @@ async def build_reply_stream(
         cancel_on_disconnect=is_personal,
         model=reply_model,
         has_image=reply_model is not None,
+        params=params,
     ):
         if is_personal and event.get("done"):
             # In "simple" mode, conversation.title was already set (if

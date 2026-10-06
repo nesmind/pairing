@@ -31,17 +31,38 @@ def without_failed_replies(messages: list[Message]) -> list[Message]:
     return [m for m in messages if m.status != "error"]
 
 
+# Trimming moves forward in steps of this fraction of the budget (see trim_history).
+_TRIM_STEPS = 4
+
+
 def trim_history(messages: list[Message], num_ctx: int, reserved_tokens: int = 512) -> list[dict]:
     """Keeps only as much recent history as should comfortably fit in the
     model's context window, so a long-running chat doesn't silently lose
     coherence by overflowing num_ctx. `reserved_tokens` leaves headroom
     for the system prompt, RAG context, and the model's own reply.
 
-    Walks from the newest message backwards, keeping messages until the
-    running character budget would be exceeded, then reverses back to
-    chronological order.
+    The oldest messages go first, but in steps: the history may only start at a message where the
+    running character count crosses a multiple of a quarter of the budget. Those start points depend
+    only on the messages before them, so a growing chat keeps the *same* first message for many turns
+    - the model's prompt cache matches from the start of the prompt, so dropping one message per turn
+    (a sliding window) made it re-read the whole chat every turn. Each step drops about a quarter of
+    the window at once instead.
     """
     budget_chars = max(num_ctx - reserved_tokens, 256) * _CHARS_PER_TOKEN
+    step = max(budget_chars // _TRIM_STEPS, 1)
+    sizes = [len(m.content) for m in messages]
+    total = sum(sizes)
+    before = 0
+    for index in range(len(messages)):
+        starts_step = index == 0 or before // step > (before - sizes[index - 1]) // step
+        if starts_step and total - before <= budget_chars:
+            return _merge_consecutive_same_role(messages[index:])
+        before += sizes[index]
+    return _merge_consecutive_same_role(_newest_that_fit(messages, budget_chars))
+
+
+def _newest_that_fit(messages: list[Message], budget_chars: int) -> list[Message]:
+    """The newest messages within the budget - always at least the last one, even if it alone is over."""
     kept: list[Message] = []
     used = 0
     for message in reversed(messages):
@@ -50,7 +71,7 @@ def trim_history(messages: list[Message], num_ctx: int, reserved_tokens: int = 5
             break
         kept.append(message)
     kept.reverse()
-    return _merge_consecutive_same_role(kept)
+    return kept
 
 
 def _merge_consecutive_same_role(messages: list[Message]) -> list[dict]:

@@ -15,6 +15,7 @@ and the instance running the job notices on its next poll, tells the engine to s
 import asyncio
 import logging
 import os
+import time
 
 from sqlalchemy import update
 from sqlalchemy.exc import InvalidRequestError
@@ -34,7 +35,6 @@ _POLL_INTERVAL_SECONDS = 2.0
 # Bounded so a permanently-stuck engine job doesn't leave a job "running" forever: ~5 minutes for ComfyUI,
 # ~30 for stable-diffusion.cpp (a CPU-only run can legitimately take many minutes).
 _MAX_POLL_ATTEMPTS = 150
-_SDCPP_MAX_POLL_ATTEMPTS = 900
 
 # Same reasoning as reply_generation_service._background_generation_tasks:
 # asyncio only holds a *weak* reference to a bare asyncio.create_task()
@@ -171,7 +171,8 @@ async def _sdcpp_image_bytes(db: AsyncSession, job: ImageGenerationJob, params: 
     host, engine_job_id = await sdcpp_client.submit_job(params)
     job.comfy_prompt_id = engine_job_id  # the engine's own job id, whichever engine
     await db.commit()
-    for _ in range(_SDCPP_MAX_POLL_ATTEMPTS):
+    deadline = time.monotonic() + (await image_engine_service.get_sdcpp_config(db)).timeout_minutes * 60
+    while time.monotonic() < deadline:
         if await _is_cancelled(db, job):
             await sdcpp_client.cancel_job(host, engine_job_id)
             raise _JobCancelled

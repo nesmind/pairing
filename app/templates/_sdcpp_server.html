@@ -132,6 +132,12 @@
           </div>
 
           <div class="pt-1">
+            <label class="block text-xs font-medium text-slate-400 mb-1">Generation timeout (minutes)</label>
+            <input data-field="timeout_minutes" type="number" min="1" max="1440" step="1" value="30" title="An image still not finished after this long is cancelled and reported as timed out. Raise it for big sizes or slow CPUs."
+              class="w-32 rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+          </div>
+
+          <div class="pt-1">
             <label class="block text-xs font-medium text-slate-400 mb-1">Images folder (optional)</label>
             <input data-field="images_path" type="text" placeholder="pAIring's own generated_images/ folder" title="Root folder for generated images; each user gets their own subfolder. It must already exist and be writable. Changing it does not move existing images (they stay available from the old location)."
               class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">

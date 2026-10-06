@@ -64,11 +64,7 @@ function withPanelSpinner(panelEl, promise) {
 // tunable parameter later only means adding one entry here (plus the
 // matching field in app/schemas.py::GenerationParams).
 //
-// num_ctx's `max` is mutated in place by applyContextLimitForModel()
-// below whenever the selected model changes — Gemma 4's 256K context
-// window and Llama 3's 8K one shouldn't share a single hardcoded slider
-// ceiling, so this starts at a generic fallback and gets narrowed (or
-// widened) to match whatever model is actually active.
+// There is no num_ctx slider: the context window is one system-wide value (Settings > System).
 const PARAM_DEFS = [
   { key: "temperature", label: "Temperature", min: 0, max: 2, step: 0.05,
     help: "Higher = more creative and varied; lower = more focused and deterministic." },
@@ -78,16 +74,9 @@ const PARAM_DEFS = [
     help: "Restricts choices to the K most likely next tokens at each step." },
   { key: "repeat_penalty", label: "Repeat penalty", min: 0, max: 2, step: 0.05,
     help: "Discourages the model from repeating itself. 1.0 = no penalty." },
-  { key: "num_ctx", label: "Context window (tokens)", min: 256, max: 32768, step: 256,
-    help: "How much conversation history the model can see at once. Capped by the selected model's own limit." },
   { key: "num_predict", label: "Max reply length (tokens)", min: 32, max: 4096, step: 32,
     help: "Upper limit on how many tokens the model may generate in one reply." },
 ];
-
-// A model's true context window can be huge (Gemma 4 goes up to 256K);
-// the slider is capped here purely so the range input stays a
-// reasonable number of steps, not because larger values are unsafe.
-const MAX_UI_CONTEXT = 131072;
 
 const DEFAULTS_TARGET = "__defaults__";
 
@@ -183,22 +172,6 @@ function renderSliders(params) {
   });
 }
 
-/** Narrows (or widens) the num_ctx slider to match the selected model's
- * real context window, and pulls the current value down if it now
- * exceeds that limit — this is what makes fine-tuning "reflect the
- * chosen model" rather than showing the same fixed range for every
- * model regardless of what it can actually support. */
-function applyContextLimitForModel(entry) {
-  const numCtxDef = PARAM_DEFS.find((d) => d.key === "num_ctx");
-  numCtxDef.max = entry && entry.context_length
-    ? Math.min(entry.context_length, MAX_UI_CONTEXT)
-    : 32768;
-  if (currentParams.num_ctx > numCtxDef.max) {
-    currentParams.num_ctx = numCtxDef.max;
-  }
-  renderSliders(currentParams);
-}
-
 // ---- Model catalog ------------------------------------------------------
 
 async function loadCatalog() {
@@ -264,7 +237,6 @@ async function saveModelSelection() {
 
 function selectModel(entry) {
   selectedModelTag = entry.tag;
-  applyContextLimitForModel(entry);
   renderModelCatalog();
   saveModelSelection();
 }
@@ -1712,19 +1684,16 @@ async function loadTarget(targetId) {
   ragTopKInput.value = currentParams.rag_top_k || 4;
   ragTopKValueEl.textContent = ragTopKInput.value;
 
-  // No model picker on this tab at all anymore (see the Model tab's own initModelTab) — the only reason this
-  // still touches the catalog is to narrow the num_ctx slider to whichever model this target actually uses. A
-  // failed catalog fetch (Ollama unreachable) just means no narrowing happens — num_ctx keeps its generic
-  // fallback max — not something worth its own error state here the way the Model tab's own picker needs one.
+  // No model picker on this tab (see the Model tab's own initModelTab) — the catalog is only read for the "no
+  // models installed" banner below. A failed fetch (Ollama unreachable) counts as "nothing usable right now".
   let modelsAvailableHere = false;
   try {
     const catalog = await loadCatalog();
-    applyContextLimitForModel(findCatalogEntry(model));
     modelsAvailableHere = catalog.entries.some((entry) => entry.installed);
   } catch (err) {
-    // Nothing to narrow against — num_ctx stays at its default max. Same as "no models" for the banner below:
-    // either way, there's genuinely nothing usable right now.
+    // Same as "no models": there's genuinely nothing usable right now.
   }
+  renderSliders(currentParams);
   // Same banner/wording as the Model tab's own #model-unavailable (see initModelTab) — sliders here still
   // render fine either way (they're generic numeric params, not tied to a model existing), but without this
   // there was nothing on this tab telling the admin *why* a new chat still won't get a reply.
@@ -2440,6 +2409,7 @@ function collectServerConfig(server, section) {
       model_path: section.querySelector('[data-field="model_path"]').value.trim() || null,
       models_path: section.querySelector('[data-field="models_path"]').value.trim() || null,
       images_path: section.querySelector('[data-field="images_path"]').value.trim() || null,
+      timeout_minutes: Math.min(1440, Math.max(1, parseInt(section.querySelector('[data-field="timeout_minutes"]').value, 10) || 30)),
       extra_args: section.querySelector('[data-field="extra_args"]').value.trim() || null,
       build: section.querySelector('[data-field="build"]').value,
     };
@@ -2548,6 +2518,7 @@ async function loadServerSection(server) {
     section.querySelector('[data-field="binary_path"]').value = config.binary_path ?? "";
     section.querySelector('[data-field="models_path"]').value = config.models_path ?? "";
     section.querySelector('[data-field="images_path"]').value = config.images_path ?? "";
+    section.querySelector('[data-field="timeout_minutes"]').value = config.timeout_minutes ?? 30;
     await populateSdcppModels(section, config.model_path);
     section.querySelector('[data-field="build"]').value = config.build ?? "auto";
     section.querySelector('[data-field="extra_args"]').value = config.extra_args ?? "";

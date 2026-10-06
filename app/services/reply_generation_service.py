@@ -70,6 +70,7 @@ async def stream_reply(
     cancel_on_disconnect: bool = False,
     model: str | None = None,
     has_image: bool = False,
+    params: dict | None = None,
 ) -> AsyncIterator[dict]:
     """Yields plain structured events for app/routers/chat.py to SSE-encode
     ({"chunk"} / {"error"} / {"done", "sources"} / {"deleted"} — see
@@ -81,7 +82,8 @@ async def stream_reply(
     given, overrides `conversation.model` for this call only (see
     chat_service.build_reply_stream's image handling). `has_image` picks
     which of chat_settings_service's two reply-timeout settings applies —
-    see get_vision_reply_timeout_seconds' own docstring for why."""
+    see get_vision_reply_timeout_seconds' own docstring for why. `params`, when given, replaces
+    `conversation.params` for this call (chat_service passes the system-wide num_ctx in)."""
     message = Message(
         conversation_id=conversation.id,
         role="assistant",
@@ -96,7 +98,12 @@ async def stream_reply(
     reply_broadcast_service.start_topic(conversation.id, message.id)
     effective_model = model or conversation.model
     task = _schedule_generation(
-        message.id, effective_model, ollama_messages, conversation.params, source_filenames, has_image
+        message.id,
+        effective_model,
+        ollama_messages,
+        conversation.params if params is None else params,
+        source_filenames,
+        has_image,
     )
 
     _state, queue = reply_broadcast_service.subscribe(conversation.id)

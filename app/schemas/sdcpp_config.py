@@ -32,6 +32,8 @@ class SdCppConfig(BaseModel):
     install_repo: str | None = None
     install_version: str | None = None
     build: SdCppBuild = "auto"
+    # How long one image may take before the job is cancelled as timed out, whichever mode.
+    timeout_minutes: int = Field(30, ge=1, le=1440)
 
     @model_validator(mode="after")
     def _fall_back_to_local_when_remote_has_no_hosts(self) -> "SdCppConfig":

@@ -983,6 +983,30 @@
         </div>
       </section>
 
+      <!-- Wired by app/static/js/settings_context_window.js. -->
+      <section id="context-window-section" class="space-y-3">
+        <h2 class="text-sm font-semibold text-slate-200">Context window</h2>
+        <p class="text-xs text-slate-500 -mt-2">
+          How many tokens one request may hold (the conversation so far plus the reply) — one value for every chat
+          and channel. Bigger lets long chats keep more history but uses more memory and makes every reply slower to
+          start. Applies from the next message; nothing needs a restart. Keep it within what your models support.
+        </p>
+        <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3">
+          <div class="flex items-center justify-between mb-1">
+            <label for="context-window-input" class="text-xs font-medium text-slate-300">Context window (tokens)</label>
+            <span id="context-window-value" class="text-xs font-mono text-slate-400">4096</span>
+          </div>
+          <input type="range" id="context-window-input" min="256" max="32768" step="256" value="4096" class="slim-slider slim-slider-ring block w-full">
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="context-window-save-btn" type="button"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            Save
+          </button>
+          <span id="context-window-status" class="text-xs text-slate-500"></span>
+        </div>
+      </section>
+
       <section class="space-y-3">
         <h2 class="text-sm font-semibold text-slate-200">Reply timeout</h2>
         <p class="text-xs text-slate-500 -mt-2">
@@ -1694,5 +1718,6 @@
 <script src="/static/js/settings_cache_persistence.js?v={{ static_version }}"></script>
 {% if is_admin %}<script src="/static/js/settings_mcp_servers.js?v={{ static_version }}"></script>{% endif %}
 <script src="/static/js/settings_diffusion_models.js?v={{ static_version }}"></script>
+<script src="/static/js/settings_context_window.js?v={{ static_version }}"></script>
 <script src="/static/js/settings_group_select.js?v={{ static_version }}"></script>
 {% endblock %}

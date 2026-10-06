@@ -26,6 +26,7 @@ from app.routers import (
     chat,
     comfyui_admin,
     connectors,
+    context_window_admin,
     conversations,
     db_admin,
     documents,
@@ -155,6 +156,7 @@ app.include_router(matricxon_cache_admin.router)
 app.include_router(engine_admin.router)
 app.include_router(connectors.router)
 app.include_router(channel_history_admin.router)
+app.include_router(context_window_admin.router)
 app.include_router(mcp_admin.router)
 app.include_router(mcp_admin.enabled_router)
 app.include_router(mcp_admin.limits_router)

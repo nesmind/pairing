@@ -74,6 +74,12 @@ class TitleMode(BaseModel):
     mode: Literal["simple", "smart"]
 
 
+class ContextWindow(BaseModel):
+    """The system-wide context window (tokens) every chat uses (see app.services.context_window_setting)."""
+
+    num_ctx: int = Field(ge=256, le=32768)
+
+
 class ChannelPlainMessages(BaseModel):
     """Whether messages posted in a channel without asking the AI are included in what the model reads on a
     later reply (see app.services.channel_history_setting). Admin-only, system-wide."""

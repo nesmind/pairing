@@ -79,3 +79,25 @@ def test_failed_replies_are_left_out_but_their_question_stays():
     kept = without_failed_replies([question, failed, _msg("user", "q2"), ok])
 
     assert [m.content for m in kept] == ["q1", "q2", "fine"]
+
+
+def test_trim_history_keeps_the_same_first_message_while_the_chat_grows():
+    """A sliding window shifts the start of the prompt every turn, so the model's prompt cache never matches.
+    Trimming in steps keeps the start put until the next step is needed."""
+    budget_chars = (4096 - 512) * 4
+    history: list[Message] = []
+    firsts = []
+    for turn in range(80):
+        history += [_msg("user", f"q{turn:02d}" + "x" * 297), _msg("assistant", f"a{turn:02d}" + "y" * 297)]
+        trimmed = trim_history(history, num_ctx=4096)
+        assert sum(len(m["content"]) for m in trimmed) <= budget_chars
+        firsts.append(trimmed[0]["content"][:3])
+    changes = sum(1 for a, b in zip(firsts, firsts[1:], strict=False) if a != b)
+    assert changes <= 14  # a one-message window would change on each of the ~55 turns once full
+    assert trimmed[-1]["content"].startswith("a79")  # the newest is always there
+
+
+def test_trim_history_never_returns_an_empty_history():
+    huge_old = _msg("user", "x" * 5000)
+    huge_new = _msg("user", "y" * 5000)
+    assert [m["content"][0] for m in trim_history([huge_old, huge_new], num_ctx=256)] == ["y"]

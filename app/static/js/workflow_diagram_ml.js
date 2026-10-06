@@ -194,7 +194,7 @@ const WORKFLOW_ML_NODES = [
     "ml_kv", "KV cache + recurrent state\n(grows per token)", 1, ML_ROW.r4,
     "What the model remembers about the conversation so far",
     "app/runtime/kv_cache.py · mamba_cache.py",
-    "For every attention layer, the keys and values of all tokens so far are kept so each new token only computes its own step. Memory grows linearly with context length (num_ctx), which is the main reason long contexts need so much RAM. Recurrent layers keep a fixed-size state instead."
+    "For every attention layer, the keys and values of all tokens so far are kept so each new token only computes its own step. Memory grows linearly with context length (num_ctx), which is the main reason long contexts need so much RAM. Recurrent layers keep a fixed-size state instead. The cache survives between messages of a chat, so only new tokens are read; when pAIring trims a chat's oldest messages the matching tokens are cut out of the cache and the rest re-positioned (context shift, approximate) instead of re-reading everything."
   ),
 ];
 
