@@ -200,9 +200,17 @@ It is also important not to expose more models to users than the system RAM/VRAM
     <th width="50%">Engine config</th>
     <th width="50%">Supported architectures</th>
   </tr>
-    <tr>
+  <tr>
     <td><img src="docs/screenshots/settings-external-matricxon.png" alt="Engine config" width="100%"></td>
     <td><img src="docs/screenshots/stats-architectures.png" alt="Supported architectures" width="100%"></td>
+  </tr>
+  <tr>
+    <th width="50%">Small Matricxon cluster</th>
+    <th width="50%">Big Matricxon cluster</th>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/cluster-demo-5.png" alt="Matricxon cluster with 5 nodes" width="100%"></td>
+    <td><img src="docs/screenshots/cluster-demo-500.png" alt="Matricxon cluster with 500 nodes" width="100%"></td>
   </tr>
 </table>
 
