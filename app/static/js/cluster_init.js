@@ -8,7 +8,10 @@ function renderClusterInit(state) {
   // Also with cluster mode off while the nodes still run a cluster (after "Leave cluster"): the first node is picked here.
   const settingUp = state.supported && (state.quorum === "off" || !state.enabled);
   document.getElementById("cluster-init").classList.toggle("hidden", !settingUp);
-  document.getElementById("cluster-paths-title").textContent = settingUp ? "First node and shared folders" : "Shared folders";
+  document.getElementById("cluster-paths-title").textContent = settingUp ? "Step 1 · First node and shared folders" : "Shared folders";
+  // The steps of creating a cluster are numbered only while cluster mode is off.
+  const creating = state.supported && !state.enabled;
+  for (const id of ["cluster-create-head", "cluster-step2"]) document.getElementById(id).classList.toggle("hidden", !creating);
   const select = document.getElementById("cluster-seed-host");
   const key = state.hosts.map((h) => `${h.host}:${h.reachable}:${h.fresh}:${!!h.consensus}`).join("|") + "#" + (state.paths.first_node || "");
   if (key !== _clusterInitHosts) {  // only when something changed (a host answering now too): keep what was picked
@@ -24,14 +27,15 @@ function renderClusterInit(state) {
   if (!advertise.dataset.touched) advertise.value = state.paths.advertise_url || "";
 }
 
-/** Once the first node is chosen and its whole checklist is green, say that the next step is the switch. */
+/** While setting up and the first node is saved, tell what to do next above its card; returns whether its whole
+ * checklist is green. */
 function renderClusterFirstReady(state) {
   const first = state.paths.first_node;
   const host = state.hosts.find((h) => h.host === first);
-  const ready = !state.enabled && !!host && host.reachable && host.ready;
-  document.getElementById("cluster-first-ready").classList.toggle("hidden", !ready);
+  const waiting = !state.enabled && !!first;
+  document.getElementById("cluster-first-ready").classList.toggle("hidden", !waiting);
   document.getElementById("cluster-first-ready-host").textContent = first || "";
-  return ready;
+  return waiting && !!host && host.reachable && host.ready;
 }
 
 /** What the folders form adds while the cluster is being set up: the chosen first node and its address. */

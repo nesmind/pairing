@@ -82,7 +82,6 @@
             set on your side first.</span>
           </p>
         </div>
-
         <div class="flex items-center justify-between gap-4 rounded-lg border border-slate-800 bg-slate-900 px-4 py-3 max-w-2xl">
           <div>
             <p class="text-sm font-medium text-slate-100">Cluster mode</p>
@@ -94,16 +93,8 @@
               class="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white transition-transform"></span>
           </button>
         </div>
-
-        <!-- Setup, first node chosen and its checklist all ok (cluster_init.js): the next step is the switch. -->
-        <div id="cluster-first-ready" class="hidden max-w-2xl space-y-1 rounded-lg border border-red-900/60 bg-slate-900 px-4 py-3">
-          <p class="text-sm font-medium text-slate-100">The cluster has its first node</p>
-          <p class="text-xs text-slate-400">
-            <span id="cluster-first-ready-host" class="font-mono"></span> is ready: its checklist is all green. Turn
-            <strong>Cluster mode</strong> on to move to cluster mode.
-          </p>
-        </div>
-
+        <p id="cluster-switch-error"
+          class="hidden max-w-2xl rounded-lg border border-red-800/60 bg-red-900/20 px-4 py-2 text-xs text-red-200"></p>
         <!-- The cluster's own id (cluster_join.js): shown once the cluster has one; a reset makes a new one. -->
         <div id="cluster-id-box" class="hidden flex items-center justify-between gap-4 rounded-lg border border-slate-800 bg-slate-900 px-4 py-3 max-w-2xl">
           <div class="min-w-0">
@@ -112,52 +103,6 @@
           </div>
           <button id="cluster-id-copy" type="button" class="shrink-0 rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 hover:bg-slate-800">Copy</button>
         </div>
-
-        <!-- Admin secret (cluster.js): pAIring signs its admin calls to every node with it; a node with a secret
-             refuses unsigned reset/provision/voter/pull/delete calls. Needs every node to answer. -->
-        <form id="cluster-secret-form" class="max-w-2xl space-y-2 rounded-lg border border-slate-800 bg-slate-900 px-4 py-3">
-          <p class="text-sm font-medium text-slate-100">Admin secret
-            <span id="cluster-secret-state" class="ml-2 text-xs font-normal text-slate-500"></span></p>
-          <p class="text-xs text-slate-500">
-            A shared password that protects the nodes' admin actions (reset, add or remove nodes and voters, pull,
-            delete). pAIring signs those calls with it; a node that has the secret refuses unsigned ones. Chats and
-            read-only calls need no secret.
-          </p>
-          <ul class="list-disc space-y-0.5 pl-5 text-xs text-slate-500">
-            <li><strong>Set it once</strong>, here, after the first node works and before you add other nodes. It is
-              sent to every node at once (all must answer), and to each node you add later.</li>
-            <li><strong>Change or remove it</strong> the same way (leave it empty to remove).</li>
-            <li><strong>Another pAIring</strong> that joins this cluster enters the same secret in its
-              "Join an existing cluster" form; it does not set a new one.</li>
-            <li>Without a secret anyone who can reach a node can reset it or change the cluster, so also keep the
-              nodes on their own network.</li>
-          </ul>
-          <div class="flex flex-wrap items-center gap-3">
-            <input id="cluster-secret" type="password" autocomplete="new-password" placeholder="New secret (empty removes it)"
-              class="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-brand-500">
-            <button type="submit" class="whitespace-nowrap rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-medium text-white hover:opacity-90">Save secret</button>
-          </div>
-          <p id="cluster-secret-note" class="text-xs text-slate-500"></p>
-        </form>
-
-        <!-- Another pAIring joins a cluster that already exists: the address of any of its nodes and its id. -->
-        <div id="cluster-join" class="hidden max-w-2xl space-y-3 rounded-lg border border-slate-800 bg-slate-900 px-4 py-3">
-          <p class="text-sm font-medium text-slate-100">Join an existing cluster</p>
-          <p class="text-xs text-slate-500">Enter the address of any node of the cluster and the cluster id (shown on the Cluster page of the pAIring that set it up). The node must report that id.</p>
-          <input id="cluster-join-address" type="text" autocomplete="off" placeholder="http://10.0.0.5:8420"
-            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-brand-500">
-          <input id="cluster-join-secret" type="password" autocomplete="new-password" placeholder="Admin secret (only if the cluster has one)"
-            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-brand-500">
-          <input id="cluster-join-id" type="text" autocomplete="off" placeholder="Cluster id"
-            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 font-mono text-sm text-slate-100 focus:outline-none focus:border-brand-500">
-          <div class="flex items-center gap-3">
-            <button id="cluster-join-btn" type="button" class="rounded-lg bg-brand-500 px-4 py-1.5 text-sm font-medium text-white hover:opacity-90">Join</button>
-            <span id="cluster-join-note" class="text-xs text-slate-400"></span>
-          </div>
-        </div>
-
-        <p id="cluster-switch-error"
-          class="hidden max-w-2xl rounded-lg border border-red-800/60 bg-red-900/20 px-4 py-2 text-xs text-red-200"></p>
         <p id="cluster-restart-note"
           class="hidden max-w-2xl rounded-lg border border-amber-700/60 bg-amber-900/20 px-4 py-2 text-xs text-amber-200">
           Saved. Matricxon is restarting itself to apply it; this clears in a few seconds.
@@ -173,6 +118,25 @@
         <p id="cluster-unsupported" class="hidden text-sm text-slate-400">
           Cluster mode is a Matricxon feature &mdash; switch the active engine to Matricxon first.
         </p>
+        <!-- Another pAIring joins a cluster that already exists: the address of any of its nodes and its id. -->
+        <div id="cluster-join" class="hidden max-w-2xl space-y-3 rounded-lg border border-slate-800 bg-slate-900 px-4 py-3">
+          <p class="text-sm font-medium text-slate-100">Join an existing cluster</p>
+          <p class="text-xs text-slate-500">Enter the address of any node of the cluster and the cluster id (shown on the Cluster page of the pAIring that set it up). The node must report that id.</p>
+          <input id="cluster-join-address" type="text" autocomplete="off" placeholder="http://10.0.0.5:8420"
+            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-brand-500">
+          <input id="cluster-join-secret" type="password" autocomplete="new-password" placeholder="Admin secret (only if the cluster has one)"
+            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-brand-500">
+          <input id="cluster-join-id" type="text" autocomplete="off" placeholder="Cluster id"
+            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 font-mono text-sm text-slate-100 focus:outline-none focus:border-brand-500">
+          <div class="flex items-center gap-3">
+            <button id="cluster-join-btn" type="button" class="rounded-lg bg-brand-500 px-4 py-1.5 text-sm font-medium text-white hover:opacity-90">Join</button>
+            <span id="cluster-join-note" class="text-xs text-slate-400"></span>
+          </div>
+        </div>
+        <div id="cluster-create-head" class="hidden max-w-2xl">
+          <h3 class="text-base font-semibold text-slate-100">Create a new cluster</h3>
+          <p class="text-xs text-slate-500">Two steps: choose the first node and the shared folders, then optionally protect the nodes with an admin secret. When the first node's checks are green, turn <strong>Cluster mode</strong> on at the top.</p>
+        </div>
 
         <!-- Shared folders: saved into the Matricxon config and its .env; nothing is moved or copied here, that
              is the admin's step (see the checklist). Blank = Matricxon's own default folder. -->
@@ -222,10 +186,45 @@
             <span id="cluster-paths-note" class="text-xs text-slate-500"></span>
           </div>
         </form>
-
+        <!-- Admin secret (cluster.js): pAIring signs its admin calls to every node with it; a node with a secret
+             refuses unsigned reset/provision/voter/pull/delete calls. Needs every node to answer. -->
+        <form id="cluster-secret-form" class="max-w-2xl space-y-2 rounded-lg border border-slate-800 bg-slate-900 px-4 py-3">
+          <p class="text-sm font-medium text-slate-100"><span id="cluster-step2" class="hidden">Step 2 (optional) &middot; </span>Admin secret
+            <span id="cluster-secret-state" class="ml-2 text-xs font-normal text-slate-500"></span></p>
+          <p class="text-xs text-slate-500">
+            A shared password that protects the nodes' admin actions (reset, add or remove nodes and voters, pull,
+            delete). pAIring signs those calls with it; a node that has the secret refuses unsigned ones. Chats and
+            read-only calls need no secret.
+          </p>
+          <ul class="list-disc space-y-0.5 pl-5 text-xs text-slate-500">
+            <li><strong>Set it once</strong>, here, after the first node works and before you add other nodes. It is
+              sent to every node at once (all must answer), and to each node you add later.</li>
+            <li><strong>Change or remove it</strong> the same way (leave it empty to remove).</li>
+            <li><strong>Another pAIring</strong> that joins this cluster enters the same secret in its
+              "Join an existing cluster" form; it does not set a new one.</li>
+            <li>Without a secret anyone who can reach a node can reset it or change the cluster, so also keep the
+              nodes on their own network.</li>
+          </ul>
+          <div class="flex flex-wrap items-center gap-3">
+            <input id="cluster-secret" type="password" autocomplete="new-password" placeholder="New secret (empty removes it)"
+              class="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-brand-500">
+            <button type="submit" class="whitespace-nowrap rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-medium text-white hover:opacity-90">Save secret</button>
+          </div>
+          <p id="cluster-secret-note" class="text-xs text-slate-500"></p>
+        </form>
         {% include "_cluster_timers_form.html" %}
 
         {% include "_cluster_cache_form.html" %}
+
+        <!-- Setting up, first node saved (cluster_init.js): what to do while its card turns green. Same look as the
+             reset box below. -->
+        <div id="cluster-first-ready" class="hidden max-w-2xl space-y-1 rounded-lg border border-red-900/60 bg-slate-900 px-4 py-3">
+          <p class="text-sm font-medium text-slate-100">Next: turn cluster mode on</p>
+          <p class="text-xs text-slate-400">
+            Please wait a few seconds until every check of <span id="cluster-first-ready-host" class="font-mono"></span>
+            below is green, then move up and turn <strong>Cluster mode</strong> on.
+          </p>
+        </div>
 
         <div id="cluster-hosts" class="space-y-6"></div>
         <p id="cluster-error" class="hidden text-sm text-red-400"></p>

@@ -160,11 +160,9 @@ async function saveClusterPaths(event) {
     renderCluster(await api("/api/cluster/paths", { method: "PUT", body: JSON.stringify(body) }));
     note.textContent = "Saved.";
     _clusterShowError("");
-    if (body.first_node) {  // all green: the switch at the top is next; else the card with the checklist
-      const card = document.getElementById("cluster-hosts");
-      const top = !document.getElementById("cluster-first-ready").classList.contains("hidden");
-      if (top) requestAnimationFrame(() => document.getElementById("cluster-view-overview").scrollTo({ top: 0, behavior: "smooth" }));
-      else if (card.children.length) requestAnimationFrame(() => card.scrollIntoView({ behavior: "smooth", block: "start" }));
+    if (body.first_node) {  // show the note above the first node's card, with the card below it
+      const box = document.getElementById("cluster-first-ready");
+      requestAnimationFrame(() => box.scrollIntoView({ behavior: "smooth", block: "start" }));
     }
   } catch (err) {
     _clusterShowError(err.message);
