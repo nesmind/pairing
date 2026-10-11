@@ -21,6 +21,7 @@ class ClusterHosts:
         stored = host in config.cluster_hosts or host in config.remote_hosts
         config.cluster_hosts = [h for h in config.cluster_hosts if h != host]
         config.voter_hosts = [h for h in config.voter_hosts if h != host]
+        config.known_nodes.pop(host, None)
         config.first_node = None if config.first_node == host else config.first_node
         config.remote_hosts = [h for h in config.remote_hosts if h != host]
         if not stored:
@@ -38,6 +39,7 @@ class ClusterHosts:
         # address once cost a restarted seed its quorum).
         saved.cluster_hosts = previous.cluster_hosts
         saved.voter_hosts = previous.voter_hosts
+        saved.known_nodes = previous.known_nodes
         saved.admin_secret = previous.admin_secret
         saved.advertise_url = previous.advertise_url
         saved.first_node = previous.first_node

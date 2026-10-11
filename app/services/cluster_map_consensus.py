@@ -10,7 +10,9 @@ def short_address(address: str) -> str:
 
 
 class ConsensusLinks:
-    def of(self, hosts: list[ClusterHost], statuses: dict[str, dict]) -> tuple[list[MapNode], list[MapLink]]:
+    def of(
+        self, hosts: list[ClusterHost], statuses: dict[str, dict], known: dict[str, dict[str, str]] | None = None
+    ) -> tuple[list[MapNode], list[MapLink]]:
         """Voter links and amber boxes for voters no host matches."""
         by_consensus_id = {s["node_id"]: host for host, s in statuses.items()}
         voters: dict[str, str | None] = {}
@@ -20,12 +22,23 @@ class ConsensusLinks:
                 continue  # a replaying node lists long-gone voters
             for voter in status["voters"]:
                 voters.setdefault(voter, status.get("members", {}).get(voter))
+        listed = {h.host for h in hosts}
+        # Listed hosts that do not answer: matched to their voter by what they reported last (kept across restarts).
+        silent = {host: info for host, info in (known or {}).items() if host in listed and host not in statuses}
+        stopped = {info["node_id"]: host for host, info in silent.items()}
+        stopped_at = {
+            info["advertise_url"].rstrip("/"): host for host, info in silent.items() if info.get("advertise_url")
+        }
         ghosts, ids = [], {}
         for voter, address in voters.items():
             if voter in by_consensus_id:
                 ids[voter] = by_consensus_id[voter]
-            elif address in {h.host for h in hosts}:
+            elif address in listed:
                 ids[voter] = address
+            elif voter in stopped:
+                ids[voter] = stopped[voter]
+            elif address and address.rstrip("/") in stopped_at:
+                ids[voter] = stopped_at[address.rstrip("/")]
             else:
                 ids[voter] = f"voter:{voter}"
                 ghosts.append(
@@ -55,7 +68,7 @@ class ConsensusLinks:
                     source=ids[source],
                     target=ids[target],
                     kind="consensus",
-                    active=not str(ids[target]).startswith("voter:"),
+                    active=ids[source] in statuses and ids[target] in statuses,
                     leader=source in leader_ids,
                 )
             )

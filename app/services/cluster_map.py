@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.cluster import ClusterHost, ClusterMap, ClusterState, MapLink, MapNode
 from app.services import matricxon_pool
+from app.services.cluster_known_nodes import KnownNodes
 from app.services.cluster_map_consensus import ConsensusLinks, short_address
 from app.services.cluster_map_storage import StorageNode
 from app.services.cluster_nodes import ClusterNodes
@@ -36,7 +37,8 @@ class ClusterMapBuilder:
         state = await self._service.state()
         if not state.supported:
             return ClusterMap(enabled=state.enabled, supported=False, nodes=[], links=[])
-        return self._map(state, self._statuses(state.hosts), compact)
+        known = await KnownNodes(self._db).update(state.hosts)
+        return self._map(state, self._statuses(state.hosts), compact, known)
 
     async def node(self, node_id: str) -> MapNode | None:
         """One node's full record (one readiness + one status call)."""
@@ -64,18 +66,23 @@ class ClusterMapBuilder:
     def _statuses(hosts: list[ClusterHost]) -> dict[str, dict]:
         return {h.host: h.consensus for h in hosts if h.consensus}
 
-    def _map(self, state, consensus: dict, compact: bool) -> ClusterMap:
+    def _map(self, state, consensus: dict, compact: bool, known: dict | None = None) -> ClusterMap:
         nodes = [self._app_node(state)]
         links: list[MapLink] = []
         log_total = LogReplay.total(list(consensus.values()))
-        inside = [h for h in state.hosts if self._in_cluster(h, state, consensus)]
+        members = {v for status in consensus.values() for v in (*status.get("voters", []), *status.get("nodes", {}))}
+        inside = [
+            h
+            for h in state.hosts
+            if self._in_cluster(h, state, consensus) or self._was_member(h, consensus, known or {}, members)
+        ]
         outside = [h.host for h in state.hosts if h not in inside]
         matricxon = [self._matricxon_node(h, state, consensus.get(h.host), log_total=log_total) for h in inside]
         nodes += matricxon
         nodes.append(_storage.node(state, inside))
         links += [MapLink(source="app", target=n.id, kind="api", active=n.status != "down") for n in matricxon]
         links += [MapLink(source=n.id, target="storage", kind="storage", active=n.status == "up") for n in matricxon]
-        ghosts, consensus_links = _consensus_links.of(inside, consensus)
+        ghosts, consensus_links = _consensus_links.of(inside, consensus, known)
         nodes += ghosts
         links += consensus_links
         if compact:
@@ -85,6 +92,11 @@ class ClusterMapBuilder:
         return ClusterMap(
             quorum=state.quorum, enabled=state.enabled, supported=True, nodes=nodes, links=links, outside=outside
         )
+
+    @staticmethod
+    def _was_member(host: ClusterHost, consensus: dict, known: dict, members: set[str]) -> bool:
+        """A stopped node that reported a node id the cluster still counts: drawn (down), not hidden."""
+        return host.host not in consensus and known.get(host.host, {}).get("node_id") in members
 
     @staticmethod
     def _in_cluster(host: ClusterHost, state: ClusterState, consensus: dict) -> bool:

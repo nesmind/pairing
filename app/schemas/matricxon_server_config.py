@@ -76,6 +76,9 @@ class MatricxonServerConfig(BaseModel):
     # a cluster grows from. Nodes are fresh installs only, never merged (../matricxon/docs/CLUSTER_STORAGE.md).
     # Applies at next start.
     cluster_role: Literal["off", "seed", "joiner"] = "off"
+    # What each listed node last reported: {host: {"node_id": ..., "advertise_url": ...}}. Lets the Nodes map match a
+    # stopped node to its voter (the cluster knows it by its advertised address, not the host pAIring lists).
+    known_nodes: dict[str, dict[str, str]] = Field(default_factory=dict)
     # Signs pAIring's admin calls to Matricxon (MATRICXON_ADMIN_SECRET on each node). None = nodes are
     # unprotected. Encrypted at rest (settings_service); never sent to the browser.
     admin_secret: str | None = None
