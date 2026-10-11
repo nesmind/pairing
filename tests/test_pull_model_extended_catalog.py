@@ -1,8 +1,8 @@
-"""Unit test for app/routers/settings.py's pull_model endpoint accepting an extended-catalog tag, not just a
-static app/model_catalog.py one (see that endpoint's own docstring) — called directly, not through a
-TestClient/ASGI app (see tests/test_instance_proxy_http.py's own docstring on why this project doesn't use that
-pattern). The full SSE download itself is exercised by app/services/ollama_admin.py's own tests; this only
-checks the entry-lookup gate that decides whether pull_model proceeds at all."""
+"""Test that routers/settings.py's pull_model accepts an extended-catalog tag, not just a static
+app/model_catalog.py one, called directly, not via TestClient/ASGI (see tests/test_instance_proxy_http.py). The SSE
+download is covered by ollama_admin's tests; this checks only the entry-lookup gate deciding whether pull_model
+proceeds.
+"""
 
 import pytest
 from fastapi import HTTPException
@@ -34,9 +34,9 @@ def _stub_repo_files(monkeypatch, repo: dict) -> None:
 
 @pytest.fixture(autouse=True)
 def _stub_gguf_probe(monkeypatch):
-    """Same "couldn't reach Hugging Face" stub as tests/test_extended_model_catalog_service.py's own fixture
-    (see its docstring) — ExtendedModelCatalog.add below now also probes the real GGUF header; this keeps that
-    from making a real network call here too."""
+    """The "couldn't reach Hugging Face" stub of tests/test_extended_model_catalog_service.py: ExtendedModelCatalog.add
+    also probes the GGUF header; this prevents a real network call here.
+    """
 
     async def fake_probe_metadata(_repo_id, _filename, _proxy_url):
         return None
@@ -70,9 +70,9 @@ async def test_pull_model_accepts_an_extended_catalog_tag(db, admin_user, monkey
 
 @pytest.mark.asyncio
 async def test_pull_model_accepts_an_embedding_catalog_tag(db, admin_user, monkeypatch):
-    """Same entry-lookup gate as the extended-catalog case above, but for app/model_catalog.py's
-    CATALOG.embedding_models (see pull_model's own three-way CATALOG.find/ExtendedModelCatalog.find/
-    CATALOG.find_embedding chain)."""
+    """The same entry-lookup gate as the extended-catalog case, for CATALOG.embedding_models (pull_model's
+    three-way CATALOG.find/ExtendedModelCatalog.find/CATALOG.find_embedding chain).
+    """
     monkeypatch.setattr(hardware, "available_capacity_gb", lambda: 100.0)
     tag = "hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF:Q8_0"
 
@@ -86,8 +86,8 @@ _MINISTRAL_TAG = "hf.co/mistralai/Ministral-3-3B-Instruct-2512-GGUF:Ministral-3-
 
 @pytest.mark.asyncio
 async def test_pull_model_returns_409_when_a_duplicate_is_already_installed(db, admin_user, monkeypatch):
-    """Real regression guard (2026-09-21): moondream2-gguf and moondream-2b-2025-04-14-4bit turned out to be the
-    exact same file installed under two different repo names — see DuplicateInstallDetector's own docstring."""
+    """Regression guard: moondream2-gguf and moondream-2b--4bit were the same file under two repo
+    names (DuplicateInstallDetector)."""
     monkeypatch.setattr(hardware, "available_capacity_gb", lambda: 100.0)
 
     async def fake_list_models():
@@ -136,8 +136,8 @@ async def test_pull_model_still_enforces_hardware_gating_for_an_extended_tag(db,
 
 @pytest.mark.asyncio
 async def test_get_embedding_model_catalog_returns_both_entries(db, user, monkeypatch):
-    """GET /api/settings/embedding-model-catalog — any logged-in user, not just an admin (see the endpoint's
-    own docstring on why installed status isn't admin-secret)."""
+    """GET /api/settings/embedding-model-catalog: any logged-in user, not just admins (install status isn't
+    admin-secret; see the endpoint)."""
     monkeypatch.setattr(embedding_model_catalog_service, "list_models", lambda: _async_return([]))
     monkeypatch.setattr(default_model_settings, "list_models", lambda: _async_return([]))
 

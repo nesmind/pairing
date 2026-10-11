@@ -1,7 +1,6 @@
-"""Unit tests for app/services/comfyui_installer.py — every subprocess
-call (git/venv/pip) is monkeypatched via a fake asyncio.create_subprocess_exec;
-no real network access, clone, or pip install happens in this test
-suite."""
+"""Tests for services/comfyui_installer.py. Every subprocess call (git/venv/pip) goes through a fake
+asyncio.create_subprocess_exec; no network, clone or pip install happens.
+"""
 
 import shutil
 
@@ -12,19 +11,17 @@ from app.services import comfyui_installer
 
 @pytest.fixture(autouse=True)
 def _assume_avx2_by_default(monkeypatch):
-    """install_stream's own AVX2 gate (see test_install_stream_blocks_...
-    below for that behavior itself) would otherwise make every other
-    test here depend on whichever real CPU happens to run the test suite
-    — pinned to "supported" so the rest of this file's tests exercise
-    the clone/venv/pip flow deterministically regardless of that."""
+    """install_stream's AVX2 gate (test_install_stream_blocks_...) would make every other test depend on the real CPU;
+    pinned to "supported" so the clone/venv/pip flow is deterministic.
+    """
     monkeypatch.setattr(comfyui_installer, "has_avx2", lambda: True)
 
 
 @pytest.fixture(autouse=True)
 def _assume_linux_by_default(monkeypatch):
-    """Same reasoning as _assume_avx2_by_default above, for install_stream's OS gate (see
-    test_install_stream_blocks_on_an_unsupported_os below) — pinned to "supported" so the rest of this file's
-    tests aren't accidentally sensitive to whichever real OS runs the test suite."""
+    """Same as _assume_avx2_by_default, for the OS gate (test_install_stream_blocks_on_an_unsupported_os): pinned to
+    "supported" so tests don't depend on the real OS.
+    """
     monkeypatch.setattr(comfyui_installer, "local_install_supported", lambda: True)
 
 
@@ -34,11 +31,9 @@ def test_is_installed_false_when_nothing_there(tmp_path, monkeypatch):
 
 
 def test_is_installed_false_while_pip_install_still_running(tmp_path, monkeypatch):
-    """A real, confirmed-live gap: git clone and venv creation both
-    finish long before pip finishes installing requirements.txt, so
-    main.py/venv/bin/python existing alone must NOT report "installed"
-    while the install is still actively running — see is_installed's own
-    docstring."""
+    """A confirmed-live gap: git clone and venv creation finish long before pip installs requirements.txt, so
+    main.py/venv/bin/python existing must NOT report "installed" mid-install (see is_installed).
+    """
     monkeypatch.setattr(comfyui_installer, "EXTERNAL_DIR", tmp_path)
     comfyui_installer.main_py_path().parent.mkdir(parents=True)
     comfyui_installer.main_py_path().write_text("")
@@ -81,17 +76,15 @@ async def test_install_stream_blocks_on_an_unsupported_os(monkeypatch, tmp_path)
 
     assert len(events) == 1
     assert "Darwin" in events[0]["error"]
-    assert called == []  # refused before even checking for git
+    assert called == []
 
 
 @pytest.mark.asyncio
 async def test_install_stream_blocks_before_downloading_anything_when_cpu_lacks_avx2(monkeypatch, tmp_path):
-    """A real, confirmed-live crash this now catches up front instead of
-    letting it happen mid-run: without AVX2, ComfyUI's own prebuilt
-    PyTorch/NumPy dependencies hard-crash with "Illegal instruction" the
-    moment they actually execute — not something this app can catch any
-    other way, so the honest thing to do is refuse before spending
-    several GB of download/pip-install time getting there."""
+    """Catches up front a confirmed-live crash: without AVX2, ComfyUI's prebuilt PyTorch/NumPy dependencies hard-crash
+    ("Illegal instruction") when run. This app can't catch that, so it refuses before spending several GB of
+    download/pip time.
+    """
     monkeypatch.setattr(comfyui_installer, "EXTERNAL_DIR", tmp_path)
     monkeypatch.setattr(comfyui_installer, "has_avx2", lambda: False)
 
@@ -102,7 +95,7 @@ async def test_install_stream_blocks_before_downloading_anything_when_cpu_lacks_
 
     assert len(events) == 1
     assert "AVX2" in events[0]["error"]
-    assert called == []  # never even checked for git — refused before any real work started
+    assert called == []
 
 
 class _AsyncLineIterator:
@@ -121,9 +114,8 @@ class _FakeSubprocess:
     def __init__(self, lines: list[bytes], returncode: int):
         self.stdout = _AsyncLineIterator(lines)
         self._returncode_to_report = returncode
-        # None until wait() actually reaps it — matches real
-        # asyncio.subprocess.Process, and is what _run_streamed's own
-        # finally block checks to decide whether a kill() is still needed.
+        # None until wait reaps it, like asyncio.subprocess.Process; _run_streamed's finally checks it to decide if a
+        # kill is needed.
         self.returncode = None
 
     async def wait(self):
@@ -135,23 +127,21 @@ class _FakeSubprocess:
 async def test_install_stream_runs_clone_venv_and_pip_in_order(monkeypatch, tmp_path):
     monkeypatch.setattr(comfyui_installer, "EXTERNAL_DIR", tmp_path)
     monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/git")
-    monkeypatch.setattr(comfyui_installer, "get_gpu_vram_gb", lambda: 8.0)  # has a GPU — no --cpu suggested
+    monkeypatch.setattr(comfyui_installer, "get_gpu_vram_gb", lambda: 8.0)
 
     calls = []
 
     async def fake_create_subprocess_exec(*argv, **_kwargs):
         calls.append(argv)
         if argv[0] == "git":
-            # Simulate git actually creating the target directory + requirements.txt,
-            # same as a real clone would.
+            # Simulate git creating the target directory + requirements.txt, as a real clone would.
             target_dir = tmp_path / "ComfyUI"
             target_dir.mkdir(parents=True, exist_ok=True)
             (target_dir / "requirements.txt").write_text("some-package\n")
             (target_dir / "main.py").write_text("")
             return _FakeSubprocess([b"Cloning...\n"], 0)
         if "venv" in argv:
-            # Simulate venv creation actually producing the interpreter
-            # is_installed() checks for.
+            # Simulate venv creation producing the interpreter is_installed checks for.
             comfyui_installer.python_path().parent.mkdir(parents=True, exist_ok=True)
             comfyui_installer.python_path().write_text("")
         return _FakeSubprocess([b"ok\n"], 0)
@@ -165,7 +155,7 @@ async def test_install_stream_runs_clone_venv_and_pip_in_order(monkeypatch, tmp_
     assert events[-1]["total_steps"] == 3
     assert events[-1]["python_path"] == str(comfyui_installer.python_path())
     assert events[-1]["main_py_path"] == str(comfyui_installer.main_py_path())
-    assert events[-1]["extra_args"] is None  # a GPU is present — no --cpu suggested
+    assert events[-1]["extra_args"] is None
     assert calls[0][0] == "git"
     assert calls[1][1:3] == ("-m", "venv")
     assert "pip" in calls[2]
@@ -189,13 +179,13 @@ def test_preserve_and_restore_models_dir_round_trips_real_files(tmp_path):
     preserved = comfyui_installer._preserve_models_dir(target_dir)
 
     assert preserved is not None
-    assert not (target_dir / "models").exists()  # moved out, not copied
+    assert not (target_dir / "models").exists()
     assert (preserved / "checkpoints" / "sd_xl.safetensors").read_text() == "fake checkpoint"
 
     comfyui_installer._restore_models_dir(preserved, target_dir)
 
     assert (target_dir / "models" / "checkpoints" / "sd_xl.safetensors").read_text() == "fake checkpoint"
-    assert not preserved.parent.exists()  # the tempfile.mkdtemp() holding dir was cleaned up
+    assert not preserved.parent.exists()
 
 
 def test_preserve_models_dir_is_a_noop_when_theres_nothing_there(tmp_path):
@@ -206,9 +196,10 @@ def test_preserve_models_dir_is_a_noop_when_theres_nothing_there(tmp_path):
 
 @pytest.mark.asyncio
 async def test_install_stream_preserves_previously_pulled_checkpoints_across_a_reinstall(monkeypatch, tmp_path):
-    """The real bug this covers: reinstalling used to `shutil.rmtree` the whole target_dir outright, silently
-    destroying every already-pulled checkpoint (often several GB each) living at ComfyUI's own default
-    models/ — pAIring's own managed library, not a disposable install artifact."""
+    """Regression: reinstalling used to `shutil.rmtree` the whole target_dir, destroying every pulled checkpoint
+    (often several GB) in ComfyUI's default models/, pAIring's managed library rather than a disposable install
+    artifact.
+    """
     monkeypatch.setattr(comfyui_installer, "EXTERNAL_DIR", tmp_path)
     monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/git")
     monkeypatch.setattr(comfyui_installer, "get_gpu_vram_gb", lambda: 8.0)
@@ -264,10 +255,9 @@ async def test_install_stream_restores_preserved_models_even_when_the_clone_fail
 
 @pytest.mark.asyncio
 async def test_install_stream_sets_proxy_env_for_clone_and_pip_but_not_venv(monkeypatch, tmp_path):
-    """git clone and pip install both make real network requests and
-    must honor the configured proxy; venv creation doesn't touch the
-    network at all and must be left alone (env=None, inheriting this
-    app's own process env unchanged)."""
+    """git clone and pip install make network requests and must honor the proxy; venv creation doesn't, so it is
+    left alone (env=None, inheriting this process's env).
+    """
     monkeypatch.setattr(comfyui_installer, "EXTERNAL_DIR", tmp_path)
     monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/git")
     monkeypatch.setattr(comfyui_installer, "get_gpu_vram_gb", lambda: 8.0)
@@ -355,11 +345,9 @@ async def test_run_streamed_passes_env_through_to_the_subprocess(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_install_stream_suggests_cpu_flag_when_no_gpu_present(monkeypatch, tmp_path):
-    """A real, confirmed-live crash: ComfyUI's own requirements.txt pulls
-    a CUDA-enabled torch build unconditionally, which raises
-    "RuntimeError: Found no NVIDIA driver on your system" the instant it
-    starts on a GPU-less machine, unless launched with ComfyUI's own
-    --cpu flag."""
+    """A confirmed-live crash: ComfyUI's requirements.txt pulls a CUDA torch build, which raises "RuntimeError:
+    Found no NVIDIA driver on your system" on a GPU-less machine unless launched with --cpu.
+    """
     monkeypatch.setattr(comfyui_installer, "EXTERNAL_DIR", tmp_path)
     monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/git")
     monkeypatch.setattr(comfyui_installer, "get_gpu_vram_gb", lambda: 0.0)
@@ -435,10 +423,9 @@ async def test_install_stream_removes_a_partial_clone_on_failure(monkeypatch, tm
 
 
 class _FakeInfiniteSubprocess:
-    """Simulates a still-running child process (git/pip) whose stdout
-    keeps producing lines forever — stands in for the real defect found
-    live: a client disconnecting mid-install must not leave this process
-    running orphaned forever."""
+    """A still-running child (git/pip) whose stdout produces lines forever: the live defect where a client
+    disconnecting mid-install left this process running orphaned.
+    """
 
     def __init__(self):
         self.killed = False
@@ -471,7 +458,7 @@ async def test_run_streamed_kills_the_subprocess_if_torn_down_early(monkeypatch)
     gen = comfyui_installer._run_streamed(["some-long-running-cmd"])
     line = await gen.__anext__()
     assert line == "still running..."
-    assert fake_process.killed is False  # still genuinely running at this point
+    assert fake_process.killed is False
 
     await gen.aclose()
 
@@ -482,7 +469,7 @@ async def test_run_streamed_kills_the_subprocess_if_torn_down_early(monkeypatch)
 async def test_run_streamed_does_not_kill_a_process_that_already_exited_cleanly(monkeypatch):
     fake_process = _FakeSubprocess([b"done\n"], 0)
     fake_process.killed = False
-    fake_process.kill = lambda: setattr(fake_process, "killed", True)  # should never be called below
+    fake_process.kill = lambda: setattr(fake_process, "killed", True)
 
     async def fake_create_subprocess_exec(*_argv, **_kwargs):
         return fake_process
@@ -492,7 +479,7 @@ async def test_run_streamed_does_not_kill_a_process_that_already_exited_cleanly(
     lines = [line async for line in comfyui_installer._run_streamed(["ok-cmd"])]
 
     assert lines == ["done"]
-    assert fake_process.killed is False  # normal completion — nothing left to kill
+    assert fake_process.killed is False
 
 
 @pytest.mark.asyncio

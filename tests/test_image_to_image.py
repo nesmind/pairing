@@ -31,7 +31,7 @@ def _request(**overrides) -> ImageGenerationRequest:
     return ImageGenerationRequest(**{**base, **overrides})
 
 
-# ---- request validation -------------------------------------------------------------------------------------------
+# request validation
 
 
 def test_text_to_image_is_the_default_and_drops_any_stray_source_image():
@@ -64,7 +64,7 @@ def test_strength_must_be_in_0_to_1(strength):
         _request(mode="image_to_image", init_image=_b64(), strength=strength)
 
 
-# ---- the job row and the in-memory hand-off -----------------------------------------------------------------------
+# the job row and the in-memory hand-off
 
 
 @pytest.fixture(autouse=True)
@@ -100,7 +100,7 @@ def test_init_params_is_empty_for_text_to_image_and_refuses_other_engines():
     image_init.stash("j3", _b64())
     with pytest.raises(ValueError, match="stable-diffusion.cpp"):
         image_init.init_params(ImageGenerationJob(id="j3", mode="image_to_image", strength=0.5), "comfyui")
-    assert "j3" not in image_init._pending  # consumed even when refused
+    assert "j3" not in image_init._pending
 
 
 @pytest.mark.asyncio
@@ -134,7 +134,7 @@ async def test_run_job_errors_when_the_source_image_is_gone(db, user, monkeypatc
     job = await image_generation_service.create_job(
         db, user.id, _request(mode="image_to_image", init_image=_b64(), strength=0.5)
     )
-    image_init._pending.clear()  # as after a server restart
+    image_init._pending.clear()
     await image_generation_service._run_job(job.id)
     await db.refresh(job)
     assert job.status == "error" and "no longer available" in job.error_message
@@ -151,7 +151,7 @@ async def test_a_job_cancelled_before_it_runs_releases_its_picture(db, user):
     assert job.id not in image_init._pending
 
 
-# ---- what sd-server receives --------------------------------------------------------------------------------------
+# what sd-server receives
 
 
 class _Response:

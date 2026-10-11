@@ -1,9 +1,7 @@
-"""Admin-facing request/response shapes for Settings > Model: pulling/hiding/deleting a model, the admin-managed
-"browse more models" extended catalog (app/services/extended_model_catalog_service.py), and Hugging Face
-search/lookup (app/services/huggingface_client.py). Split out of app/schemas/model_catalog.py (the plain
-catalog-entry shapes every caller reads, CatalogEntry/EmbeddingCatalogEntry/EngineModelSupport) once this file
-pushed that one over CLAUDE.md's line cap — every one of these is re-exported from app.schemas unchanged, so no
-import site elsewhere needed to change."""
+"""Admin request/response shapes for Settings > Model: pull/hide/delete, the extended "browse more models"
+catalog (extended_model_catalog_service.py) and Hugging Face search (huggingface_client.py). Split from
+schemas/model_catalog.py for the file-size cap; all re-exported from app.schemas.
+"""
 
 from pydantic import BaseModel
 
@@ -12,9 +10,8 @@ from app.schemas.model_catalog import CatalogEntry
 
 class PullModelRequest(BaseModel):
     tag: str
-    # True once the admin has confirmed "pull anyway" past a 409 DuplicateInstallDetector warning (see
-    # app/routers/settings.py's pull_model) — False on a normal first attempt, so the duplicate check always
-    # runs at least once.
+    # True once the admin confirmed "pull anyway" after a 409 DuplicateInstallDetector warning
+    # (routers/settings.py pull_model); False on a first attempt, so the check always runs.
     confirm_duplicate: bool = False
 
 
@@ -33,24 +30,21 @@ class DeleteModelResponse(BaseModel):
 
 
 class ExtendedModelCatalogResponse(BaseModel):
-    """GET /api/settings/model-catalog/extended — the admin-managed "browse more models" list behind Settings >
-    Model (see app.services.extended_model_catalog_service), separate from the small hand-curated default list
-    GET /api/settings/model-catalog still returns unchanged."""
+    """GET /api/settings/model-catalog/extended: the admin-managed "browse more models" list
+    (extended_model_catalog_service), separate from the curated GET /api/settings/model-catalog.
+    """
 
     entries: list[CatalogEntry]
-    # POST only (see add_extended_model's own docstring) — True when the just-added tag turned out to already
-    # be installed, so it was never going to appear in `entries` above (ExtendedModelCatalog.build excludes any
-    # installed tag on purpose — see its own docstring). Lets the frontend tell that apart from a genuine new
-    # addition instead of showing a flat "Added" that's misleading here: confirmed live, an admin re-adding an
-    # already-installed tag saw "Added ..." and then couldn't find it anywhere to pull, since there was nothing
-    # left to pull. Always False on GET/DELETE, where it's meaningless.
+    # POST only: true when the added tag is already installed, so it never appears in `entries`
+    # (ExtendedModelCatalog.build excludes installed tags). Lets the frontend avoid a misleading "Added"
+    # (an admin re-adding an installed tag found nothing to pull). False on GET/DELETE.
     already_installed: bool = False
 
 
 class AddExtendedModelRequest(BaseModel):
-    """POST /api/settings/model-catalog/extended — adds one specific GGUF file from a Hugging Face repo (see
-    app.services.extended_model_catalog_service.ExtendedModelCatalog.add, which re-verifies both against
-    Hugging Face itself rather than trusting this request body)."""
+    """POST /api/settings/model-catalog/extended: adds one GGUF file from a Hugging Face repo;
+    ExtendedModelCatalog.add re-verifies both against Hugging Face.
+    """
 
     repo_id: str
     filename: str
@@ -65,16 +59,16 @@ class SearchHfModelsRequest(BaseModel):
 
 
 class HfSearchResult(BaseModel):
-    """One repo from POST /api/settings/model-catalog/extended/search-hf — see
-    app.services.huggingface_client.HuggingFaceCatalogSearch.search. `license` is always None here — Hugging
-    Face's own search API doesn't return it; only the per-repo lookup (HfRepoFilesResponse below) does."""
+    """One repo from POST.../extended/search-hf (HuggingFaceCatalogSearch.search). `license` is always None:
+    the search API omits it; only the per-repo lookup (HfRepoFilesResponse) has it.
+    """
 
     repo_id: str
     downloads: int
     likes: int
     gated: bool
     license: str | None
-    # A text-to-image (diffusion) repo — installs into the image engine, not Ollama/Matricxon.
+    # A text-to-image repo: installs into the image engine.
     is_image: bool = False
 
 
@@ -85,12 +79,10 @@ class SearchHfModelsResponse(BaseModel):
 class HfFileOption(BaseModel):
     filename: str
     download_gb: float
-    # See app.services.huggingface_client.HuggingFaceCatalogSearch.is_projector_file's own docstring — a
-    # vision-projector (mmproj) sidecar, not a standalone chat model, so the file-picker UI flags it rather than
-    # implying it's whatever this response's own family/parameter_size (below) describes, which almost never
-    # applies to it.
+    # A vision-projector (mmproj) sidecar, not a chat model (HuggingFaceCatalogSearch.is_projector_file); the
+    # file picker flags it, since family/parameter_size rarely apply to it.
     is_projector: bool = False
-    # A chat-model file whose repo also ships an mmproj sidecar — see HuggingFaceCatalogSearch.repo_files.
+    # A chat-model file whose repo also ships an mmproj sidecar (HuggingFaceCatalogSearch.repo_files).
     vision: bool = False
 
 
@@ -99,10 +91,9 @@ class HfRepoFilesRequest(BaseModel):
 
 
 class HfRepoFilesResponse(BaseModel):
-    """POST /api/settings/model-catalog/extended/hf-files — every single-file GGUF variant `repo_id` offers,
-    each with its real download size, plus repo-level metadata (see
-    app.services.huggingface_client.HuggingFaceCatalogSearch.repo_files). The Model tab's own file-picker step,
-    shown once an admin picks a repo from a search result (or already knows the exact repo path)."""
+    """POST.../extended/hf-files: every single-file GGUF variant of `repo_id` with real sizes, plus repo
+    metadata (HuggingFaceCatalogSearch.repo_files); the Model tab's file-picker step.
+    """
 
     repo_id: str
     family: str | None

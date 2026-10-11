@@ -1,30 +1,18 @@
-/**
- * Settings page controller: loads the model catalog and the selected
- * target's (a conversation, or the app-wide defaults) current params,
- * renders one slider per tunable value plus the model picker, and saves
- * changes back on demand. Also handles the Knowledge tab's private
- * document upload/list/delete (every chat searches these automatically
- * — nothing to sync or resync) and, for admin, the RAG upload limits on
- * the System tab.
- */
+/* Settings page controller: loads the model catalog and the target's (a conversation, or the app-wide defaults) params, renders a slider per tunable value plus the model picker, and saves on demand. Also handles the Knowledge tab's private document upload/list/delete (every chat searches these automatically) and, for admins, the RAG upload limits on the System tab. */
 
-// A small inline "animate-spin" SVG, shared by every ad-hoc loading indicator on this page (the
-// install-progress spinner further below, and the ones added around Admin settings > System's
-// default-model selects, External servers' Start/Stop buttons, and the Matricxon panel's own
-// data-fetching div) so they all look identical instead of each hand-rolling their own markup.
+// A small inline "animate-spin" SVG shared by this page's loading indicators (install progress, Admin settings > System
+// default-model selects, External servers Start/Stop, the Matricxon panel's fetch div) so they look alike.
 const SPINNER_SVG_HTML =
   '<svg class="h-3.5 w-3.5 animate-spin text-brand-500" viewBox="0 0 24 24" fill="none">' +
   '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
   '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>';
 
-// A small, bare colored chevron (no filled circle/background - see renderModelRow's own `pairing` param)
-// placed at a paired row's own bottom/top edge. Down/up direction shows which of the two rows (the model
-// above, or its projector below) each one belongs to.
+// A small bare colored chevron (no filled circle; see renderModelRow's `pairing` param) at a paired row's bottom/top
+// edge. Down/up shows which row (the model above, or its projector below) each belongs to.
 const CHEVRON_DOWN_SVG_HTML =
   '<svg class="h-2.5 w-2.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" ' +
   'd="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>';
-// Sideways ones are drawn as a longer stroked arrow (shaft + head) rather than a bare chevron, so they read
-// clearly at the corner of a compact card.
+// Sideways ones are a longer stroked arrow (shaft + head) so they read clearly at a compact card's corner.
 const CHEVRON_RIGHT_SVG_HTML =
   '<svg class="h-[0.36rem] w-[0.72rem]" viewBox="0 0 24 12" fill="none" stroke="currentColor" stroke-width="1.75" ' +
   'stroke-linecap="round" stroke-linejoin="round"><path d="M1 6h21M17 1.5 22 6l-5 4.5"/></svg>';
@@ -35,9 +23,8 @@ const CHEVRON_UP_SVG_HTML =
   '<svg class="h-2.5 w-2.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" ' +
   'd="M14.77 12.79a.75.75 0 01-1.06-.02L10 8.832l-3.71 3.938a.75.75 0 11-1.08-1.04l4.25-4.5a.75.75 0 011.08 0l4.25 4.5a.75.75 0 01-.02 1.06z"/></svg>';
 
-// Inserts a spinner right after `anchorEl` — call `.remove()` on the returned element once
-// whatever it's covering for (a fetch, a start/stop request) settles, in a `finally` so it comes
-// off on both success and failure.
+// Inserts a spinner after `anchorEl`; call `.remove` on the result when the fetch or start/stop request settles, in a
+// `finally`.
 function addInlineSpinner(anchorEl) {
   const spinner = document.createElement("span");
   spinner.className = "inline-flex shrink-0 ml-2 align-middle";
@@ -46,10 +33,8 @@ function addInlineSpinner(anchorEl) {
   return spinner;
 }
 
-// Dims `panelEl` (must be `position: relative`) behind a centered spinner overlay for as long as
-// `promise` is pending — for a whole section (e.g. External servers' per-engine config panel)
-// whose fields are still empty/stale while their own fetch is in flight, rather than a single
-// control next to it.
+// Dims `panelEl` (must be `position: relative`) behind a centered spinner while `promise` is pending, for a whole
+// section (e.g. External servers' per-engine panel) whose fields are empty/stale during its fetch.
 function withPanelSpinner(panelEl, promise) {
   const overlay = document.createElement("div");
   overlay.className = "absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-slate-900/60";
@@ -58,11 +43,8 @@ function withPanelSpinner(panelEl, promise) {
   return promise.finally(() => overlay.remove());
 }
 
-// Describes every slider on the page: which key in GenerationParams it
-// edits, its range/step, and a one-line explanation shown under it. This
-// is the single source of truth the UI is built from, so adding a new
-// tunable parameter later only means adding one entry here (plus the
-// matching field in app/schemas.py::GenerationParams).
+// Describes every slider: its GenerationParams key, range/step and a one-line explanation. The single source the UI is
+// built from: a new tunable needs one entry here plus the field in app/schemas.py:GenerationParams.
 //
 // There is no num_ctx slider: the context window is one system-wide value (Settings > System).
 const PARAM_DEFS = [
@@ -80,15 +62,12 @@ const PARAM_DEFS = [
 
 const DEFAULTS_TARGET = "__defaults__";
 
-// Whether the logged-in user is an admin — set server-side as a data
-// attribute on <body> (see app/templates/base.html) since only admin can
-// actually pull/uninstall/hide models (the matching endpoints in
-// app/routers/settings.py are all admin-only); the UI mirrors that here
-// so a regular user sees an honest "ask an admin" note instead of a
-// button that would just 403 when clicked.
+// Whether the user is an admin (data attribute on <body>, see base.html). Only admins can pull/uninstall/hide models
+// (app/routers/settings.py endpoints are admin-only); the UI mirrors that so regular users see an "ask an admin" note
+// instead of a button that 403s.
 const isAdmin = document.body.dataset.isAdmin === "true";
-// /admin-settings renders no Behavior/Knowledge/Account tabs and /settings no admin tabs, so code for the other
-// page's elements must not run (or bind) here.
+// /admin-settings has no Behavior/Knowledge/Account tabs and /settings no admin tabs, so code for the other page's
+// elements must not run or bind here.
 const hasUserTabs = document.getElementById("tab-behavior") !== null;
 
 const conversationSelect = document.getElementById("conversation-select");
@@ -111,9 +90,8 @@ const paramSlidersEl = document.getElementById("param-sliders");
 const paramsSectionHintEl = document.getElementById("params-section-hint");
 const ragUnavailableEl = document.getElementById("rag-unavailable");
 const ragUnavailableReasonEl = document.getElementById("rag-unavailable-reason");
-// Set by loadRagAvailability, read by applyRagAvailabilityToKnowledgeTab (and renderDocumentRow's own Delete
-// button, rendered well after the initial load) — starts true so a not-yet-loaded page never flashes every
-// Knowledge control as disabled before the first real check comes back.
+// Set by loadRagAvailability, read by applyRagAvailabilityToKnowledgeTab and renderDocumentRow's Delete button. Starts
+// true so Knowledge controls don't flash disabled before the first check.
 let ragAvailable = true;
 const embeddingModelCatalogEl = document.getElementById("embedding-model-catalog");
 const ragTopKInput = document.getElementById("rag-top-k");
@@ -122,22 +100,20 @@ const myDocsSummaryEl = document.getElementById("my-docs-summary");
 const saveBtn = document.getElementById("save-btn");
 const saveStatusEl = document.getElementById("save-status");
 
-let currentParams = null; // the GenerationParams object currently shown/edited
-let currentCatalog = null; // cached GET /api/settings/model-catalog response
-let currentExtendedCatalog = null; // cached GET /api/settings/model-catalog/extended response — null until "Browse more models" is opened at least once
-let currentEmbeddingCatalog = null; // cached GET /api/settings/embedding-model-catalog response
-let selectedModelTag = null; // the default model for new chats (Model tab), or the target being edited's own model (Behavior tab's num_ctx narrowing only — see loadTarget)
-let modelsAvailable = true; // false when the model catalog itself failed to load (see initModelTab)
-let modelTabLoading = false; // guards against two overlapping initModelTab() runs — see its own docstring
-// Which engine (see app.services.engine_service) is currently active — read from /health (public, no admin
-// gate) rather than GET /api/settings/engine (admin-only), since the Model tab's own catalog/badges are visible
-// to every user, not just admins. Used only to decide whether the "Not supported" badge below is relevant right
-// now — irrelevant, so hidden, whenever Ollama (which runs every catalog entry regardless) is the active one.
+let currentParams = null;
+let currentCatalog = null;
+let currentExtendedCatalog = null;
+let currentEmbeddingCatalog = null;
+let selectedModelTag = null;
+let modelsAvailable = true;
+let modelTabLoading = false;
+// The active engine (app.services.engine_service), read from /health (public) rather than admin-only GET
+// /api/settings/engine, since the Model tab's catalog and badges are visible to every user. Used only to decide whether
+// the "Not supported" badge applies; hidden when Ollama (which runs every catalog entry) is active.
 let currentActiveEngine = null;
 
-// Every engine app.services.engines.registry knows about (see EngineOption's own docstring) — static for the
-// life of this page (the registry never changes at runtime), so fetched once and reused rather than refetched
-// by every caller (the Active engine picker, its display-name map, the Stats page's engine dropdown).
+// Every engine app.services.engines.registry knows (see EngineOption). Static for the page's life, so fetched once and
+// reused (Active engine picker, its display-name map, Stats page engine dropdown).
 let _engineOptionsPromise = null;
 function engineOptionsList() {
   if (!_engineOptionsPromise) {
@@ -172,7 +148,7 @@ function renderSliders(params) {
   });
 }
 
-// ---- Model catalog ------------------------------------------------------
+// Model catalog
 
 async function loadCatalog() {
   if (!currentCatalog) {
@@ -181,9 +157,7 @@ async function loadCatalog() {
   return currentCatalog;
 }
 
-/** The admin-managed "browse more models" catalog (see app.services.extended_model_catalog_service) — fetched
- * fresh every call (not cached the way loadCatalog() is) since it's only ever loaded on demand, when "Browse
- * more models" is actually opened, so a stale-cache concern isn't worth the extra bookkeeping. */
+/* The admin-managed "browse more models" catalog (app.services.extended_model_catalog_service), fetched fresh each call (not cached like loadCatalog) since it loads only on demand. */
 async function loadExtendedCatalog() {
   currentExtendedCatalog = await api("/api/settings/model-catalog/extended");
   return currentExtendedCatalog;
@@ -205,30 +179,19 @@ function formatSize(gb) {
   return gb ? `${gb} GB` : "—";
 }
 
-/** Real, per-engine RAM figure (see CatalogEntry.engine_support/EngineModelSupport's own docstrings) —
- * never the old flat, hand-typed min_ram_gb alone, since different engines' real requirements for the
- * same file aren't proportional to each other (Matricxon dequantizes to bf16 before computing; Ollama
- * doesn't). Shows only whichever engine is actually active right now — that's the number that matters
- * for "can I chat with this today" — falling back to the static estimate when the active engine hasn't
- * reported its own real figure yet (e.g. Matricxon, not installed there — see EngineModelSupport.min_ram_gb's
- * own docstring: never a guess borrowed from a different engine). */
+/* Real per-engine RAM figure (CatalogEntry.engine_support/EngineModelSupport), not the flat hand-typed min_ram_gb alone: engines' requirements for one file differ (Matricxon dequantizes to bf16 first; Ollama doesn't). Shows the active engine's number, falling back to the static estimate when it hasn't reported one (e.g. Matricxon, not installed there; never a figure borrowed from another engine, see EngineModelSupport.min_ram_gb). */
 function formatRam(entry) {
   const ram = entry.engine_support?.[currentActiveEngine]?.min_ram_gb ?? entry.min_ram_gb;
   return ram != null ? `${ram}GB RAM` : null;
 }
 
-/** Persists whichever model is currently selected as the default for new chats right away — the Model tab has
- * no "Save changes" button of its own at all (unlike Behavior/Knowledge), since there's nothing to batch: an
- * existing conversation's model is changed from that chat's own model badge instead (see chat.js: switchModel),
- * never from Settings, so this only ever means "the default." */
+/* Persists the selected model as the default for new chats at once. The Model tab has no Save button (nothing to batch); an existing conversation's model is changed from that chat's model badge (chat.js switchModel), so this always means "the default." */
 async function saveModelSelection() {
   try {
     await api("/api/settings/default-model", {
       method: "PUT", body: JSON.stringify({ model: selectedModelTag }),
     });
-    // Reloading (rather than the old redirect-to-chat-page) is what
-    // actually confirms the update, and staying on Settings means
-    // whatever else was being edited here isn't lost.
+    // Reloading (not redirecting to chat) confirms the update and keeps whatever else was being edited.
     window.location.reload();
   } catch (err) {
     saveStatusEl.textContent = `Failed to update model: ${err.message}`;
@@ -241,13 +204,9 @@ function selectModel(entry) {
   saveModelSelection();
 }
 
-/** Re-fetches and re-renders both catalogs after an action (Pull/Uninstall/Hide/Remove) that could affect either one —
- * a row rendered via renderModelRow can come from the default catalog or the extended one (same shape, see
- * renderCatalogGroup), and either could change any of installed/hidden/hardware_ok. Extended is only refreshed
- * if it's actually been loaded at least once (browsing it is opt-in — see toggleBrowseMoreModels), not fetched
- * just to immediately discard an unopened panel's result. */
+/* Re-fetches and re-renders both catalogs after Pull/Uninstall/Hide/Remove, since a renderModelRow row can come from either (same shape, renderCatalogGroup) and installed/hidden/hardware_ok can change in both. The extended one is refreshed only if it has been loaded (browsing it is opt-in, toggleBrowseMoreModels). */
 async function refreshCatalogs() {
-  document.dispatchEvent(new Event("pairing:models-changed")); // the Diffusion models section reloads itself
+  document.dispatchEvent(new Event("pairing:models-changed"));
   currentCatalog = null;
   await loadCatalog();
   renderModelCatalog();
@@ -269,10 +228,9 @@ async function pullModel(entry, button, progressEl, onDone = refreshCatalogs, co
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tag: entry.tag, confirm_duplicate: confirmDuplicate }),
     });
-    // DuplicateInstallDetector found an already-installed model that looks like the same file under a
-    // different name (see app/routers/settings.py's pull_model) — a structured detail, not the plain-string
-    // one every other error here uses, so it's handled before the generic error path below. Declining is a
-    // cancellation, not a failure: reset the button instead of throwing.
+    // DuplicateInstallDetector found an installed model that looks like the same file under another name
+    // (routers/settings.py pull_model). The detail is structured, not the usual plain string, so it is handled before
+    // the generic error path. Declining is a cancellation: reset the button, don't throw.
     if (response.status === 409) {
       const body = await response.json().catch(() => ({}));
       if (body.detail?.duplicate_of && confirm(body.detail.message)) {
@@ -317,7 +275,7 @@ async function pullModel(entry, button, progressEl, onDone = refreshCatalogs, co
     }
 
     progressEl.textContent = "Done.";
-    await onDone(); // stale now that this model is installed
+    await onDone();
   } catch (err) {
     progressEl.textContent = `Failed: ${err.message}`;
     button.disabled = false;
@@ -338,11 +296,9 @@ async function uninstallModel(entry, button, progressEl, onDone = refreshCatalog
       method: "POST",
       body: JSON.stringify({ tag: entry.tag }),
     });
-    // If the model just removed was selected for the current target,
-    // fall back to no selection rather than leaving a phantom choice
-    // pointing at a model that no longer exists.
+    // If the removed model was selected for the current target, fall back to no selection instead of a phantom choice.
     if (selectedModelTag === entry.tag) selectedModelTag = null;
-    await onDone(); // stale now that this model is gone
+    await onDone();
   } catch (err) {
     progressEl.textContent = `Failed: ${err.message}`;
     button.disabled = false;
@@ -350,9 +306,7 @@ async function uninstallModel(entry, button, progressEl, onDone = refreshCatalog
   }
 }
 
-/** Disables or enables a model for regular users (hidden from their picker, blocked in chats) (admin only —
- * see POST /api/settings/hide-model). Purely a visibility toggle, so
- * there's no confirmation dialog the way Uninstall gets. */
+/* Disables or enables a model for regular users (hidden from their picker, blocked in chats); admin only (POST /api/settings/hide-model). A visibility toggle, so no confirmation like Uninstall. */
 async function toggleHideModel(entry, button, progressEl) {
   const newHidden = !entry.hidden;
   button.disabled = true;
@@ -364,17 +318,14 @@ async function toggleHideModel(entry, button, progressEl) {
       method: "POST",
       body: JSON.stringify({ tag: entry.tag, hidden: newHidden }),
     });
-    await refreshCatalogs(); // stale — force a refresh so `hidden` reflects the change
+    await refreshCatalogs();
   } catch (err) {
     progressEl.textContent = `Failed: ${err.message}`;
     button.disabled = false;
   }
 }
 
-/** Removes a not-yet-installed extended-catalog entry from the list (admin only — see CatalogEntry.removable's
- * own docstring for why an installed one never reaches this at all). Purely catalog curation, same as
- * toggleHideModel above — nothing to uninstall from Ollama since it was never pulled, so no confirmation dialog
- * the way uninstallModel gets. */
+/* Removes a not-yet-installed extended-catalog entry from the list (admin only; an installed one never reaches this, see CatalogEntry.removable). Catalog curation like toggleHideModel: nothing to uninstall, so no confirmation. */
 async function removeExtendedModel(entry, button, progressEl) {
   button.disabled = true;
   progressEl.classList.remove("hidden");
@@ -389,11 +340,7 @@ async function removeExtendedModel(entry, button, progressEl) {
   }
 }
 
-/** One model's card in the picker: name/meta on the left, actions on
- * the right, wrapping onto their own line if they don't fit — a plain
- * flex layout rather than a fixed-column grid, so it can't overflow its
- * container no matter how many action buttons a row ends up with
- * (Select, Pull, Uninstall, Hide, Remove — not every row has all of them). */
+/* One model's card in the picker: name/meta left, actions right, wrapping to their own line if needed. Plain flex, not a fixed grid, so it can't overflow however many buttons a row has (Select, Pull, Uninstall, Hide, Remove). */
 function renderModelRow(entry, pairing = null, compact = false) {
   const isSelected = entry.tag !== null && entry.tag === selectedModelTag;
   const row = document.createElement("div");
@@ -402,9 +349,8 @@ function renderModelRow(entry, pairing = null, compact = false) {
     (compact ? "py-2 flex flex-col justify-between gap-1.5 " : "py-2.5 ") +
     (isSelected ? "border-brand-500 bg-[rgb(var(--color-brand-500)/0.1)]" : "border-slate-800 bg-slate-900") +
     (entry.hidden ? " opacity-60" : "");
-  // Looked up after a fresh add/pull (see addBtn's own click handler) to scroll straight to whichever row the
-  // action just affected, rather than leaving the page wherever hiding the search UI above it happened to
-  // land the scroll position.
+  // Looked up after a fresh add/pull (addBtn's click handler) to scroll to the affected row instead of wherever hiding
+  // the search UI left the scroll.
   if (entry.tag) row.dataset.tag = entry.tag;
 
   const top = document.createElement("div");
@@ -414,54 +360,41 @@ function renderModelRow(entry, pairing = null, compact = false) {
 
   const label = document.createElement("div");
   label.className = "min-w-0";
-  // A tag like "hf.co/MaziyarPanahi/Meta-Llama-3-8B-Instruct-GGUF:Meta-Llama-3-8B-Instruct.Q4_K_M" is the real
-  // pull path, not something anyone wants as a row's headline — it used to be the bold title here and, being far
-  // longer than the old plain Ollama tags ("llama3:latest"), pushed the action buttons onto their own wrapped
-  // line even on a normal-width screen. "family + parameter_size" (e.g. "Llama 3 8B") is short, always present
-  // (see build_model_catalog/the "installed but not in the static catalog" branch — both always populate these),
-  // and reads like an actual model name; the real tag still shows below, just no longer competing with the
-  // buttons for space.
+  // A tag like "hf.co/MaziyarPanahi/Meta-Llama-3-8B-Instruct-GGUF:Meta-Llama-3-8B-Instruct.Q4_K_M" is the pull path,
+  // not a headline: as the bold title it was so long it pushed the buttons onto a wrapped line. "family +
+  // parameter_size" (e.g. "Llama 3 8B") is short, always populated (build_model_catalog and the "installed but not in
+  // the static catalog" branch) and reads like a name; the tag still shows below.
   const modelName = [entry.family, entry.parameter_size].filter(Boolean).join(" ");
   const metaParts = [
     formatSize(entry.download_gb),
     formatContextLength(entry.context_length) ? `${formatContextLength(entry.context_length)} ctx` : null,
     formatRam(entry),
   ].filter(Boolean);
-  // "+Vision" = a normal chat model that can *also* see an image attachment (e.g. gemma4:12b). "Vision" alone
-  // (no "+") means no text-chat ability at all - kept for a hypothetical future vision-only *model*.
-  // "Vision projector" is the real, live case an installed mmproj sidecar (entry.is_projector) hits: not a
-  // model at all, so calling it just "Vision" would misleadingly read the same as that hypothetical case -
-  // same pill/styling as the other two, not the plain "(vision projector)" text this used to be (moved into a
-  // real badge, 2026-09-30, so every vision-related row reads consistently at a glance instead of one of them
-  // being oddly plain-text).
+  // "+Vision" = a chat model that can also see an image attachment (e.g. gemma4:12b). Plain "Vision" (no "+") would
+  // mean a vision-only model with no text chat (hypothetical). "Vision projector" is the live case of an installed
+  // mmproj sidecar (entry.is_projector), not a model, so plain "Vision" would mislead; same pill style as the others (a
+  // badge, not plain text).
   const visionBadgeText = entry.is_projector ? "Vision projector" : entry.text_capable ? "+Vision" : "Vision";
   const visionBadge = entry.vision || entry.is_projector
     ? ` <span class="inline-flex items-center rounded-full bg-[rgb(var(--color-brand-500)/0.15)] border border-[rgb(var(--color-brand-500)/0.4)] px-1.5 py-0.5 text-[10px] font-medium text-brand-500 align-middle">${visionBadgeText}</span>`
     : "";
-  // Shown for whichever engine is actually active right now (see the "Active engine" picker above the
-  // External servers tab) — most engines (e.g. Ollama) run every catalog entry regardless, so this reads as
-  // empty/meaningless noise for them, same effective result as the old Matricxon-only check without hardcoding
-  // its name. See CatalogEntry.engine_support/EngineModelSupport's own docstrings. Also skipped for a vision
-  // projector (entry.is_projector) regardless of engine — "Not supported" reads as "this engine can't run
-  // this," which is backwards for a file that was never meant to run as a standalone chat model at all; its
-  // own vision badge (see visionBadge above) already says what it actually is.
+  // Shown for the active engine (see the "Active engine" picker above External servers). Most engines (e.g. Ollama) run
+  // every catalog entry, so it would be noise for them. Also skipped for a vision projector (entry.is_projector): "Not
+  // supported" would read as "this engine can't run it" for a file never meant as a chat model; its vision badge
+  // (visionBadge) says what it is. See CatalogEntry.engine_support/EngineModelSupport.
   const activeSupport = entry.engine_support?.[currentActiveEngine];
   const matricxonBadge = !activeSupport || activeSupport.supported || entry.is_projector
     ? ""
     : ` <span class="inline-flex items-center rounded-full bg-slate-800 border border-slate-700 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 align-middle" title="${escapeHtml(activeSupport.reason || "Not supported by the active engine")}">Not supported</span>`;
-  // Only for an *installed* entry that isn't in app/model_catalog.py's hand-curated list (see
-  // CatalogEntry.is_auto_discovered's own docstring) — a not-yet-installed extended-catalog entry is already
-  // clearly organized under its own "Browse more models" section, so it doesn't need this too. Projectors are
-  // also auto-discovered by definition (never hand-curated) but that fact is inherent to what a projector *is*,
-  // not something worth calling out per-row - would just be redundant noise on every single one.
+  // Only for an installed entry missing from app/model_catalog.py's hand-curated list
+  // (CatalogEntry.is_auto_discovered). Not-yet-installed extended entries already sit under "Browse more models";
+  // projectors are auto-discovered by definition, so a per-row note would be noise.
   const notInCatalogBadge = entry.installed && entry.is_auto_discovered && !entry.is_projector
     ? ` <span class="inline-flex items-center rounded-full bg-slate-800 border border-slate-700 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 align-middle" title="Installed, but not part of the hand-curated model list">Not in catalog</span>`
     : "";
-  // Matricxon's own "chat_format_unverified" capability (see CatalogEntry.chat_format_unverified's own
-  // docstring) — a real, confirmed-live case (Hebrew-Mistral-7B-Q5_K_M, 2026-09-27) produced incoherent,
-  // non-chat-like output no matter which prompt format it was given, with nothing here warning that its real
-  // instruction format was never actually confirmed. Amber (a caution, not a hard "broken" claim — the model
-  // may still work fine) rather than +Vision's brand color or the other badges' neutral slate.
+  // Matricxon's "chat_format_unverified" capability (CatalogEntry.chat_format_unverified): a Hebrew Mistral fine-tune
+  // gave incoherent non-chat output with any prompt format, with nothing warning that its instruction
+  // format was unconfirmed. Amber (a caution, not "broken") rather than +Vision's brand color or neutral slate.
   const chatFormatUnverifiedBadge = entry.chat_format_unverified
     ? ` <span class="inline-flex items-center rounded-full bg-warning-500/15 border border-warning-500/40 px-1.5 py-0.5 text-[10px] font-medium text-warning-400 align-middle" title="Matricxon has no confirmed chat template for this model and is falling back to a best-effort guess — it may not reliably follow instructions or stay in character.">Chat format unverified</span>`
     : "";
@@ -473,19 +406,16 @@ function renderModelRow(entry, pairing = null, compact = false) {
     `</span>` +
     `<span class="block truncate text-xs text-slate-500">${escapeHtml(metaParts.join(" · "))}</span>`;
 
-  // flex-wrap: if every button that applies to this row doesn't fit on
-  // one line, the extras drop to a second line instead of overflowing
-  // past the card's edge.
+  // flex-wrap: buttons that don't fit on one line drop to a second line instead of overflowing the card.
   const action = document.createElement("div");
   action.className = compact ? "flex flex-wrap items-center gap-1.5" : "flex flex-wrap items-center justify-end gap-1.5 shrink-0";
 
   const progressRow = document.createElement("p");
   progressRow.className = "mt-1.5 text-xs text-slate-500 hidden";
 
-  // False for a connector engine (RunPod) that manages its own model(s) remotely (see
-  // ModelCatalogResponse.model_management's own docstring) - Pull/Uninstall/Hide/Remove below would just fail
-  // or do nothing against it, so none of them render; Select still does, since switching which of the
-  // connector's own reported models is the default still means something.
+  // False for a connector engine (RunPod) that manages its models remotely (ModelCatalogResponse.model_management):
+  // Pull/Uninstall/Hide/Remove would fail or do nothing, so they don't render. Select still does: choosing which
+  // reported model is the default still matters.
   const managementEnabled = currentCatalog?.model_management ?? true;
 
   if (!entry.hardware_ok) {
@@ -494,8 +424,8 @@ function renderModelRow(entry, pairing = null, compact = false) {
     badge.textContent = "RAM shortage";
     action.appendChild(badge);
   } else if (entry.installed) {
-    // A vision projector is never itself a selectable chat model (see CatalogEntry.is_projector's own
-    // docstring) — shown as plain confirmation that the install actually took, not an action.
+    // A vision projector is never a selectable chat model (CatalogEntry.is_projector): shown as confirmation that the
+    // install took, not an action.
     if (entry.is_projector) {
       const badge = document.createElement("span");
       badge.className = "text-xs font-medium text-slate-500";
@@ -513,9 +443,8 @@ function renderModelRow(entry, pairing = null, compact = false) {
       action.appendChild(btn);
     }
 
-    // Uninstalling frees disk space but affects every user, so it's
-    // gated the same way pulling is (admin-only server-side too — see
-    // POST /api/settings/delete-model in app/routers/settings.py).
+    // Uninstalling frees disk space but affects every user, so it is admin-only like pulling (also server-side: POST
+    // /api/settings/delete-model, routers/settings.py).
     if (isAdmin && managementEnabled) {
       const uninstallBtn = document.createElement("button");
       uninstallBtn.type = "button";
@@ -545,10 +474,9 @@ function renderModelRow(entry, pairing = null, compact = false) {
     action.appendChild(note);
   }
 
-  // Disable/Enable: admin-only, independent of install state — an admin
-  // can declutter the picker for regular users even for a model that
-  // isn't installed yet.
-  // Only for an installed model - the not-installed "Recommended" list has no Disable/Enable.
+  // Disable/Enable: admin-only, independent of install state, so an admin can declutter the picker for regular users
+  // even before a model is installed.
+  // Only for an installed model; the not-installed "Recommended" list has no Disable/Enable.
   if (isAdmin && managementEnabled && entry.installed) {
     const hideBtn = document.createElement("button");
     hideBtn.type = "button";
@@ -562,9 +490,9 @@ function renderModelRow(entry, pairing = null, compact = false) {
     action.appendChild(hideBtn);
   }
 
-  // Remove from list: admin-only, and only for a not-yet-installed extended-catalog entry (server-computed —
-  // see CatalogEntry.removable's own docstring). A default app/model_catalog.py entry never has this (nothing
-  // stored to delete), and an installed one gets Uninstall above instead, never both.
+  // Remove from list: admin-only, for a not-yet-installed extended-catalog entry (server-computed,
+  // CatalogEntry.removable). A default app/model_catalog.py entry never has it (nothing stored), and an installed one
+  // gets Uninstall instead.
   if (entry.removable) {
     const removeBtn = document.createElement("button");
     removeBtn.type = "button";
@@ -580,12 +508,11 @@ function renderModelRow(entry, pairing = null, compact = false) {
   top.appendChild(action);
   row.appendChild(top);
 
-  // The real pull path, below the title/buttons row so its own length never competes with them for space (see
-  // modelName's own comment above) — truncated with the full value in a native title="" tooltip on hover rather
-  // than just cut off with no way to see the rest.
+  // The pull path sits below the title/buttons row so its length never competes with them (see modelName's comment);
+  // truncated with the full value in a native title="" tooltip.
   if (compact) {
-    // Compact card: only name + sizes are visible; the full path and the details the full row prints inline
-    // (support/catalog/chat-format notes, unavailable reason) live in the card's hover tooltip instead.
+    // Compact card: only name + sizes show; the full path and details the full row prints inline
+    // (support/catalog/chat-format notes, unavailable reason) are in the hover tooltip.
     row.title = [
       entry.tag,
       activeSupport && !activeSupport.supported && !entry.is_projector
@@ -617,18 +544,16 @@ function renderModelRow(entry, pairing = null, compact = false) {
 
   row.appendChild(progressRow);
 
-  // "Bound together" indicator for a real model+projector pair pulled from the same Hugging Face repo (see
-  // reorderProjectorsNextToTheirModel/renderCatalogGroup) — pinned to this row's own bottom edge (the model
-  // half of a pair, pointing down at its projector) or top edge (the projector half, pointing up at its
-  // model). Right side (near the action buttons, not the label text) - but a bare colored glyph, no filled
-  // circle/background, so it reads as a small accent near that corner rather than a solid shape sitting on
-  // top of the Hide button there.
+  // "Bound together" indicator for a model+projector pair pulled from the same Hugging Face repo
+  // (reorderProjectorsNextToTheirModel/renderCatalogGroup): at the model's bottom edge (pointing down at its projector)
+  // or the projector's top edge (pointing up). On the right near the action buttons, a bare colored glyph (no filled
+  // circle) so it reads as an accent rather than a shape on top of the Hide button.
   if (pairing) {
     const badge = document.createElement("span");
     const sideways = pairing.direction === "right" || pairing.direction === "left";
-    // Compact two-per-row cards: the model card points right at its projector's card, which points back left,
-    // tucked into the upper corner on each card's side edge, clear of the text. Only shown from the two-column breakpoint up -
-    // in a single column the projector sits below its model, so a sideways arrow would point at nothing.
+    // Compact two-per-row cards: the model card points right at its projector's card, which points back left, in the
+    // upper corner of each card's side edge, clear of the text. Shown only from the two-column breakpoint up; in one
+    // column the projector sits below its model and a sideways arrow would point at nothing.
     badge.className = sideways
       ? "absolute top-0.5 hidden sm:block text-brand-500 " +
         (pairing.direction === "right" ? "right-0.5" : "left-0.5")
@@ -646,24 +571,13 @@ function renderModelRow(entry, pairing = null, compact = false) {
   return row;
 }
 
-/** "hf.co/<org>/<repo>:<file>" -> "<org>/<repo>", or null for a plain (non-hf.co) tag — same repo-id extraction
- * app.services.installed_projector_catalog.InstalledProjectorCatalog._vendor_from_tag/_display_name already do
- * server-side, used here to line up a projector row with its real parent model row (see
- * reorderProjectorsNextToTheirModel below): family strings alone don't reliably match between the two (a
- * projector's family is always this same repo id, the model's own is whatever its extended-catalog entry or the
- * engine itself reports — often a coarser architecture name instead), but two files pulled from the exact same
- * Hugging Face repo always share this. */
+/* "hf.co/<org>/<repo>:<file>" -> "<org>/<repo>", or null for a plain tag; the same extraction as InstalledProjectorCatalog._vendor_from_tag/_display_name server-side. Used to line up a projector row with its parent model (reorderProjectorsNextToTheirModel): family strings often differ between the two (a projector's family is its repo id; the model's is its extended-catalog family or a coarser architecture name), but files from the same Hugging Face repo share the repo id. */
 function repoIdFromTag(tag) {
   if (!tag || !tag.startsWith("hf.co/")) return null;
   return tag.slice("hf.co/".length).split(":", 1)[0];
 }
 
-/** Moves each installed vision-projector row to sit directly after its real parent model row (same repo id, see
- * repoIdFromTag) within one vendor's already family-sorted list — confirmed live, 2026-09-30: the ggml-org vendor
- * heading is the first real case with both an installed model and its own installed projector, and their family
- * strings don't happen to sort adjacently. A projector with no installed parent in this vendor group (parent not
- * pulled, or hidden from a non-admin) is left in its original sorted position, just unlinked — still visible,
- * same as before this reordering existed. */
+/* Moves each installed projector row directly after its parent model row (same repo id, repoIdFromTag) within one vendor's family-sorted list. Seen under the ggml-org heading, where model and projector families don't sort adjacently. A projector with no installed parent in the group (not pulled, or hidden from a non-admin) stays in sorted position, unlinked. */
 function reorderProjectorsNextToTheirModel(vendorEntries) {
   const projectors = vendorEntries.filter((e) => e.is_projector);
   const claimed = new Set();
@@ -686,23 +600,13 @@ function reorderProjectorsNextToTheirModel(vendorEntries) {
   return ordered;
 }
 
-/** Shared by both the default catalog (#model-catalog) and the admin-extensible one behind "Browse more models"
- * (#extended-model-catalog) — same CatalogEntry shape from either endpoint, so one grouping/rendering routine
- * covers both. One heading per vendor ("who makes this," at a glance) — every model from that vendor lists
- * under it regardless of family, with each row's own bold title (see renderModelRow: family + parameter_size,
- * e.g. "Llama-3.2-3B-Instruct 3.2B") carrying the family-level detail instead of a separate sub-heading.
- * Previously split into one heading per vendor+family pair ("unsloth — Llama-3.2-3B-Instruct," "unsloth —
- * gemma-4-E2B-it," ...) — confirmed live, 2026-09-27: with `family` frequently this specific (the exact model
- * name, not a coarser architecture label), that meant almost every admin-added model got its own single-entry
- * heading, defeating the entire point of grouping by vendor. Entries are still sorted by family within a
- * vendor, so same-family variants (e.g. Gemma 4's e2b/e4b/12b sizes) stay visually adjacent even without their
- * own heading. */
+/* Shared by the default catalog (#model-catalog) and the admin-extensible one behind "Browse more models" (#extended-model-catalog); both endpoints return the same CatalogEntry shape. One heading per vendor, all its models under it regardless of family, each row's bold title (renderModelRow: family + parameter_size, e.g. "Llama-3.2-3B-Instruct 3.2B") carrying the family detail. It used to be one heading per vendor+family; showed `family` is often the exact model name, so nearly every admin-added model got its own single-entry heading. Entries still sort by family within a vendor, so same-family variants (e.g. Gemma 4 e2b/e4b/12b) stay adjacent. */
 function renderCatalogGroup(containerEl, entries, compact = false) {
   containerEl.innerHTML = "";
   const vendors = [...new Set(entries.map((entry) => entry.vendor))];
-  // Compact list where every vendor has just one model: a heading + single card per vendor would leave every
-  // row half empty, so lay all of them out in one shared two-per-row grid, each card keeping its own vendor
-  // heading above it. As soon as any vendor has 2+ models, the normal per-vendor grouping below applies.
+  // Compact list where every vendor has one model: a heading + single card per vendor would leave rows half empty, so
+  // lay all in one shared two-per-row grid, each card under its vendor heading. Once any vendor has 2+ models, the
+  // per-vendor grouping below applies.
   if (compact && vendors.length > 1 && vendors.every((v) => entries.filter((e) => e.vendor === v).length === 1)) {
     const grid = document.createElement("div");
     grid.className = "grid grid-cols-1 sm:grid-cols-2 gap-x-2 gap-y-3";
@@ -756,8 +660,8 @@ function renderCatalogGroup(containerEl, entries, compact = false) {
       ) {
         pairing = { direction: "up", tooltip: `Linked with its model, right above (${prev.family})` };
       }
-      // Compact grid: "down"/"up" become "right"/"left", and a model that has a projector is pinned to the left
-      // column so its projector always lands right beside it in the same row, never wrapped onto the next one.
+      // Compact grid: "down"/"up" become "right"/"left", and a model with a projector is pinned to the left column so
+      // its projector lands beside it in the same row.
       if (compact && pairing) {
         pairing = {
           direction: pairing.direction === "down" ? "right" : "left",
@@ -778,28 +682,24 @@ function renderModelCatalog() {
   hardwareSummaryEl.textContent = hardware.vram_gb > 0
     ? `${hardware.ram_gb}GB RAM + ${hardware.vram_gb}GB VRAM`
     : `${hardware.ram_gb}GB RAM, no GPU detected`;
-  // Installed models on top as compact two-per-row cards, everything else (recommended, not yet installed)
-  // below in the regular one-per-row list.
+  // Installed models on top as compact two-per-row cards; the rest (recommended, not installed) below in the regular
+  // one-per-row list.
   renderCatalogGroup(installedModelCatalogEl, entries.filter((e) => e.installed), true);
   document.getElementById("installed-model-catalog-section").classList.toggle("hidden", !entries.some((e) => e.installed));
-  // The not-installed "Recommended" list is admin-only - regular users only ever see installed models.
+  // The not-installed "Recommended" list is admin-only; regular users see only installed models.
   const showRecommended = isAdmin && entries.some((e) => !e.installed);
   renderCatalogGroup(modelCatalogEl, isAdmin ? entries.filter((e) => !e.installed) : [], true);
   recommendedModelsHeadingEl.classList.toggle("hidden", !showRecommended);
-  // Catches every way the stored default can end up pointing at nothing real — cleared out from under it by an
-  // engine switch (see app.services.engine_switch_service.clear_stale_default_models), the model being
-  // uninstalled, or nothing ever having been chosen at all — not just the engine-switch case specifically,
-  // since a stale tag reads the same way to this picker regardless of why it went stale. findCatalogEntry also
-  // checks the (lazily loaded) extended catalog, matching renderModelRow's own isSelected check exactly, so
-  // this banner can't fire a false positive for a default that's only in that not-yet-opened panel. Requiring
-  // `.installed` (not just "some catalog entry exists with this tag") is what actually makes the "uninstalled"
-  // case above work: app.services.settings_service.get_default_model falls back to app.config.DEFAULT_MODEL —
-  // a real curated-catalog tag — even when nothing has ever been installed, so an uninstalled fallback tag
-  // would otherwise still be found in the catalog and silently pass as "valid".
+  // Catches every way the stored default can point at nothing real: cleared by an engine switch
+  // (engine_switch_service.clear_stale_default_models), the model uninstalled, or never chosen. A stale tag looks the
+  // same to this picker whatever the cause. findCatalogEntry also checks the lazily loaded extended catalog, like
+  // renderModelRow's isSelected, so no false positive for a default only in the unopened panel. Requiring `.installed`
+  // makes the "uninstalled" case work: settings_service.get_default_model falls back to app.config.DEFAULT_MODEL (a
+  // curated-catalog tag) even when nothing is installed, so an uninstalled fallback would otherwise pass as valid.
   const defaultEntry = selectedModelTag !== null ? findCatalogEntry(selectedModelTag) : null;
   const hasValidDefault = Boolean(defaultEntry?.installed);
-  // Two distinct cases: nothing installed at all (banner above the lists) vs. models installed but none chosen
-  // as the default (banner at the top of the installed list).
+  // Two cases: nothing installed (banner above the lists) vs. models installed but none chosen as default (banner at
+  // the top of the installed list).
   const anyInstalled = entries.some((e) => e.installed);
   document.getElementById("model-no-default-banner").classList.toggle("hidden", anyInstalled);
   document.getElementById("model-no-default-selected-banner").classList.toggle("hidden", !anyInstalled || hasValidDefault);
@@ -811,10 +711,7 @@ function renderExtendedModelCatalog() {
   renderCatalogGroup(extendedModelCatalogEl, entries);
 }
 
-/** The panel starts open (see settings.html's own comment) and its catalog is already preloaded by
- * initModelTab by the time anyone could click this — this only really does anything once the user
- * collapses it and wants it back, or on the rare case the initial preload itself failed (still
- * guarded by currentExtendedCatalog below, so it's never fetched twice for nothing). */
+/* The panel starts open (see settings.html) and initModelTab has already preloaded its catalog, so this matters only after the user collapses it and wants it back, or if the preload failed (still guarded by currentExtendedCatalog, so never fetched twice). */
 async function toggleBrowseMoreModels() {
   const opening = browseMoreModelsPanelEl.classList.contains("hidden");
   browseMoreModelsPanelEl.classList.toggle("hidden", !opening);
@@ -824,21 +721,18 @@ async function toggleBrowseMoreModels() {
     renderExtendedModelCatalog();
   }
   if (opening) {
-    // Re-expanding after collapsing it - scrolls the toggle itself (not the panel) into view so the "Browse
-    // more models" heading is visible at the top of the viewport with the panel's content right below it,
-    // same as the very first, already-open render already has it.
+    // When re-expanding, scroll the toggle (not the panel) into view so the "Browse more models" heading is at the top
+    // with the content below, as on the first, already-open render.
     browseMoreModelsToggleEl.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 }
 
 browseMoreModelsToggleEl.addEventListener("click", toggleBrowseMoreModels);
 
-// Three-step "Search, pick a repo, Add a file" (admin-only — hfSearchBtn/hfSearchResultsEl/hfRepoFilesEl don't
-// exist in the DOM at all for a regular user, see settings.html's own {% if is_admin %} guard, so this whole
-// block is skipped rather than throwing on a null addEventListener target). Search and the repo file list are
-// both read-only (see app/services/huggingface_client.py); nothing is saved until a specific file's own "Add"
-// button is clicked, which re-verifies it from scratch server-side rather than trusting this search/file-list
-// round trip (see extended_model_catalog_service.add_model's own docstring).
+// Three steps: search, pick a repo, add a file. Admin-only: hfSearchBtn/hfSearchResultsEl/hfRepoFilesEl don't exist for
+// regular users (settings.html's {% if is_admin %}), so the block is skipped instead of throwing on a null target.
+// Search and the file list are read-only (app/services/huggingface_client.py); nothing is saved until a file's "Add" is
+// clicked, which re-verifies it server-side (extended_model_catalog_service.add_model).
 function hideHfRepoFiles() {
   hfRepoFilesEl.classList.add("hidden");
   hfRepoFilesEl.innerHTML = "";
@@ -871,10 +765,9 @@ function renderHfSearchResults(results) {
   hfSearchResultsEl.classList.remove("hidden");
 }
 
-// Ollama's own library models default to a Q4_K_M quant when no tag is given — the widely-agreed "best balance
-// of quality and size" for a general-purpose pull, so a file matching it (case-insensitively; HF filenames use
-// every casing) gets a "Recommended" badge and is sorted first, instead of leaving every quant looking equally
-// arbitrary to someone who doesn't already know what Q4_K_M/Q8_0/IQ2_XS etc. mean.
+// Ollama's library models default to Q4_K_M, the widely agreed balance of quality and size, so a file matching it
+// (case-insensitively; HF filenames vary) gets a "Recommended" badge and sorts first, rather than leaving every quant
+// looking arbitrary to someone who doesn't know Q4_K_M/Q8_0/IQ2_XS.
 function isRecommendedQuantFile(filename) {
   return /q4_k_m/i.test(filename);
 }
@@ -906,22 +799,17 @@ function renderHfRepoFiles(repo) {
     hfRepoFilesEl.appendChild(help);
   }
 
-  // Stable sort (spec-guaranteed order for equal keys since ES2019) — only reorders the recommended file(s) to
-  // the front, every other file keeps its original relative order.
+  // Stable sort (guaranteed since ES2019): only the recommended file(s) move to the front.
   const byRecommendedFirst = (a, b) =>
     Number(isRecommendedQuantFile(b.filename)) - Number(isRecommendedQuantFile(a.filename));
-  // Grouped into two visually separate sections (not one flat interleaved list) — confirmed live, 2026-09-30:
-  // a repo with several chat-model quants *and* several mmproj quants (e.g. ggml-org/SmolVLM2-2.2B-Instruct-GGUF:
-  // three main files, two mmproj files) left it hard to tell which of the several "+Vision"-badged rows the
-  // projector file(s) further down the same flat list actually belonged with — there's no strict 1:1 pairing by
-  // quant either (a repo's mmproj files are usually offered in far fewer quant choices than its main model, so
-  // "same quant suffix" wouldn't even always find a match), so this groups by kind instead of attempting a
-  // one-to-one match that the ecosystem's own naming convention doesn't actually guarantee.
+  // Two separate sections, not one interleaved list: a repo with several chat-model quants and
+  // several mmproj quants (e.g. ggml-org/SmolVLM2-2.2B-Instruct-GGUF: three main files, two mmproj) made it hard to
+  // tell which "+Vision" row each projector belonged with. There is no strict 1:1 pairing by quant (mmproj files come
+  // in fewer quants), so it groups by kind rather than guessing a match.
   const modelFiles = repo.files.filter((f) => !f.is_projector).sort(byRecommendedFirst);
   const projectorFiles = repo.files.filter((f) => f.is_projector).sort(byRecommendedFirst);
 
-  // Shared between both groups below — a projector file's row looks identical, just filtered into the second
-  // section instead of interleaved with the chat-model files above it.
+  // Shared by both groups: a projector row looks the same, just filtered into the second section.
   function buildFileRow(file) {
     const fileRow = document.createElement("div");
     fileRow.className = "flex items-center justify-between gap-3 pt-1";
@@ -929,16 +817,14 @@ function renderHfRepoFiles(repo) {
     const recommendedBadge = isRecommendedQuantFile(file.filename)
       ? ` <span class="inline-flex items-center rounded-full bg-emerald-500/15 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400 align-middle">Recommended</span>`
       : "";
-    // The repo-level family/parameter_size shown once in the header above (repo.family/repo.parameter_size)
-    // describes whichever file Hugging Face treats as this repo's one primary `gguf` metadata block — almost
-    // never a same-repo vision-projector sidecar (see app.services.huggingface_client._is_projector_file's own
-    // docstring). Flagged here so picking one doesn't read as "the phi2/whatever chat model" the header
-    // implies — confirmed live: this is exactly what caused a mmproj file to get added and pulled as if it
-    // were a real, standalone chat model.
+    // The repo-level family/parameter_size in the header above (repo.family/repo.parameter_size) describes the file
+    // Hugging Face treats as the repo's primary `gguf` metadata block, almost never a vision-projector sidecar
+    // (huggingface_client._is_projector_file). Flagged so picking one doesn't read as the header's chat model; this
+    // once caused an mmproj file to be added and pulled as a standalone chat model.
     const projectorBadge = file.is_projector
       ? ` <span class="inline-flex items-center rounded-full bg-warning-500/15 border border-warning-500/40 px-1.5 py-0.5 text-[10px] font-medium text-warning-400 align-middle">Vision projector — not a chat model on its own</span>`
       : "";
-    // Same "+Vision" pill renderModelRow shows — this repo also ships an mmproj sidecar that gets paired with it.
+    // The "+Vision" pill from renderModelRow: this repo also ships an mmproj sidecar that gets paired with it.
     const visionBadge = file.vision
       ? ` <span class="inline-flex items-center rounded-full bg-[rgb(var(--color-brand-500)/0.15)] border border-[rgb(var(--color-brand-500)/0.4)] px-1.5 py-0.5 text-[10px] font-medium text-brand-500 align-middle">+Vision</span>`
       : "";
@@ -950,11 +836,9 @@ function renderHfRepoFiles(repo) {
     const addBtnGroup = document.createElement("span");
     addBtnGroup.className = "shrink-0 flex items-center gap-2";
 
-    // A wrapping <span> with its own innerHTML set to the full <svg>...</svg> markup — not
-    // document.createElement("svg") (that creates a plain HTMLUnknownElement, wrong namespace, and
-    // silently never renders as an actual SVG at all — confirmed live, 2026-09-22). Assigning innerHTML
-    // goes through the real HTML parser instead, which does correctly switch into the SVG namespace for
-    // foreign content, the same way the Model tab's own static-HTML spinner already renders correctly.
+    // A wrapping <span> with innerHTML set to the full <svg>...</svg>, not document.createElement("svg"), which makes a
+    // plain HTMLUnknownElement in the wrong namespace and never renders. innerHTML goes through the
+    // HTML parser, which enters the SVG namespace, as the Model tab's static spinner does.
     const addSpinner = document.createElement("span");
     addSpinner.className = "hidden";
     addSpinner.innerHTML =
@@ -971,17 +855,15 @@ function renderHfRepoFiles(repo) {
     addBtn.addEventListener("click", async () => {
       addBtn.disabled = true;
       addSpinner.classList.remove("hidden");
-      // Shown right below the file list itself (hf-repo-files-status), not hf-search-status up near the
-      // search box — confirmed live: adding a file (this GGUF-header probe can take a few real seconds, see
-      // app.services.gguf_probe's own docstring) left "Adding…" sitting somewhere an admin who'd already
-      // scrolled down to click this exact button couldn't see at all. The spinner right beside the button
-      // itself (see addSpinner above) is the same idea for whoever's eyes are still right there on it.
+      // Shown below the file list (hf-repo-files-status), not up by the search box (hf-search-status): adding a file
+      // (the GGUF-header probe can take seconds, see app.services.gguf_probe) left "Adding…" where an admin who had
+      // scrolled down couldn't see it. The spinner beside the button (addSpinner) serves whoever is still looking at
+      // it.
       hfRepoFilesStatusEl.textContent = "Adding…";
       hfRepoFilesStatusEl.classList.remove("text-red-400");
       try {
-        // already_installed (see ExtendedModelCatalogResponse's own docstring): this exact tag already being
-        // installed means it was never going to show up in "browse more models" to pull — confirmed live, a
-        // flat "Added" here read as "go find it in the list," which no longer existed anywhere to click.
+        // already_installed (ExtendedModelCatalogResponse): an already-installed tag never shows in "browse more
+        // models" to pull, so a flat "Added" read as "go find it in the list", which no longer had it.
         const { already_installed } = await api("/api/settings/model-catalog/extended", {
           method: "POST",
           body: JSON.stringify({ repo_id: repo.repo_id, filename: file.filename }),
@@ -992,17 +874,14 @@ function renderHfRepoFiles(repo) {
         hideHfRepoFiles();
         hfSearchResultsEl.classList.add("hidden");
         hfSearchStatusEl.textContent = message;
-        // refreshCatalogs() (not just loadExtendedCatalog/renderExtendedModelCatalog) — real bug found live,
-        // 2026-09-22: when already_installed is true, this tag can now show up in the *main* catalog too (see
-        // ChatModelCatalogBuilder.build's own is_auto_discovered handling), but the old code only ever
-        // refreshed the extended one. It correctly vanished from "Browse more models" (ExtendedModelCatalog.
-        // build excludes installed tags) but never appeared in the upper list until a full page reload.
+        // refreshCatalogs (not just loadExtendedCatalog/renderExtendedModelCatalog): a bug. When
+        // already_installed is true, the tag can now show in the main catalog too (ChatModelCatalogBuilder.build's
+        // is_auto_discovered handling), but only the extended one was refreshed, so it vanished from "Browse more
+        // models" (ExtendedModelCatalog.build excludes installed tags) yet never appeared above until a reload.
         await refreshCatalogs();
-        // Hiding the search results/file picker just above shrinks the page, which otherwise leaves the
-        // scroll position wherever that layout shift happened to land it — confirmed live, 2026-09-30: that
-        // read as "jumping to the wrong place." Scrolls to the row this exact add just affected instead (see
-        // renderModelRow's own data-tag), wherever it ended up — the main list if already installed, Browse
-        // more models' own list otherwise. Same build_tag as ExtendedModelCatalog.build_tag server-side.
+        // Hiding the search results/file picker shrinks the page and leaves the scroll somewhere odd ("jumping to the
+        // wrong place"). Scroll to the row this add affected (renderModelRow's data-tag): the main
+        // list if installed, Browse more models otherwise. Same build_tag as ExtendedModelCatalog.build_tag.
         const addedTag = `hf.co/${repo.repo_id}:${file.filename.replace(/\.gguf$/, "")}`;
         document.querySelector(`[data-tag="${CSS.escape(addedTag)}"]`)?.scrollIntoView({
           behavior: "smooth",
@@ -1053,9 +932,8 @@ async function loadHfRepoFiles(repoId) {
     });
     hfSearchStatusEl.textContent = "";
     renderHfRepoFiles(repo);
-    // The repo list above can run to 20 rows — without this, clicking one near the top leaves the newly-opened
-    // file picker below the fold with no visual cue anything happened (same reasoning as
-    // toggleBrowseMoreModels' own scrollIntoView).
+    // The repo list can hold 20 rows; without this, clicking a top one leaves the new file picker below the fold with
+    // no cue (as toggleBrowseMoreModels' scrollIntoView).
     hfRepoFilesEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
   } catch (err) {
     hfSearchStatusEl.textContent = err.message;
@@ -1093,22 +971,13 @@ if (hfSearchBtn) {
   });
 }
 
-/** Loads the Model tab's own default-model picker — independent of Behavior's target-picker (the model here
- * only ever means "the default for new chats", see saveModelSelection's own docstring), so this runs once at
- * page load and again each time the Model tab is re-activated (see loadTabData), not tied to loadTarget at all.
- * Guarded against overlapping with itself (see modelTabLoading) — real bug found live, 2026-09-22: on a page
- * load where "Model" was the tab a reload restored, this ran twice concurrently (once unconditionally from the
- * boot sequence, once again from restoreTabAfterReload's own loadTabData call for the restored tab) — two
- * independent runs each racing to show/hide the same spinner left it in whichever state the *first* one to
- * finish set, sometimes stuck visible even after the page had genuinely finished loading. */
+/* Loads the Model tab's default-model picker, independent of Behavior's target picker (the model here is the default for new chats, see saveModelSelection). Runs at page load and each time the tab is re-activated (loadTabData). Guarded against overlap (modelTabLoading): a bug, when a reload restoring the "Model" tab ran it twice concurrently (boot sequence and restoreTabAfterReload's loadTabData), and two runs racing to show/hide the spinner could leave it stuck visible. */
 async function initModelTab() {
   if (modelTabLoading) return;
   modelTabLoading = true;
-  // Shown again on every call (not just the page's very first load) — this tab, and this fetch, re-run each
-  // time the Model tab is re-activated (see this function's own docstring), and the previous run already hid
-  // it before returning. Matricxon's own /api/tags can take a few real seconds to answer (see
-  // MatricxonSupportChecker.load's own docstring on why every catalog builder now reuses one fetch instead of
-  // each making their own) — without this, that whole window showed an empty, seemingly-broken section.
+  // Shown on every call, not just the first load: this fetch re-runs on each re-activation and the previous run hid it.
+  // Matricxon's /api/tags can take seconds (MatricxonSupportChecker.load: catalog builders share one fetch), and
+  // without this the section looked empty and broken.
   const loadingEl = document.getElementById("model-loading");
   loadingEl.classList.remove("hidden");
   document.getElementById("model-unavailable").classList.add("hidden");
@@ -1119,14 +988,13 @@ async function initModelTab() {
     selectedModelTag = (await api("/api/settings/default-model")).model;
     renderModelCatalog();
     modelsAvailable = true;
-    // Hidden entirely for a connector (RunPod) that manages its own model(s) remotely (see
-    // ModelCatalogResponse.model_management's own docstring) - nothing here to search Hugging Face for or pull.
+    // Hidden entirely for a connector (RunPod) that manages its models remotely
+    // (ModelCatalogResponse.model_management): nothing to search Hugging Face for or pull.
     const browseMoreModelsSection = document.getElementById("browse-more-models-section");
     browseMoreModelsSection.classList.toggle("hidden", !(currentCatalog.model_management ?? true));
-    // "Browse more models" starts open (see settings.html's own comment) - preload it here so the search box is
-    // actually usable right away, not just visible - own try/catch so a failure here (e.g. no internet) never
-    // blocks the main model picker above from rendering. Guarded by currentExtendedCatalog the same way
-    // toggleBrowseMoreModels's own lazy-load is, so re-activating this tab later never re-fetches for nothing.
+    // "Browse more models" starts open (settings.html); preload it so the search box is usable at once. Own try/catch
+    // so a failure (e.g. no internet) doesn't block the main picker. Guarded by currentExtendedCatalog like
+    // toggleBrowseMoreModels' lazy load, so re-activating the tab doesn't re-fetch.
     if ((currentCatalog.model_management ?? true) && !currentExtendedCatalog) {
       try {
         await loadExtendedCatalog();
@@ -1137,16 +1005,13 @@ async function initModelTab() {
     }
   } catch (err) {
     modelsAvailable = false;
-    // Real bug found live, 2026-09-22: this always showed the same "System is not configured for models yet,
-    // ask your admin." text, whether the real cause was a genuinely fresh install or (far more often, in
-    // practice) a transient failure actually reaching the active engine (Matricxon in particular — see
-    // MatricxonSupportChecker's own docstring on how slow it can be to answer while mid-generation). Naming
-    // the engine explicitly reads as a much clearer, more actionable signal than err.message alone — confirmed
-    // live, 2026-09-22: whatever layer actually times out a slow Matricxon request doesn't always forward GET
-    // /api/settings/model-catalog's own clean 503 detail (see app/routers/settings.py's get_model_catalog),
-    // so err.message can just be the bare, uninformative HTTP reason phrase ("Service Unavailable") instead —
-    // naming currentActiveEngine directly isn't at the mercy of that. err.message is still appended when
-    // present, since it's occasionally more specific than this alone (e.g. a real "connection refused").
+    // Seen: this always showed "System is not configured for models yet, ask your admin.", whether the cause
+    // was a fresh install or (more often) a transient failure reaching the active engine (Matricxon can answer slowly
+    // mid-generation, see MatricxonSupportChecker). Naming the engine is clearer than err.message alone: a slow
+    // Matricxon request that times out in some layer doesn't always forward GET /api/settings/model-catalog's clean 503
+    // detail (routers/settings.py get_model_catalog), leaving a bare "Service Unavailable". currentActiveEngine doesn't
+    // depend on that. err.message is still appended when present, as it can be more specific (e.g. "connection
+    // refused").
     const engineLabel = { ollama: "Ollama", matricxon: "Matricxon" }[currentActiveEngine] || "the active engine";
     const detail = err.message ? ` (${err.message})` : "";
     document.getElementById("model-unavailable-reason").textContent =
@@ -1159,32 +1024,24 @@ async function initModelTab() {
   modelTabLoading = false;
 }
 
-// ---- RAG availability + knowledge base (private documents) ---------------
-// The shared/"global" scope still exists server-side (see app/rag.py and
-// app/routers/documents.py — scope="global" on upload, owner_id NULL on
-// Document) but has no UI here for now; only "My documents" (private) is
-// exposed until that gets a proper management pass.
+// RAG availability + knowledge base (private documents)
+// The shared/"global" scope still exists server-side (app/rag.py, app/routers/documents.py: scope="global" on upload,
+// owner_id NULL on Document) but has no UI yet; only "My documents" (private) is exposed until it gets a management
+// pass.
 
 async function loadRagAvailability() {
-  if (!hasUserTabs) return; // the Knowledge tab only exists on /settings
+  if (!hasUserTabs) return;
   const { available, reason } = await api("/api/settings/rag-availability");
   ragAvailable = available;
   ragUnavailableEl.classList.toggle("hidden", available);
-  // The `hidden` attribute too: the tab's space-y spacing skips only [hidden] siblings, so with just the class a
-  // hidden banner still left a blank gap above the next section.
+  // The `hidden` attribute too: the tab's space-y spacing skips only [hidden] siblings, so with just the class a hidden
+  // banner left a blank gap.
   ragUnavailableEl.hidden = available;
   if (reason) ragUnavailableReasonEl.textContent = reason;
   applyRagAvailabilityToKnowledgeTab();
 }
 
-/** Grays out (never hides — the banner above already explains why) every file-management control on the
- * Knowledge tab once RAG is off: the Upload button, the top-k slider (moot with nothing to search), every
- * already-rendered document's own Delete button (renderDocumentRow reads ragAvailable directly, so
- * re-rendering the current page picks up a state change without a full reload), and the shared Save button
- * — but only while actually on the Knowledge tab, since that same physical button also saves Behavior's own
- * generation params, which have nothing to do with RAG. Called after every real availability check
- * (loadRagAvailability) and every tab switch (activateTab), since either one can change which of those two
- * is true. */
+/* Grays out (never hides; the banner explains why) the Knowledge tab's file controls when RAG is off: Upload, the top-k slider, each document's Delete (renderDocumentRow reads ragAvailable, so re-rendering the page picks up a change) and the shared Save button, the last only while on the Knowledge tab, since that button also saves Behavior's params, unrelated to RAG. Called after each availability check (loadRagAvailability) and tab switch (activateTab), as either can change this. */
 function applyRagAvailabilityToKnowledgeTab() {
   document.getElementById("my-docs-upload-btn").disabled = !ragAvailable;
   document.getElementById("rag-top-k").disabled = !ragAvailable;
@@ -1193,17 +1050,12 @@ function applyRagAvailabilityToKnowledgeTab() {
 }
 
 async function loadEmbeddingCatalog() {
-  if (!embeddingModelCatalogEl) return; // the section exists on the admin page only
+  if (!embeddingModelCatalogEl) return;
   currentEmbeddingCatalog = await api("/api/settings/embedding-model-catalog");
   renderEmbeddingCatalog();
 }
 
-/** One embedding model's row — deliberately not renderModelRow (its Select/Uninstall/Hide/Remove logic doesn't
- * apply to an embedding model: nothing to "select" since there's no live UI switch this pass — see
- * EMBEDDING_MODEL's own comment in app/config.py — and nothing to hide/remove since this is a fixed two-entry
- * list, not the admin-curated extended catalog). Visible to every user (installed status isn't admin-secret,
- * same as the #rag-unavailable banner above it); only the Pull button itself is admin-gated, same convention
- * renderModelRow already uses for its own Pull button. */
+/* One embedding model's row, deliberately not renderModelRow: there is nothing to select (no live UI switch yet, see EMBEDDING_MODEL in app/config.py) and nothing to hide/remove (a fixed two-entry list, not the extended catalog). Visible to every user (install status isn't secret, as the #rag-unavailable banner); only Pull is admin-gated, as renderModelRow. */
 function renderEmbeddingCatalog() {
   embeddingModelCatalogEl.innerHTML = "";
   if (!currentEmbeddingCatalog) return;
@@ -1227,7 +1079,7 @@ function renderEmbeddingCatalog() {
     const defaultBadge = isDefault
       ? ` <span class="inline-flex items-center rounded-full bg-[rgb(var(--color-brand-500)/0.15)] border border-[rgb(var(--color-brand-500)/0.4)] px-1.5 py-0.5 text-[10px] font-medium text-brand-500 align-middle">Default</span>`
       : "";
-    // See renderModelRow's identical matricxonBadge for the full reasoning.
+    // See renderModelRow's matricxonBadge.
     const activeSupport = entry.engine_support?.[currentActiveEngine];
     const matricxonBadge = !activeSupport || activeSupport.supported
       ? ""
@@ -1241,14 +1093,13 @@ function renderEmbeddingCatalog() {
     const progressRow = document.createElement("p");
     progressRow.className = "mt-1.5 text-xs text-slate-500 hidden";
 
-    // Both Pull and Uninstall need the embedding catalog + RAG-availability banner refreshed
-    // afterward, not the chat-model catalogs pullModel()/uninstallModel() default to.
+    // Pull and Uninstall refresh the embedding catalog + RAG-availability banner, not the chat-model catalogs
+    // pullModel/uninstallModel refresh by default.
     const refreshEmbedding = async () => {
       await loadEmbeddingCatalog();
       await loadRagAvailability();
     };
-    // See renderModelRow's identical managementEnabled — same reasoning, same field (the active
-    // engine, not the catalog type, is what decides this).
+    // See renderModelRow's managementEnabled: the active engine, not the catalog type, decides this.
     const managementEnabled = currentCatalog?.model_management ?? true;
 
     if (entry.installed) {
@@ -1257,8 +1108,8 @@ function renderEmbeddingCatalog() {
       badge.textContent = "Installed";
       action.appendChild(badge);
 
-      // Uninstalling frees disk space but affects every user, so it's gated the same way
-      // pulling is (admin-only server-side too — see POST /api/settings/delete-model).
+      // Uninstalling frees disk space but affects every user, so it is admin-only like pulling (also server-side: POST
+      // /api/settings/delete-model).
       if (isAdmin && managementEnabled) {
         const uninstallBtn = document.createElement("button");
         uninstallBtn.type = "button";
@@ -1292,17 +1143,15 @@ function renderEmbeddingCatalog() {
     top.appendChild(action);
     row.appendChild(top);
 
-    row.title = entry.tag; // full path in the hover tooltip, same as the compact chat-model cards
+    row.title = entry.tag;
     row.appendChild(progressRow);
 
     embeddingModelCatalogEl.appendChild(row);
   }
 }
 
-// Cached from the last summary fetch so handleUpload() can check a
-// file's size against the current limit before even sending it (the
-// server enforces the real limit regardless — this is just a faster,
-// friendlier rejection for the common case).
+// Cached from the last summary fetch so handleUpload can check a file's size against the limit before sending (the
+// server enforces the real limit; this is a faster, friendlier rejection).
 let currentUploadLimits = null;
 
 function renderKnowledgeSummary(summary) {
@@ -1314,15 +1163,14 @@ function renderKnowledgeSummary(summary) {
   renderRagQuota(summary);
 }
 
-/** More decimals the smaller the share, so a small upload against a big quota never reads as "0.0%". */
+/* More decimals the smaller the share, so a small upload against a big quota never reads "0.0%". */
 function formatPercent(percent) {
   if (percent === 0) return "0%";
   if (percent < 0.001) return "<0.001%";
   return `${percent.toFixed(percent < 1 ? 3 : percent < 10 ? 2 : 1)}%`;
 }
 
-/** The "Your quota" box on the Knowledge tab: storage used against the admin's per-user limit, plus the other
- * limits that apply to this account's uploads. */
+/* The Knowledge tab's "Your quota" box: storage used against the admin's per-user limit, plus the other limits on this account's uploads. */
 function renderRagQuota(summary) {
   const usageEl = document.getElementById("rag-quota-usage");
   if (!usageEl) return;
@@ -1350,9 +1198,7 @@ async function loadKnowledgeSummary() {
   renderKnowledgeSummary(await api("/api/documents/summary"));
 }
 
-/** One row in a document list: name, chunk count, and — for whoever's
- * allowed to remove it — a Delete button. Mirrors the model catalog's
- * uninstall pattern (confirm, then remove and refresh). */
+/* One row in a document list: name, chunk count and, for whoever may remove it, a Delete button. Follows the model catalog's uninstall pattern (confirm, remove, refresh). */
 function renderDocumentRow(doc, canDelete) {
   const row = document.createElement("div");
   row.className = "flex items-center justify-between gap-3 px-3 py-2";
@@ -1369,8 +1215,8 @@ function renderDocumentRow(doc, canDelete) {
     delBtn.type = "button";
     delBtn.className =
       "shrink-0 rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:border-red-500 hover:text-red-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-slate-700 disabled:hover:text-slate-400";
-    // Still rendered when RAG is off (see applyRagAvailabilityToKnowledgeTab) — just disabled, not hidden,
-    // same "grey out, don't remove" treatment as the Upload button/top-k slider/Save button.
+    // Still rendered when RAG is off (applyRagAvailabilityToKnowledgeTab), disabled not hidden, like the Upload button,
+    // top-k slider and Save button.
     delBtn.disabled = !ragAvailable;
     delBtn.textContent = "Delete";
     delBtn.addEventListener("click", async () => {
@@ -1390,10 +1236,8 @@ function renderDocumentRow(doc, canDelete) {
   return row;
 }
 
-// How many of the user's own documents to show per page (see
-// renderMyDocsPage) — the full list is still fetched in one request
-// (this app's scale doesn't need server-side paging), just not all
-// rendered/shown at once, so the list stays manageable as it grows.
+// Own documents shown per page (renderMyDocsPage). The full list is fetched in one request (no server paging at this
+// scale) but not all rendered at once.
 const MY_DOCS_PAGE_SIZE = 10;
 let myDocsAll = [];
 let myDocsPage = 1;
@@ -1403,9 +1247,7 @@ function renderMyDocsPage() {
   const paginationEl = document.getElementById("my-docs-pagination");
 
   const totalPages = Math.max(1, Math.ceil(myDocsAll.length / MY_DOCS_PAGE_SIZE));
-  // Clamped rather than trusted as-is: the underlying list can shrink
-  // (a delete) between renders, which could otherwise leave the page
-  // number pointing past the new last page.
+  // Clamped, since the list can shrink (a delete) between renders and leave the page past the new last page.
   myDocsPage = Math.min(Math.max(1, myDocsPage), totalPages);
 
   const start = (myDocsPage - 1) * MY_DOCS_PAGE_SIZE;
@@ -1439,30 +1281,23 @@ async function loadDocumentLists() {
   renderMyDocsPage();
 }
 
-// How often to poll an upload job's progress. Plain GET/POST + polling
-// rather than a streamed response: reading a streaming fetch() body
-// incrementally depends on how a given browser buffers it, which isn't
-// consistent across every browser/version, and a slow, silently-stuck-
-// looking upload is exactly the failure mode that's not worth risking
-// here. Ordinary complete request/response cycles have no such
-// dependency — they work the same everywhere.
+// How often to poll an upload job's progress. Plain GET/POST + polling instead of a streamed response: reading a
+// streaming fetch body incrementally depends on browser buffering, and a stuck-looking upload is the failure to
+// avoid. Complete request/response cycles work everywhere.
 const UPLOAD_POLL_MS = 1500;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Starts an upload job (POST, returns almost immediately with a job
- * id and the initial per-file state) and polls it to completion,
- * calling `onUpdate(job)` after every poll — including the first,
- * synchronous one from the POST response itself — so the caller can
- * paint per-file progress as it comes in. Resolves with the job's
- * final `result` once `done` is true.
- *
- * A raw fetch rather than the shared api() helper for the POST: api()
- * always sends Content-Type: application/json, which is wrong for a
- * multipart/form-data body — the browser needs to set that header
- * itself, with the boundary. */
+/*
+ * Starts an upload job (POST, returns quickly with a job id and per-file state) and polls it to completion, calling
+ * `onUpdate(job)` after every poll, including the POST response, so the caller can paint per-file progress. Resolves
+ * with the job's final `result` once `done`.
+ * 
+ * A raw fetch for the POST, not api: api always sends Content-Type: application/json, wrong for
+ * multipart/form-data, where the browser must set the header with the boundary.
+ */
 async function uploadFiles(formData, onUpdate) {
   const response = await fetch("/api/documents/upload", { method: "POST", body: formData });
   if (response.status === 401) {
@@ -1477,10 +1312,8 @@ async function uploadFiles(formData, onUpdate) {
   let job = await response.json();
   onUpdate(job);
 
-  // The upload itself keeps running server-side regardless of whether
-  // any one poll succeeds — so a single dropped connection or transient
-  // network hiccup while polling shouldn't be treated as the upload
-  // having failed. Retry a few times before actually giving up.
+  // The upload keeps running server-side whether or not a poll succeeds, so one dropped connection while polling isn't
+  // a failed upload. Retry a few times before giving up.
   let consecutiveFailures = 0;
   while (!job.done) {
     await sleep(UPLOAD_POLL_MS);
@@ -1498,9 +1331,7 @@ async function uploadFiles(formData, onUpdate) {
   return job.result;
 }
 
-/** Reads the 5 upload slots (see app/templates/settings.html) into a
- * list of { slotEl, file, statusEl, barWrapEl, barEl } for whichever
- * ones actually have a file picked — an empty slot is just skipped. */
+/* Reads the 5 upload slots (app/templates/settings.html) into { slotEl, file, statusEl, barWrapEl, barEl } for the slots that have a file; empty slots are skipped. */
 function readUploadSlots() {
   const entries = [];
   for (const slotEl of document.querySelectorAll("#my-docs-upload-slots > [data-slot]")) {
@@ -1540,9 +1371,8 @@ async function handleUpload() {
     return;
   }
 
-  // Client-side size pre-check per slot — reject just that one slot
-  // (shown right in its own row) rather than blocking the whole batch;
-  // the server would only ever reject that same file anyway.
+  // Client-side size pre-check per slot: reject just that slot (shown in its row) instead of blocking the batch; the
+  // server would reject only that file anyway.
   const valid = [];
   for (const entry of entries) {
     if (currentUploadLimits && entry.file.size > currentUploadLimits.max_file_mb * 1024 * 1024) {
@@ -1562,10 +1392,8 @@ async function handleUpload() {
   for (const entry of valid) formData.append("files", entry.file);
   formData.append("scope", "mine");
 
-  // Progress events are matched back to a slot by filename rather than
-  // position: the server processes files in its own order (alphabetical
-  // during the embedding pass, not upload order — see
-  // app.rag.sync_folder_stream), so slot index alone can't be trusted.
+  // Progress events are matched to a slot by filename, not position: the server processes files in its own order
+  // (alphabetical in the embedding pass, not upload order; app.rag.sync_folder_stream).
   const slotByFilename = new Map();
   for (const entry of valid) {
     slotByFilename.set(entry.file.name, entry);
@@ -1582,11 +1410,8 @@ async function handleUpload() {
     overallPctEl.textContent = `${pct}%`;
   }
 
-  // Applied to every poll response (see uploadFiles' onUpdate callback):
-  // a full snapshot of every tracked file's current state, not a single
-  // incremental event — simpler to reason about and naturally tolerant
-  // of a missed or repeated poll, since it just re-paints from scratch
-  // each time rather than accumulating deltas.
+  // Applied to every poll response (uploadFiles' onUpdate): a full snapshot of every tracked file, repainted from
+  // scratch, so a missed or repeated poll is harmless.
   function applyJobState(job) {
     let totalFraction = 0;
     for (const [filename, entry] of slotByFilename) {
@@ -1595,10 +1420,8 @@ async function handleUpload() {
 
       let fraction = 0;
       if (fileState.status === "processing" && fileState.chunks_total) {
-        // Embedding one chunk can itself take a long time on slow
-        // hardware, and a real document can be dozens of chunks —
-        // without this, a file's bar would sit frozen for its entire
-        // processing time instead of visibly moving.
+        // Embedding one chunk can take long on slow hardware and a document can be dozens of chunks; without this a
+        // file's bar would freeze for its whole processing time.
         const pct = Math.round((fileState.chunk / fileState.chunks_total) * 100);
         entry.barEl.style.width = `${pct}%`;
         entry.statusEl.textContent = `${pct}% (${fileState.chunk}/${fileState.chunks_total})`;
@@ -1659,7 +1482,7 @@ async function handleUpload() {
 
 document.getElementById("my-docs-upload-btn")?.addEventListener("click", handleUpload);
 
-// ---- Loading a target's current settings ---------------------------------
+// Loading a target's current settings
 
 async function loadTarget(targetId) {
   let params, model;
@@ -1684,19 +1507,18 @@ async function loadTarget(targetId) {
   ragTopKInput.value = currentParams.rag_top_k || 4;
   ragTopKValueEl.textContent = ragTopKInput.value;
 
-  // No model picker on this tab (see the Model tab's own initModelTab) — the catalog is only read for the "no
-  // models installed" banner below. A failed fetch (Ollama unreachable) counts as "nothing usable right now".
+  // No model picker on this tab (see the Model tab's initModelTab); the catalog is read only for the "no models
+  // installed" banner below. A failed fetch (Ollama unreachable) counts as nothing usable.
   let modelsAvailableHere = false;
   try {
     const catalog = await loadCatalog();
     modelsAvailableHere = catalog.entries.some((entry) => entry.installed);
   } catch (err) {
-    // Same as "no models": there's genuinely nothing usable right now.
+    // Same as "no models": nothing usable now.
   }
   renderSliders(currentParams);
-  // Same banner/wording as the Model tab's own #model-unavailable (see initModelTab) — sliders here still
-  // render fine either way (they're generic numeric params, not tied to a model existing), but without this
-  // there was nothing on this tab telling the admin *why* a new chat still won't get a reply.
+  // Same banner/wording as the Model tab's #model-unavailable (initModelTab). The sliders render either way (generic
+  // numeric params), but nothing told the admin why a new chat still gets no reply.
   document.getElementById("behavior-model-unavailable").classList.toggle("hidden", modelsAvailableHere);
   updateSaveBarVisibility();
 }
@@ -1717,14 +1539,14 @@ async function populateConversationSelect() {
     conversationSelect.appendChild(option);
   }
 
-  // Channels this user may reconfigure: admins and that channel's managers only (the server enforces it too —
-  // see conversation_service.update_conversation). Plain members never get the group.
+  // Channels this user may reconfigure: admins and that channel's managers (also enforced in
+  // conversation_service.update_conversation). Plain members never get the group.
   const known = new Set(conversations.map((c) => c.id));
   let channels = [];
   try {
     channels = (await api("/api/channels")).filter((c) => c.can_manage && !known.has(c.conversation_id));
   } catch (_err) {
-    // Channels unavailable — the personal chats above still work.
+    // Channels unavailable: personal chats above still work.
   }
   if (channels.length) {
     const group = document.createElement("optgroup");
@@ -1738,9 +1560,8 @@ async function populateConversationSelect() {
     conversationSelect.appendChild(group);
   }
 
-  // Always opens on "Defaults for new chats", not whichever conversation
-  // was last open in chat — a specific conversation's own settings are
-  // just as reachable one click away in the dropdown.
+  // Always opens on "Defaults for new chats", not the last conversation open in chat; a conversation's settings are one
+  // click away in the dropdown.
   conversationSelect.value = DEFAULTS_TARGET;
   await loadTarget(DEFAULTS_TARGET);
 }
@@ -1752,7 +1573,7 @@ ragTopKInput?.addEventListener("input", () => {
   ragTopKValueEl.textContent = ragTopKInput.value;
 });
 
-// ---- Saving ---------------------------------------------------------------
+// Saving
 
 saveBtn?.addEventListener("click", async () => {
   const targetId = conversationSelect.value;
@@ -1762,20 +1583,19 @@ saveBtn?.addEventListener("click", async () => {
     if (targetId === DEFAULTS_TARGET) {
       await api("/api/settings/defaults", { method: "PUT", body: JSON.stringify(currentParams) });
     } else {
-      // Model is deliberately left out here — an existing conversation's
-      // model is only ever changed from that chat's own model badge (see
-      // chat.js: switchModel), not from Settings.
+      // Model is left out: an existing conversation's model is changed only from that chat's model badge (chat.js
+      // switchModel).
       await api(`/api/conversations/${targetId}`, {
         method: "PATCH",
         body: JSON.stringify({ params: currentParams }),
       });
     }
-    // Reload to apply the saved values, but come back to the tab being edited (Behavior or Knowledge) instead
-    // of the default Model tab.
+    // Reload to apply the saved values, returning to the tab being edited (Behavior or Knowledge) rather than the
+    // default Model tab.
     try {
       sessionStorage.setItem(SETTINGS_TAB_STORAGE_KEY, activeTabName);
     } catch (_err) {
-      // Storage blocked — reload still happens, just lands on the default tab.
+      // Storage blocked: the reload still happens, landing on the default tab.
     }
     window.location.reload();
   } catch (err) {
@@ -1784,30 +1604,26 @@ saveBtn?.addEventListener("click", async () => {
   }
 });
 
-// ---- Tabs -------------------------------------------------------------
-// "My Settings" and "Knowledge" exist for every user; "System" and
-// "Users" are admin-only extras that app/templates/settings.html only
-// renders (and only adds nav buttons for) when Jinja's `is_admin` is
-// true — so tabButtons/the admin-only elements below simply don't exist
-// in the DOM at all for a regular user.
+// Tabs
+// "My Settings" and "Knowledge" exist for every user; "System" and "Users" are admin-only extras that settings.html
+// renders (with their nav buttons) only when Jinja's `is_admin` is true, so tabButtons and the admin-only elements
+// below don't exist in the DOM for regular users.
 
 const tabButtons = document.querySelectorAll(".settings-tab-btn");
 const saveBarEl = document.getElementById("save-bar");
 const knowledgeBaseSectionEl = document.getElementById("knowledge-base-section");
-// Where save-bar naturally sits in the markup (below My Settings) —
-// remembered once at load so it can be moved back here when leaving
-// the Knowledge tab, rather than needing a second hardcoded position.
+// Where the save-bar sits in the markup (below My Settings), remembered at load so it can move back when leaving the
+// Knowledge tab.
 const saveBarHomeParent = saveBarEl?.parentNode;
 const saveBarHomeNextSibling = saveBarEl?.nextSibling;
 const TAB_CONTENT_IDS = ["model", "behavior", "knowledge", "account", "system", "external-servers", "mcp-servers", "users", "channels"];
 
 let activeTabName = "model";
 
-// The shared save-bar (see its own comment above) is only relevant on Behavior and Knowledge — both edit the
-// same currentParams for the target picked on Behavior's own conversation-select. Model has no save-bar of its
-// own at all (model selection saves itself immediately — see saveModelSelection), so there's no modelsAvailable
-// gating to apply here anymore, unlike before Model became its own tab. Both activateTab and loadTarget call
-// this rather than toggling "hidden" directly, so neither one can clobber the other's reason for hiding it.
+// The shared save-bar is relevant only on Behavior and Knowledge, which edit the same currentParams for the target
+// chosen on Behavior's conversation-select. Model has no save-bar (selection saves at once, saveModelSelection), so no
+// modelsAvailable gating applies. activateTab and loadTarget both call this rather than toggling "hidden", so neither
+// clobbers the other's reason for hiding it.
 function updateSaveBarVisibility() {
   const tabAllowsSave = activeTabName === "behavior" || activeTabName === "knowledge";
   saveBarEl?.classList.toggle("hidden", !tabAllowsSave);
@@ -1825,13 +1641,9 @@ function activateTab(name) {
     const el = document.getElementById(`tab-${id}`);
     if (el) el.classList.toggle("hidden", id !== name);
   }
-  // The Save button applies to Behavior + Knowledge (both edit the
-  // same currentParams) — Model saves itself immediately, and System/
-  // Users save their own changes inline; none of those have any use
-  // for it. It's one shared element (not a duplicate per tab),
-  // physically relocated to sit just above the "Knowledge base"
-  // section while that tab's active, and moved back to its normal spot
-  // below Behavior otherwise.
+  // The Save button applies to Behavior + Knowledge (same currentParams); Model saves at once and System/Users save
+  // inline. It is one shared element, moved above the "Knowledge base" section while that tab is active and back below
+  // Behavior otherwise.
   if (hasUserTabs) {
     if (name === "knowledge") {
       knowledgeBaseSectionEl.parentNode.insertBefore(saveBarEl, knowledgeBaseSectionEl);
@@ -1844,13 +1656,10 @@ function activateTab(name) {
   if (hasUserTabs) applyRagAvailabilityToKnowledgeTab();
 }
 
-// Extracted from the click handler below so the same per-tab data load
-// can also run right after a reload restores a saved tab (see
-// SETTINGS_TAB_STORAGE_KEY) — a plain page reload always lands back on
-// the default "Model" tab otherwise, discarding whatever the admin
-// was looking at (confirmed live: reloading straight after starting
-// Ollama on the External Servers tab left it blank until manually
-// re-clicked, since its own data only ever loads on that tab's click).
+// Extracted from the click handler so the per-tab data load also runs when a reload restores a saved tab
+// (SETTINGS_TAB_STORAGE_KEY); otherwise a reload lands on the default "Model" tab and discards where the admin was
+// (seen: reloading right after starting Ollama on External Servers left it blank until re-clicked, as its data loads
+// only on that tab's click).
 function loadTabData(name) {
   if (name === "model") {
     initModelTab();
@@ -1894,13 +1703,9 @@ tabButtons.forEach((btn) => {
   });
 });
 
-// See loadTabData's own comment — set right before a reload that should
-// land back on a specific tab instead of the default. Actually restored
-// at the very bottom of this file (see restoreTabAfterReload), not here
-// — loadTabData("external-servers") reaches EXTERNAL_SERVERS, a const
-// declared later in the file, and calling that this early hits its
-// temporal dead zone (confirmed live: "Cannot access 'EXTERNAL_SERVERS'
-// before initialization").
+// See loadTabData: set before a reload that should land on a specific tab. Restored at the bottom of this file
+// (restoreTabAfterReload), not here: loadTabData("external-servers") reaches EXTERNAL_SERVERS, a const declared later,
+// and calling it this early hits its temporal dead zone ("Cannot access 'EXTERNAL_SERVERS' before initialization").
 const SETTINGS_TAB_STORAGE_KEY = "pairingSettingsActiveTab";
 
 async function loadSystemInfo() {
@@ -1911,7 +1716,7 @@ async function loadSystemInfo() {
     : `${info.hardware.ram_gb}GB RAM, no GPU detected`;
 }
 
-// ---- Database (admin only) -------------------------------------------
+// Database (admin only)
 
 const dbTypeSelect = document.getElementById("db-type");
 const dbFieldsSqliteEl = document.getElementById("db-fields-sqlite");
@@ -1951,9 +1756,8 @@ async function loadDbConfigIntoEditor() {
   dbStatusEl.textContent = "";
 }
 
-// Mirrors app/schemas/db_config.py's DbConfigUpdate — same body shape
-// for save/test-connection/build-schema, so the three actions below
-// just point the same payload at three different endpoints.
+// Mirrors DbConfigUpdate (app/schemas/db_config.py): the same body for save/test-connection/build-schema, so the three
+// actions below send one payload to three endpoints.
 function readDbConfigForm() {
   const dbType = dbTypeSelect.value;
   if (dbType === "sqlite") {
@@ -2012,15 +1816,11 @@ wireDbAction("db-save-btn", "/api/settings/database", {
     "The new database only gets fresh starter data. Continue?",
 });
 
-// ---- Local instances (admin only) ------------------------------------
+// Local instances (admin only)
 
 const instanceCountSaveBtn = document.getElementById("instance-count-save-btn");
 
-/** Renders the plain-text "Instance N (primary) — port P — status" rows
- * under the select — deliberately just a `<ul>`, no per-row progress
- * bar or color-coded pill, matching this section's "simple, well
- * understood" brief (contrast app/static/js/settings.js's RAG upload
- * progress bar, which is what NOT to copy here). */
+/* Renders the plain-text "Instance N (primary) — port P — status" rows as a `<ul>`, with no progress bar or colored pill, per this section's "simple, well understood" brief (unlike the RAG upload progress bar). */
 function renderInstanceList(config) {
   const listEl = document.getElementById("instance-list");
   listEl.innerHTML = config.instances
@@ -2049,9 +1849,8 @@ if (instanceCountSaveBtn) {
     try {
       let config = await api("/api/settings/instances", { method: "PUT", body: JSON.stringify({ count }) });
       renderInstanceList(config);
-      // A short settle-and-recheck, not a progress bar: spawning/
-      // stopping a process takes a beat, so re-poll status a few times
-      // to let the count shown here catch up before declaring done.
+      // A short settle-and-recheck, not a progress bar: spawning/stopping takes a beat, so re-poll status a few times
+      // for the count to catch up.
       for (let attempt = 0; attempt < 3 && config.instances.length !== count; attempt++) {
         statusEl.textContent = `Starting… (${config.instances.length} of ${count})`;
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -2068,7 +1867,7 @@ if (instanceCountSaveBtn) {
   });
 }
 
-// ---- Proxy mode (admin only) ------------------------------------------
+// Proxy mode (admin only)
 
 const proxyModeSaveBtn = document.getElementById("proxy-mode-save-btn");
 
@@ -2097,11 +1896,10 @@ if (proxyModeSaveBtn) {
   });
 }
 
-// ---- Outbound HTTP proxy (admin only) -----------------------------------
-// Unrelated to "Proxy mode" above (renamed "Local pAIring server mode" in
-// the UI specifically to avoid this exact collision) — this one routes
-// this app's own internet downloads (see app.services.http_proxy_service)
-// through an admin-configured proxy, not incoming requests to this app.
+// Outbound HTTP proxy (admin only)
+// Unrelated to "Proxy mode" above (renamed "Local pAIring server mode" in the UI to avoid the clash): this routes the
+// app's own internet downloads (app.services.http_proxy_service) through an admin-configured proxy, not incoming
+// requests.
 
 const httpProxySaveBtn = document.getElementById("http-proxy-save-btn");
 
@@ -2112,10 +1910,9 @@ async function loadHttpProxyIntoEditor() {
   document.getElementById("http-proxy-host").value = config.host ?? "";
   document.getElementById("http-proxy-port").value = config.port ?? "";
   document.getElementById("http-proxy-username").value = config.username ?? "";
-  // Never pre-filled with the real saved password (the API never sends
-  // it back — see http_proxy_service.get_http_proxy_config_for_display)
-  // — same "(unchanged if left blank)" pattern the Database section's
-  // own MySQL password field already uses.
+  // Never pre-filled with the saved password (the API doesn't send it,
+  // http_proxy_service.get_http_proxy_config_for_display); same "(unchanged if left blank)" pattern as the Database
+  // section's MySQL password.
   const passwordInput = document.getElementById("http-proxy-password");
   passwordInput.value = "";
   passwordInput.placeholder = config.has_password ? "(unchanged if left blank)" : "(none set)";
@@ -2139,7 +1936,7 @@ if (httpProxySaveBtn) {
         body: JSON.stringify({ enabled, host, port, username, password }),
       });
       statusEl.textContent = "Saved.";
-      await loadHttpProxyIntoEditor(); // refreshes the password placeholder's has_password state
+      await loadHttpProxyIntoEditor();
     } catch (err) {
       statusEl.textContent = `Failed to save: ${err.message}`;
     } finally {
@@ -2149,18 +1946,14 @@ if (httpProxySaveBtn) {
   });
 }
 
-// ---- External servers: Ollama & ComfyUI (admin only) -------------------
+// External servers: Ollama & ComfyUI (admin only)
 //
-// Both sections share the exact same DOM shape (see settings.html's
-// [data-server="ollama"|"comfyui"] sections) — mode select, a "local"
-// div (install/start/stop + a few tunable parameters) and a "remote" div
-// (up to 12 host rows), so one generic controller drives both instead of
-// duplicating the same wiring twice. See installServer() below for the
-// one place their local-mode "Install" buttons genuinely differ (what
-// happens once each one's own install finishes).
+// Both sections share one DOM shape (settings.html's [data-server="ollama"|"comfyui"]): a mode select, a "local" div
+// (install/start/stop + tunable parameters) and a "remote" div (up to 12 host rows), so one generic controller drives
+// both. installServer is where their local-mode "Install" buttons differ (what happens after each install).
 
 const EXTERNAL_SERVERS = ["ollama", "matricxon", "comfyui", "sdcpp"];
-const MAX_REMOTE_HOSTS = 120; // mirrors app.schemas.common.MAX_REMOTE_HOSTS
+const MAX_REMOTE_HOSTS = 120;
 
 function serverSectionEl(server) {
   return document.querySelector(`[data-server="${server}"]`);
@@ -2168,8 +1961,7 @@ function serverSectionEl(server) {
 
 const HOST_CHECK_STATUS_IDLE_CLASS = "shrink-0 text-xs text-slate-500 w-24 text-center";
 
-// Just for this row's own placeholder/title example — each server's usual default port and display name, so
-// the example URL and tooltip at least look right for whichever section it's shown in.
+// Only for this row's placeholder/title example: each server's usual default port and display name.
 const REMOTE_HOST_EXAMPLE = {
   ollama: { port: "11434", name: "Ollama" },
   matricxon: { port: "8420", name: "Matricxon" },
@@ -2191,12 +1983,9 @@ function addRemoteHostRow(section, value = "") {
   input.className =
     "flex-1 rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500";
 
-  // Reachability check for this one row's own URL — a real ping (see
-  // app/routers/ollama_admin.py|comfyui_admin.py's check-host endpoint),
-  // not limited to a host already saved to the config, so an admin can
-  // verify a remote candidate works *before* clicking the form's own
-  // Save. Cleared on edit since a stale "✓ healthy" next to a since-
-  // changed URL would be actively misleading.
+  // Reachability check for this row's URL: a real ping (check-host endpoint in
+  // app/routers/ollama_admin.py|comfyui_admin.py), not limited to saved hosts, so an admin can verify a remote
+  // candidate before Save. Cleared on edit, since a stale "✓ healthy" beside a changed URL would mislead.
   const statusEl = document.createElement("span");
   statusEl.className = HOST_CHECK_STATUS_IDLE_CLASS;
   input.addEventListener("input", () => {
@@ -2248,34 +2037,28 @@ function renderRemoteHosts(section, hosts) {
 }
 
 function collectRemoteHosts(section) {
+  // In cluster mode the nodes belong to the Cluster page; the form hands back the list it was shown (the server ignores
+  // it, but a remote-mode save with no hosts would fall back to local mode).
+  if (section.dataset.clusterHosts) return JSON.parse(section.dataset.clusterHosts);
   return Array.from(section.querySelectorAll('[data-field="remote-hosts-list"] input'))
     .map((input) => input.value.trim())
     .filter(Boolean);
 }
 
-// The last status fetched for each server — the mode <select>'s own
-// "change" event and the manual-path-entry toggle below both need to
-// recompute visibility without a fresh round-trip, so this is the
-// write-through cache renderServerStatus keeps current.
+// The last status fetched per server, kept current by renderServerStatus, so the mode <select>'s "change" event and the
+// manual-path toggle can recompute visibility without a round trip.
 const lastServerStatus = {};
 
-/**
- * Local mode with nothing installed yet shows *only* the install flow —
- * no local-mode parameter fields, no Start/Stop/Save — per the explicit
- * ask: half-filled-in params for a server that doesn't exist yet is
- * more confusing than useful. Both servers have a manual override link
- * for an admin pointing at an already-installed Ollama/ComfyUI of their
- * own (not one this app's own installer manages) — see the
- * "manual-path-entry" actions below. Remote mode shows the full form but
- * never Start/Stop, since this app doesn't supervise a process it
- * doesn't own.
- *
- * install-controls (the Install/Reinstall button + version-override panel) stays visible either way, unlike an
- * earlier version of this page that hid it entirely once something was installed — a real, confirmed-live gap:
- * there was no way to even see which repo/version had been installed, let alone reinstall a different one,
- * once the not-installed panel disappeared. Hidden only in manual-path-entry mode: reinstalling there would
- * silently overwrite an admin's own deliberately-entered path with this app's own managed install location
- * instead (see installServer's own completion handler, which always saves the just-installed path).
+/*
+ * Local mode with nothing installed shows only the install flow (no local parameter fields, Start/Stop or Save):
+ * half-filled params for a server that doesn't exist are more confusing than useful. Both servers have a manual
+ * override link for an admin pointing at their own Ollama/ComfyUI install (see "manual-path-entry" actions below).
+ * Remote mode shows the full form but never Start/Stop, since this app doesn't supervise a process it doesn't own.
+ * 
+ * install-controls (Install/Reinstall button + version override) stay visible either way; hiding them once installed
+ * left no way to see which repo/version was installed or reinstall another. Hidden only in manual-path-entry mode,
+ * where reinstalling would overwrite the admin's own path with the managed install location (installServer's completion
+ * handler always saves the installed path).
  */
 function applyServerVisibility(server, section) {
   const status = lastServerStatus[server];
@@ -2314,8 +2097,7 @@ function applyServerVisibility(server, section) {
   if (actionsBar) actionsBar.classList.toggle("hidden", hideEverything);
   if (startBtn) startBtn.classList.toggle("hidden", mode !== "local");
   if (stopBtn) stopBtn.classList.toggle("hidden", mode !== "local");
-  // Same disabled condition for both — nothing to start (or stop) until
-  // something's actually installed.
+  // Same disabled condition for both: nothing to start (or stop) until something is installed.
   const disabledUntilInstalled = mode === "local" && !status.installed;
   if (startBtn) startBtn.disabled = disabledUntilInstalled;
   if (stopBtn) stopBtn.disabled = disabledUntilInstalled;
@@ -2334,7 +2116,7 @@ function renderServerStatus(section, status) {
   applyServerVisibility(server, section);
 }
 
-/** Styles a server section's status text as a persistent error (wrapping, red) or back to the plain one. */
+/* Styles a server section's status text as a persistent error (wrapping, red) or back to plain. */
 function setServerStatusError(statusEl, isError) {
   statusEl.classList.toggle("text-red-400", isError);
   statusEl.classList.toggle("text-slate-500", !isError);
@@ -2356,21 +2138,18 @@ function collectServerConfig(server, section) {
   const base = {
     mode: section.querySelector('[data-field="mode"]').value,
     remote_hosts: collectRemoteHosts(section),
-    // Empty means "use the built-in pinned default" — see
-    // app.schemas.ollama_server_config.OllamaServerConfig's identical pair.
+    // Empty means "use the built-in pinned default" (as OllamaServerConfig in app.schemas.ollama_server_config).
     install_repo: section.querySelector('[data-field="install_repo"]')?.value.trim() || null,
     install_version: section.querySelector('[data-field="install_version"]')?.value.trim() || null,
   };
-  // Local-mode-only fields are read from inputs that stay in the DOM (just hidden, see
-  // applyServerVisibility) after switching to remote — reading them unconditionally would resend
-  // a stale local-mode value (e.g. models_path) on every Save made in remote mode, which then
-  // silently reapplies if the admin later switches back to local. Remote mode has no local
-  // process/path of its own, so these are nulled/defaulted instead of read once mode is "remote".
+  // Local-mode-only fields live in inputs that stay in the DOM, hidden (applyServerVisibility), after switching to
+  // remote; reading them would resend a stale local value (e.g. models_path) on every remote-mode Save, which reapplies
+  // if the admin switches back. So they are nulled/defaulted in remote mode.
   const isRemote = base.mode === "remote";
-  // models_path is the one exception: the remote engine's own storage location is managed by that engine
-  // (downloads go through its API, not this app's disk), but the saved local path is kept so switching back
-  // to local mode still finds the existing models.
+  // models_path is the exception: the remote engine manages its own storage (downloads go through its API), but the
+  // saved local path is kept so switching back to local still finds the models.
   const keptModelsPath = () => section.querySelector('[data-field="models_path"]').dataset.loadedValue || null;
+  const keptCachePath = () => section.querySelector('[data-field="prompt_cache_path"]')?.dataset.loadedValue || null;
   if (server === "ollama") {
     return {
       ...base,
@@ -2387,6 +2166,12 @@ function collectServerConfig(server, section) {
       ...base,
       project_dir: isRemote ? null : section.querySelector('[data-field="project_dir"]').value.trim() || null,
       models_path: isRemote ? keptModelsPath() : section.querySelector('[data-field="models_path"]').value.trim() || null,
+      prompt_cache_path: isRemote
+        ? keptCachePath()
+        : section.querySelector('[data-field="prompt_cache_path"]').value.trim() || null,
+      // Not editable here (the Cluster page owns it) but must be sent back as loaded, or every Save would reset cluster
+      // mode to "off".
+      cluster_role: section.dataset.clusterRole || "off",
       max_loaded_models: isRemote ? null : intFieldOrNull(section, "max_loaded_models"),
       keep_alive_minutes: isRemote ? null : intFieldOrNull(section, "keep_alive_minutes"),
       prompt_cache_slots: isRemote ? null : intFieldOrNull(section, "prompt_cache_slots"),
@@ -2422,19 +2207,18 @@ function collectServerConfig(server, section) {
   };
 }
 
-/** stable-diffusion.cpp's build choice (CPU/Vulkan/ROCm) rides along as a query param, so it applies without a prior Save. */
+/* stable-diffusion.cpp's build choice (CPU/Vulkan/ROCm) rides along as a query param, so it applies without a prior Save. */
 function installQuery(server, section, buildOverride = null) {
   const build = buildOverride || (server === "sdcpp" ? section.querySelector('[data-field="build"]')?.value : null);
   return build ? `?build=${encodeURIComponent(build)}` : "";
 }
 
-/** Fills stable-diffusion.cpp's Model dropdown from the local models folder (see app/services/image_model_service.py);
- * a saved path that isn't in the folder (set before this dropdown existed) stays selectable so it isn't lost. */
+/* Fills stable-diffusion.cpp's Model dropdown from the local models folder (app/services/image_model_service.py); a saved path not in the folder (set before this dropdown existed) stays selectable so it isn't lost. */
 async function populateSdcppModels(section, savedPath) {
   const select = section.querySelector('[data-field="model_path"]');
   const hint = section.querySelector('[data-field="model-hint"]');
   const { models, folder } = await api("/api/settings/image-models");
-  section.querySelector('[data-field="models_path"]').placeholder = folder; // what blank resolves to
+  section.querySelector('[data-field="models_path"]').placeholder = folder;
   const options = models.map((m) => ({ value: m.path, label: `${m.name} (${m.size_gb} GB)` }));
   if (savedPath && !options.some((o) => o.value === savedPath)) options.push({ value: savedPath, label: savedPath });
   select.innerHTML = `<option value="">— choose a model —</option>` +
@@ -2467,20 +2251,19 @@ async function loadServerSection(server) {
     Promise.all([api(`/api/settings/${server}/config`), api(`/api/settings/${server}/install-defaults`)]),
   );
   section.querySelector('[data-field="mode"]').value = config.mode;
-  section.dataset.loadedMode = config.mode; // see the save handler's mode-change redirect
+  section.dataset.loadedMode = config.mode;
   renderInstallSource(section, config, installDefaults);
 
   if (server === "ollama") {
     const binaryPathInput = section.querySelector('[data-field="binary_path"]');
     binaryPathInput.value = config.binary_path ?? "";
-    // Shows what leaving this blank would actually resolve to (PATH,
-    // then the usual fixed locations) — a real, current value rather
-    // than just the generic words "auto-detected from PATH".
+    // Shows what a blank value resolves to (PATH, then the usual fixed locations), a real current value rather than
+    // "auto-detected from PATH".
     const autoDetected = await api("/api/settings/ollama/auto-detected-path");
     binaryPathInput.placeholder = autoDetected.path || "/var/lib/Ollama";
     const modelsPathInput = section.querySelector('[data-field="models_path"]');
     modelsPathInput.value = config.models_path ?? "";
-    modelsPathInput.dataset.loadedValue = config.models_path ?? ""; // see the save handler's own confirm check
+    modelsPathInput.dataset.loadedValue = config.models_path ?? "";
     modelsPathInput.placeholder = autoDetected.models_path;
     section.querySelector('[data-field="num_parallel"]').value = config.num_parallel ?? "";
     section.querySelector('[data-field="keep_alive"]').value = config.keep_alive ?? "";
@@ -2489,14 +2272,18 @@ async function loadServerSection(server) {
   } else if (server === "matricxon") {
     const projectDirInput = section.querySelector('[data-field="project_dir"]');
     projectDirInput.value = config.project_dir ?? "";
-    // Same "show what blank actually resolves to" idea as Ollama's binary_path above — here, the sibling
-    // checkout app.services.matricxon_process._find_project_dir falls back to.
+    // Same "show what blank resolves to" idea as Ollama's binary_path: here, the sibling checkout
+    // app.services.matricxon_process._find_project_dir falls back to.
     const autoDetected = await api("/api/settings/matricxon/auto-detected-path");
     projectDirInput.placeholder = autoDetected.path || "/var/lib/matricxon";
     const modelsPathInput = section.querySelector('[data-field="models_path"]');
     modelsPathInput.value = config.models_path ?? "";
-    modelsPathInput.dataset.loadedValue = config.models_path ?? ""; // see the save handler's own confirm check
+    modelsPathInput.dataset.loadedValue = config.models_path ?? "";
     modelsPathInput.placeholder = autoDetected.models_path || "/var/lib/models";
+    const cachePathInput = section.querySelector('[data-field="prompt_cache_path"]');
+    cachePathInput.value = config.prompt_cache_path ?? "";
+    cachePathInput.dataset.loadedValue = config.prompt_cache_path ?? "";
+    section.dataset.clusterRole = config.cluster_role ?? "off";
     section.querySelector('[data-field="max_loaded_models"]').value = config.max_loaded_models ?? "";
     section.querySelector('[data-field="keep_alive_minutes"]').value = config.keep_alive_minutes ?? "";
     for (const field of ["prompt_cache_slots", "prompt_cache_budget_mb", "max_decode_batch"]) {
@@ -2508,8 +2295,8 @@ async function loadServerSection(server) {
       config.enable_quantized_native_compute ?? true;
     section.querySelector('[data-field="gemv_backend"]').value = config.gemv_backend ?? "native";
     section.querySelector('[data-field="torch_threads"]').value = config.torch_threads ?? "";
-    // A saved "cuda:1" (set by hand) has no option of its own; show it as the generic CUDA choice
-    // and remember it (see matricxonDeviceValue) so saving doesn't silently change the GPU index.
+    // A hand-set "cuda:1" has no option of its own; show it as generic CUDA and remember it (matricxonDeviceValue) so
+    // saving doesn't change the GPU index.
     section.dataset.savedDevice = config.device ?? "cpu";
     section.querySelector('[data-field="device"]').value = (config.device ?? "cpu").startsWith("cuda") ? "cuda" : "cpu";
     section.querySelector('[data-field="gpu_weight_mode"]').value = config.gpu_weight_mode ?? "dequantized";
@@ -2531,14 +2318,9 @@ async function loadServerSection(server) {
   renderServerStatus(section, await api(`/api/settings/${server}/status`));
 }
 
-/**
- * Grays out "Install from GitHub" and explains why, on any OS the auto-installer can't actually run on (see
- * app.hardware.local_install_supported — both Ollama's pinned release asset and this app's own deployment
- * assumptions are Linux-only). The button staying clickable would just mean the admin waits for a multi-minute
- * "attempt" that was always going to fail — app.services.ollama_installer/comfyui_installer's own install_stream
- * enforces this same check server-side regardless, so this is a courtesy, not the only guard.
- */
+/* Grays out "Install from GitHub" with an explanation on any OS the auto-installer can't run on (app.hardware.local_install_supported: Ollama's pinned release asset and this app's deployment assume Linux), so the admin doesn't wait minutes for a doomed attempt. ollama_installer/comfyui_installer install_stream enforce the same check server-side; this is a courtesy. */
 function applyLocalInstallSupport(server, section, supported) {
+  if (!section) return;
   const installBtn = section.querySelector('[data-action="install"]');
   const noteEl = section.querySelector('[data-field="install-os-note"]');
   if (installBtn) installBtn.disabled = !supported;
@@ -2554,15 +2336,11 @@ function applyLocalInstallSupport(server, section, supported) {
   }
 }
 
-// Ollama and Matricxon are mutually exclusive chat backends (see the "Active engine" picker) — ComfyUI is a
-// wholly separate concern (image generation) and always stays visible regardless of this choice.
+// Ollama and Matricxon are mutually exclusive chat backends (see the "Active engine" picker); ComfyUI (image
+// generation) is separate and always visible.
 const ENGINE_SERVERS = ["ollama", "matricxon"];
 
-/**
- * Only the currently-selected engine's own configuration section is shown — the other one is fully hidden
- * rather than shown side-by-side, so an admin isn't looking at (and could accidentally edit) the form for a
- * backend that isn't even live right now. Re-run on load and every time the select's own "change" event fires.
- */
+/* Shows only the selected engine's configuration section, hiding the other so an admin doesn't edit the form of a backend that isn't live. Re-run on load and on the select's "change" event. */
 function applyActiveEngineVisibility() {
   const selectEl = document.getElementById("active-engine-select");
   if (!selectEl) return;
@@ -2570,10 +2348,18 @@ function applyActiveEngineVisibility() {
     const section = serverSectionEl(server);
     if (section) section.classList.toggle("hidden", server !== selectEl.value);
   }
+  // The saved-chat-caches box is a Matricxon feature (its API answers 409 for other engines): shown only while
+  // Matricxon is both the picked and the saved engine; hidden at once when another is picked.
+  const cachePanel = document.getElementById("matricxon-cache-panel");
+  if (cachePanel && savedActiveEngine !== null) {
+    const wanted = selectEl.value === "matricxon" && savedActiveEngine === "matricxon";
+    // In cluster mode the Cluster page owns these limits (settings_cache_persistence.js sets the flag).
+    cachePanel.classList.toggle("hidden", !wanted || cachePanel.dataset.clusterManaged === "1");
+  }
 }
 
-// The engine actually saved right now (as of the last load/save) — compared against the select's own live value
-// on every "change" so the switch note below only shows for a genuine *pending* switch, not just on page load.
+// The engine saved as of the last load/save, compared with the select's live value on each "change" so the switch note
+// shows only for a pending switch, not on page load.
 let savedActiveEngine = null;
 
 async function loadActiveEngineIntoEditor() {
@@ -2584,11 +2370,10 @@ async function loadActiveEngineIntoEditor() {
     engineOptionsList(),
   ]);
   selectEl.innerHTML = "";
-  // Only an engine that's actually ready (see app/schemas/common.py's EngineOption.ready) can be picked here —
-  // Ollama/Matricxon always are; a Connector-backed engine (e.g. "runpod") isn't until an admin has configured,
-  // enabled, and successfully tested it on the Connectors page. The already-active engine is always shown even
-  // if it somehow became not-ready since (e.g. its connector was just disabled) so the picker still reflects
-  // reality instead of silently hiding the current selection.
+  // Only a ready engine (EngineOption.ready, app/schemas/common.py) can be picked: Ollama/Matricxon always are; a
+  // connector-backed engine (e.g. "runpod") only after an admin configures, enables and tests it on the Connectors
+  // page. The active engine is always shown, even if it became not-ready (e.g. its connector was disabled), so the
+  // picker reflects reality.
   for (const { name, display_name: displayName, ready } of engineOptions) {
     if (!ready && name !== activeEngine) continue;
     const option = document.createElement("option");
@@ -2602,11 +2387,7 @@ async function loadActiveEngineIntoEditor() {
   applyActiveEngineSwitchNote();
 }
 
-/** Ollama and Matricxon each have their own separate model storage (see the External Servers page's own
- * explanation) — an admin switching engines has no way to know that just from this picker alone. Shown the
- * instant the selection actually changes to something other than what's currently saved (not after Save is
- * clicked — the point is to inform the decision, not just explain it after the fact), and hidden again if they
- * change it back to match. */
+/* Ollama and Matricxon have separate model storage (see the External Servers page), which the picker alone doesn't show. Shown the moment the selection differs from the saved one (not after Save, to inform the decision) and hidden again if changed back. */
 function applyActiveEngineSwitchNote() {
   const selectEl = document.getElementById("active-engine-select");
   const noteEl = document.getElementById("active-engine-switch-note");
@@ -2638,16 +2419,14 @@ if (activeEngineSaveBtn) {
     statusEl.textContent = "Saving…";
     try {
       await api("/api/settings/engine", { method: "PUT", body: JSON.stringify({ active_engine: selectEl.value }) });
-      // A full reload, not just a client-side refetch: the Model tab's own catalog (currentCatalog) and every
-      // other model-related fetch on this page (installed vision/embedding models, RAG availability, ...) cache
-      // themselves for the lifetime of this page load — switching engines here makes every one of those stale,
-      // so this is the same "reload rather than try to selectively invalidate every cache" pattern the
-      // Ollama/Matricxon Start button already uses right below for the identical reason. Stays on this tab
-      // (External servers) after the reload, so the admin can keep configuring the engine they just switched to.
+      // A full reload, not a refetch: the Model tab's catalog (currentCatalog) and other model fetches (installed
+      // vision/embedding models, RAG availability,...) cache for the page load and go stale on an engine switch. Same
+      // reload-instead-of-invalidating pattern as the Ollama/Matricxon Start button below. Stays on External servers so
+      // the admin can keep configuring the new engine.
       try {
         sessionStorage.setItem(SETTINGS_TAB_STORAGE_KEY, "external-servers");
       } catch (_err) {
-        // Private-browsing/storage-blocked — reload still happens, just lands on the default tab.
+        // Storage blocked: the reload still happens, landing on the default tab.
       }
       window.location.reload();
       return;
@@ -2658,14 +2437,7 @@ if (activeEngineSaveBtn) {
   });
 }
 
-/** Populates a server's version <datalist> with real tags fetched live from GitHub (see
- * app.services.github_releases — one shared endpoint per server, GET /api/settings/{server}/available-versions),
- * so the plain-text "Version / tag" field becomes pick-from-a-list-or-type-your-own instead of "guess the exact
- * tag spelling" — a typo there today only ever surfaces as a failed install several steps in. Always a
- * convenience layered on the existing free-text input, never a replacement: an empty/failed fetch (GitHub
- * unreachable, rate-limited, or the repo genuinely has no tags) just leaves the datalist empty, same as before
- * this existed. Re-run whenever the repo field changes (see its own "change" listener below) since a fork's
- * tags are a completely different list from the default repo's. */
+/* Fills a server's version <datalist> with tags fetched live from GitHub (app.services.github_releases; one endpoint per server, GET /api/settings/{server}/available-versions), so the "Version / tag" field becomes pick-or-type instead of guessing exact spelling (a typo otherwise fails an install several steps in). A convenience over the free-text input: an empty or failed fetch (GitHub unreachable, rate-limited, no tags) leaves the datalist empty. Re-run when the repo field changes, since a fork's tags differ from the default repo's. */
 async function loadAvailableVersions(server, section) {
   const datalist = section.querySelector('[data-field="install-version-datalist"]');
   if (!datalist) return;
@@ -2681,21 +2453,18 @@ async function loadAvailableVersions(server, section) {
       datalist.appendChild(option);
     }
   } catch (_err) {
-    // Leaves whatever was already there (or nothing) — the plain text input still works regardless, see this
-    // function's own docstring.
+    // Leaves what was there (or nothing); the text input still works (see the docstring).
   }
 }
 
-/** Switching Ollama/Matricxon between local and remote changes which models exist (a remote server has its own
- * storage, managed through its API) — every model-related cache on this page is stale, so reload, same pattern as
- * the active-engine switch, and land back on this External servers tab. Returns true if it reloaded. */
+/* Switching Ollama/Matricxon between local and remote changes which models exist (a remote server has its own storage, managed via its API), so every model cache on this page is stale: reload as for the active-engine switch and return to External servers. Returns true if it reloaded. */
 function reloadIfModeChanged(section, body, force = false) {
   const server = section.dataset.server;
   if (!["ollama", "matricxon"].includes(server) || (!force && body.mode === section.dataset.loadedMode)) return false;
   try {
     sessionStorage.setItem(SETTINGS_TAB_STORAGE_KEY, "external-servers");
   } catch (_err) {
-    // Storage blocked — reload still happens, just lands on the default tab.
+    // Storage blocked: the reload still happens, landing on the default tab.
   }
   window.location.reload();
   return true;
@@ -2710,8 +2479,7 @@ for (const server of EXTERNAL_SERVERS) {
   });
   section.querySelector('[data-action="add-host"]').addEventListener("click", () => addRemoteHostRow(section));
 
-  // Both servers (see settings.html) — an admin pointing at an already-
-  // installed Ollama/ComfyUI of their own, not one this app's installer
+  // Both servers (settings.html): an admin pointing at their own Ollama/ComfyUI install, not one this app's installer
   // manages.
   const manualPathBtn = section.querySelector('[data-action="manual-path-entry"]');
   if (manualPathBtn) {
@@ -2737,8 +2505,8 @@ for (const server of EXTERNAL_SERVERS) {
     });
   }
 
-  // Re-fetches once the admin finishes typing a different repo — a fork's own tags are a different list
-  // entirely from the maintainer's default repo's tags (see loadAvailableVersions's own docstring).
+  // Re-fetches when the admin finishes typing a different repo: a fork's tags differ from the default repo's (see
+  // loadAvailableVersions).
   const repoInput = section.querySelector('[data-field="install_repo"]');
   if (repoInput) {
     repoInput.addEventListener("change", () => loadAvailableVersions(server, section));
@@ -2755,7 +2523,7 @@ for (const server of EXTERNAL_SERVERS) {
           body: JSON.stringify(collectServerConfig(server, section)),
         });
         statusEl.textContent = "Saved.";
-        await loadServerSection(server); // refreshes the version label + placeholders
+        await loadServerSection(server);
       } catch (err) {
         statusEl.textContent = `Failed to save: ${err.message}`;
       } finally {
@@ -2776,11 +2544,10 @@ for (const server of EXTERNAL_SERVERS) {
   section.querySelector('[data-action="save"]').addEventListener("click", async () => {
     const statusEl = section.querySelector('[data-field="status"]');
     const body = collectServerConfig(server, section);
-    // Real bug found live, 2026-09-22: clearing this field back to blank silently drops the override —
-    // Matricxon/Ollama then falls back to its own default models directory on its very next restart, however
-    // that restart happens, and every model that was only ever visible at the custom path "vanishes" with no
-    // warning at save time at all. A destructive-enough change (same spirit as the duplicate-install confirm
-    // in pullModel) to ask about explicitly, same as the "this restarts the engine" confirm just below.
+    // Seen: clearing this field silently drops the override, so Matricxon/Ollama falls back to its default
+    // models directory on its next restart and models visible only at the custom path vanish with no warning at save
+    // time. Destructive enough to ask first (like the duplicate-install confirm in pullModel and the "this restarts the
+    // engine" confirm below).
     const modelsPathInput = section.querySelector('[data-field="models_path"]');
     if (modelsPathInput?.dataset.loadedValue && !body.models_path) {
       const confirmed = confirm(
@@ -2795,10 +2562,9 @@ for (const server of EXTERNAL_SERVERS) {
     let failed = false;
     let failedPrefix = "Failed to save";
     try {
-      // Ollama's (and Matricxon's — see app.services.matricxon_process.apply_local_config) local-mode parameters
-      // can't apply live: both only read their env-based config at their own process startup, so if either is
-      // already running, saving must restart it — this confirms first, same as the old "Ollama concurrency" save
-      // button already did.
+      // Local-mode parameters of Ollama (and Matricxon, see app.services.matricxon_process.apply_local_config) can't
+      // apply live: both read their env-based config at process start, so saving restarts a running one. Confirm first,
+      // as the old "Ollama concurrency" save button did.
       const restartableEngines = { ollama: "Ollama", matricxon: "Matricxon", sdcpp: "stable-diffusion.cpp" };
       const engineLabel = restartableEngines[server];
       const localStatus =
@@ -2819,15 +2585,15 @@ for (const server of EXTERNAL_SERVERS) {
           await api(`/api/settings/${server}/apply`, { method: "POST", body: JSON.stringify(body) }),
         );
         statusEl.textContent = `Saved — ${engineLabel} restarted.`;
-        reloadIfModeChanged(section, body, true); // a restart also clears "Browse more models"
+        reloadIfModeChanged(section, body, true);
         return;
       }
       await api(`/api/settings/${server}/config`, { method: "PUT", body: JSON.stringify(body) });
       statusEl.textContent = "Saved.";
-      // A new Models folder changes what the Model dropdown lists — re-read it.
+      // A new Models folder changes what the Model dropdown lists: re-read it.
       if (server === "sdcpp") await loadServerSection(server);
-      // Not running (stopped by hand, or a previous restart failed - e.g. a GPU device that isn't there): saving
-      // alone changes nothing visible, which reads as "nothing happened" - offer to start it with the new settings.
+      // Not running (stopped by hand, or a previous restart failed, e.g. a GPU device that isn't there): saving alone
+      // shows nothing, which reads as "nothing happened"; offer to start it with the new settings.
       if (localStatus && localStatus.installed && !localStatus.running) {
         if (confirm(`${engineLabel} is not running. Start it now with the saved settings?`)) {
           failedPrefix = "Saved, but failed to start";
@@ -2838,24 +2604,24 @@ for (const server of EXTERNAL_SERVERS) {
           try {
             sessionStorage.setItem(SETTINGS_TAB_STORAGE_KEY, "external-servers");
           } catch (_err) {
-            // Storage blocked - the reload still happens, just lands on the default tab.
+            // Storage blocked: the reload still happens, landing on the default tab.
           }
-          window.location.reload(); // the engine coming up can newly make models available, as with Start
+          window.location.reload();
           return;
         }
       }
       reloadIfModeChanged(section, body);
     } catch (err) {
-      // Stays put (no timeout, no redirect) so the admin can read why and fix the setting — e.g. a CUDA device
-      // chosen on a machine without a GPU makes the restart fail. The failed restart left the engine stopped,
-      // so refresh the status line to say so.
+      // Stays put (no timeout or redirect) so the admin can read why and fix the setting (e.g. a CUDA device on a
+      // machine without a GPU fails the restart). The failed restart left the engine stopped, so refresh the status
+      // line.
       failed = true;
       statusEl.textContent = `${failedPrefix}: ${err.message}`;
       setServerStatusError(statusEl, true);
       try {
         renderServerStatus(section, await api(`/api/settings/${server}/status`));
       } catch (_statusErr) {
-        // The error above is what matters; the status line just keeps its last value.
+        // The error above is what matters; the status line keeps its last value.
       }
     } finally {
       if (!failed) setTimeout(() => (statusEl.textContent = ""), 3000);
@@ -2866,9 +2632,8 @@ for (const server of EXTERNAL_SERVERS) {
     const actionBtn = section.querySelector(`[data-action="${action}"]`);
     actionBtn.addEventListener("click", async () => {
       const statusEl = section.querySelector('[data-field="status"]');
-      // Anchored to the Save button (the last one in this row, right before the status text)
-      // rather than whichever of Start/Stop was actually clicked, so the spinner always shows up
-      // in the same place next to the status line instead of jumping between the two.
+      // Anchored to the Save button (last in the row, before the status text), not whichever of Start/Stop was clicked,
+      // so the spinner stays in one place.
       const saveBtn = section.querySelector('[data-action="save"]');
       statusEl.textContent = "Working…";
       setServerStatusError(statusEl, false);
@@ -2879,32 +2644,22 @@ for (const server of EXTERNAL_SERVERS) {
         const result = await api(`/api/settings/${server}/${action}`, { method: "POST" });
         renderServerStatus(section, result);
         statusEl.textContent = "Done.";
-        // Ollama coming up can newly make models available for "Model &
-        // behavior" elsewhere on this page — that section only ever
-        // loads the model catalog once, at page load, so without this it
-        // kept showing "System is not configured for models yet" even
-        // once Ollama was genuinely running. A full reload is the
-        // simplest reliable fix for an admin-triggered, infrequent action
-        // like this (not the hot chat-generation path). Saved so the
-        // reload lands back on External Servers instead of the default
-        // "My Settings" tab — confirmed live: without this, the status
-        // line here just went blank (this tab's own data only loads on
-        // its own click) until manually re-clicked, which read as a
-        // stuck/broken status rather than what it actually was. Same reload for Matricxon coming up, for the
-        // identical reason — either one starting can newly make models available.
+        // Ollama (or Matricxon) coming up can newly make models available for "Model & behavior", which loads the
+        // catalog once at page load and would keep saying "System is not configured for models yet". A full reload is
+        // the simplest reliable fix for an infrequent admin action, saved so it returns to External Servers (otherwise
+        // the status line went blank until re-clicked, which read as stuck).
         if ((server === "ollama" || server === "matricxon") && (action === "stop" || result.running)) {
           try {
             sessionStorage.setItem(SETTINGS_TAB_STORAGE_KEY, "external-servers");
           } catch (_err) {
-            // Private-browsing/storage-blocked — reload still happens,
-            // just lands on the default tab, same as before this fix.
+            // Storage blocked: the reload still happens, landing on the default tab.
           }
           window.location.reload();
           return;
         }
       } catch (err) {
-        // Stays visible (see the Save handler) — e.g. Start failing because the saved device is a GPU that
-        // isn't there; the admin needs to read that and change the setting.
+        // Stays visible (see the Save handler), e.g. Start failing because the saved device is a GPU that isn't there;
+        // the admin needs to read it and change the setting.
         failed = true;
         statusEl.textContent = `Failed: ${err.message}`;
         setServerStatusError(statusEl, true);
@@ -2918,8 +2673,8 @@ for (const server of EXTERNAL_SERVERS) {
 
   const installBtn = section.querySelector('[data-action="install"]');
   const sourceBtn = section.querySelector('[data-action="build-source"]');
-  // Reinstalling overwrites the managed install directory outright — doing that out from under an actively-running
-  // process leaves it half-updated, so this always stops it first if it's up (confirmed, same convention as Save).
+  // Reinstalling overwrites the managed install directory, which would leave a running process half-updated, so stop it
+  // first if it is up (confirmed, like Save).
   async function startInstall(button, buildOverride = null) {
     const status = lastServerStatus[server];
     const wasRunning = !!status?.running;
@@ -2937,40 +2692,29 @@ for (const server of EXTERNAL_SERVERS) {
       }
       button.disabled = false;
     }
-    // Only restart afterward if *this* click is the reason it's stopped — a first-time install (nothing was
-    // running before) leaves it stopped on purpose, matching Ollama/ComfyUI's existing convention of a
-    // separate, deliberate first Start click.
+    // Restart afterward only if this click stopped it: a first-time install leaves it stopped on purpose, matching
+    // Ollama/ComfyUI's separate first Start click.
     await installServer(server, section, wasRunning, buildOverride);
   }
   installBtn?.addEventListener("click", () => startInstall(installBtn));
   sourceBtn?.addEventListener("click", () => startInstall(sourceBtn, "source"));
 }
 
-/**
- * Downloads/installs Ollama or ComfyUI from GitHub (see
- * app.services.ollama_installer/comfyui_installer), streaming progress
- * over SSE the same way pullModel() above reads a model pull — manual
- * fetch + reader, not EventSource, since this is a POST. A real,
- * potentially many-minutes operation (Ollama's release is multi-GB;
- * ComfyUI's own pip install pulls torch) — every event the installer
- * itself yields (its step/total_steps/step_label, byte-level download
- * progress, or a raw git/pip stdout line) is shown live: a step label,
- * a progress bar (determinate once byte counts are known, indeterminate
- * otherwise), and a scrolling detail log of every raw status line — not
- * summarized away, so nothing about a multi-minute install happens
- * somewhere the admin can't see it. The mode <select> is disabled for
- * the duration so switching away mid-install can't desync the UI from
- * what's actually still running server-side.
- *
- * `restartAfter` (only ever true for a reinstall of something that was running — see the install button's own
- * click handler, which stops it first and passes this through) starts it back up once the install succeeds — a
- * real, confirmed-live gap without this: reinstalling left the admin with a freshly-updated but stopped engine
- * and no visible signal that a manual Start was now needed, reading as "stuck" until a page reload happened to
- * show the true (stopped) status. */
-// Spinner + elapsed timer beside an install's step label, so a long step with no numbers to show (pip's
-// install phase, a slow mirror) never reads as frozen — reported live, 2026-09-23: "3/3 at 100%" sitting
-// still through a ~900 MB PyTorch download. The spinner goes in a small wrapper around the label so the
-// header row's existing label-left / percent-right layout is unchanged.
+/*
+ * Downloads/installs Ollama or ComfyUI from GitHub (app.services.ollama_installer/comfyui_installer), streaming
+ * progress over SSE as pullModel reads a model pull (fetch + reader, not EventSource, since it is a POST). It can
+ * take many minutes (Ollama's release is multi-GB; ComfyUI's pip install pulls torch), so every installer event
+ * (step/total_steps/step_label, byte progress, raw git/pip lines) is shown live: a step label, a progress bar
+ * (determinate once byte counts are known) and a scrolling log of raw status lines. The mode <select> is disabled
+ * meanwhile so switching mid-install can't desync the UI from the server.
+ * 
+ * `restartAfter` (true only for reinstalling something that was running; the install button's handler stops it first)
+ * restarts it after a successful install. Without it a reinstall left a stopped engine with no sign that a manual Start
+ * was needed.
+ */
+// Spinner + elapsed timer beside an install's step label, so a long step without numbers (pip's install phase, a slow
+// mirror) doesn't look frozen (reported: "3/3 at 100%" through a ~900 MB PyTorch download). The spinner sits
+// in a small wrapper so the header row's label-left / percent-right layout is unchanged.
 function startInstallActivity(stepLabelEl, percentEl) {
   let wrapper = stepLabelEl.parentElement;
   if (!wrapper.dataset.installActivity) {
@@ -3009,9 +2753,9 @@ function startInstallActivity(stepLabelEl, percentEl) {
   };
 }
 
-// A real "working, no numbers yet" bar in place of the value-less <progress>, which Firefox draws as a full,
-// static bar (read as "100%, stuck" through pip's whole install phase). A short segment slides across a track
-// the same size as the progress bar, animated with the Web Animations API so no extra CSS is needed.
+// A "working, no numbers yet" bar instead of a value-less <progress>, which Firefox draws as a full static bar ("100%,
+// stuck" through pip's install). A short segment slides across a track the size of the progress bar, via the Web
+// Animations API (no extra CSS).
 function setInstallBarIndeterminate(barEl, indeterminate) {
   let track = barEl.nextElementSibling;
   if (!track?.dataset.installIndeterminate) {
@@ -3094,8 +2838,8 @@ async function installServer(server, section, restartAfter = false, buildOverrid
         if (payload.total && payload.completed) {
           const pct = Math.round((payload.completed / payload.total) * 100);
           barEl.value = pct;
-          // pip download progress is in bytes (app.services.pip_progress) — worth showing as MB; git clone's
-          // completed/total are object counts, where only the percentage means anything.
+          // pip download progress is in bytes (app.services.pip_progress), shown as MB; git clone's completed/total are
+          // object counts, where only the percentage matters.
           const mb = (bytes) => (bytes / 1e6).toFixed(0);
           const size = payload.unit === "bytes" ? ` · ${mb(payload.completed)} / ${mb(payload.total)} MB` : "";
           activity.setProgress(`${pct}%${size}`);
@@ -3114,14 +2858,11 @@ async function installServer(server, section, restartAfter = false, buildOverrid
     percentEl.textContent = "100%";
     setInstallBarIndeterminate(barEl, false);
     barEl.value = 100;
-    // Ollama's own managed binary IS in ollama_process._FALLBACK_BIN_PATHS, so a *first-ever* install with no
-    // override set already auto-detects it correctly with nothing saved here. The real gap this closes: an
-    // admin who previously set an explicit binary_path override (_find_binary checks it "first and,
-    // exclusively" if valid — see that function's own docstring) would have every future Reinstall silently
-    // install a fresh binary that never actually gets used, since the stale override keeps winning and nothing
-    // updated it — confirmed live: "the service looks ok" after reinstalling, because the OLD binary was still
-    // what actually started. Saving the just-installed path here, same as ComfyUI/Matricxon below, is what
-    // makes a reinstall actually take effect regardless of whatever was configured before it.
+    // Ollama's managed binary is in ollama_process._FALLBACK_BIN_PATHS, so a first install with no override is
+    // auto-detected. The gap this closes: an explicit binary_path override (_find_binary checks it first and
+    // exclusively if valid) would make every Reinstall install a binary that is never used, since the stale override
+    // keeps winning (seen: "looks ok" after reinstall because the OLD binary still started). Saving the installed path,
+    // like ComfyUI/Matricxon below, makes a reinstall take effect.
     if (server === "ollama" && doneEvent) {
       section.querySelector('[data-field="binary_path"]').value = doneEvent.binary_path;
       await api("/api/settings/ollama/config", {
@@ -3129,13 +2870,9 @@ async function installServer(server, section, restartAfter = false, buildOverrid
         body: JSON.stringify(collectServerConfig("ollama", section)),
       });
     }
-    // ComfyUI's own install has no fixed path to auto-discover the way
-    // Ollama's managed binary does (see ollama_process._FALLBACK_BIN_PATHS)
-    // — the paths it just installed to are filled in and saved so
-    // Start works immediately without the admin copying them by hand.
-    // extra_args is "--cpu" on a machine with no NVIDIA GPU (see
-    // comfyui_installer's own reasoning) — without it, ComfyUI's default
-    // CUDA-enabled torch build crashes at startup on a GPU-less machine.
+    // ComfyUI has no fixed path to auto-discover, unlike Ollama's managed binary (ollama_process._FALLBACK_BIN_PATHS);
+    // the installed paths are filled in and saved so Start works at once. extra_args is "--cpu" on a machine without an
+    // NVIDIA GPU (comfyui_installer), since the default CUDA torch build crashes at startup there.
     if (server === "comfyui" && doneEvent) {
       section.querySelector('[data-field="python_path"]').value = doneEvent.python_path;
       section.querySelector('[data-field="main_py_path"]').value = doneEvent.main_py_path;
@@ -3145,8 +2882,8 @@ async function installServer(server, section, restartAfter = false, buildOverrid
         body: JSON.stringify(collectServerConfig("comfyui", section)),
       });
     }
-    // stable-diffusion.cpp: same as ComfyUI above — save the just-installed sd-server path so Start works. The
-    // model file is the admin's own (see the models folder named in the log), so it's left as entered.
+    // stable-diffusion.cpp: as ComfyUI above, save the installed sd-server path so Start works. The model file is the
+    // admin's own (see the models folder in the log) and stays as entered.
     if (server === "sdcpp" && doneEvent) {
       section.querySelector('[data-field="binary_path"]').value = doneEvent.binary_path;
       appendLog(`Installed the ${doneEvent.build} build.`);
@@ -3156,10 +2893,9 @@ async function installServer(server, section, restartAfter = false, buildOverrid
         body: JSON.stringify(collectServerConfig("sdcpp", section)),
       });
     }
-    // Matricxon has no fixed path to auto-discover the way Ollama's managed binary does either — same reasoning
-    // as ComfyUI just above, project_dir in place of python_path/main_py_path (see
-    // app.services.matricxon_process._find_project_dir, which treats this saved value as an override ahead of
-    // its own sibling-directory default).
+    // Matricxon has no fixed auto-discovered path either; as ComfyUI above, with project_dir instead of
+    // python_path/main_py_path (matricxon_process._find_project_dir treats this saved value as an override ahead of its
+    // sibling-directory default).
     if (server === "matricxon" && doneEvent) {
       section.querySelector('[data-field="project_dir"]').value = doneEvent.project_dir;
       await api("/api/settings/matricxon/config", {
@@ -3172,30 +2908,24 @@ async function installServer(server, section, restartAfter = false, buildOverrid
       try {
         await api(`/api/settings/${server}/start`, { method: "POST" });
       } catch (err) {
-        // Surfaced via the status line loadServerSection renders next, not thrown — the install itself
-        // genuinely succeeded, so this must not be reported as an install failure (which would incorrectly
-        // re-show the "Install from GitHub" idle panel via the catch block below).
+        // Surfaced via the status line loadServerSection renders next, not thrown: the install succeeded, and reporting
+        // it as a failure would re-show the "Install from GitHub" idle panel via the catch block below.
         appendLog(`Installed, but could not start it back up: ${err.message}`);
       }
     }
-    // A full reload of this section, not just a status re-fetch: Ollama's
-    // own "auto-detected" binary_path placeholder (see loadServerSection)
-    // only reflects the newly-installed binary once re-fetched — without
-    // this it stayed blank/stale until the next unrelated action (e.g.
-    // clicking Start) happened to trigger a reload some other way. Also
-    // what makes a restartAfter start actually show up as "Running" instead of needing a manual refresh.
+    // A full reload of this section, not a status re-fetch: Ollama's "auto-detected" binary_path placeholder
+    // (loadServerSection) reflects the new binary only once re-fetched, and a restartAfter start shows as "Running"
+    // without a manual refresh.
     await loadServerSection(server);
-    // Swaps back to the idle Install/Reinstall button once there's nothing left to show progress for — left
-    // showing "Installed. 100%" indefinitely otherwise, with no way to tell a finished install from one still
-    // in progress at a glance days later.
+    // Swap back to the idle Install/Reinstall button when there's nothing left to show; otherwise "Installed. 100%"
+    // lingered, indistinguishable days later from an install in progress.
     progressPanel.classList.add("hidden");
     installIdle.classList.remove("hidden");
   } catch (err) {
     stepLabelEl.textContent = `Failed: ${err.message}`;
     appendLog(err.message);
-    // progressPanel stays visible here (unlike the success path above) — it's the only place the actual
-    // failure reason and log are shown, so hiding it on error would bury exactly what the admin needs to see
-    // to retry successfully.
+    // progressPanel stays visible here (unlike success): it is the only place the failure reason and log appear, and
+    // hiding it would bury what the admin needs to retry.
     installIdle.classList.remove("hidden");
   } finally {
     activity.stop();
@@ -3204,7 +2934,7 @@ async function installServer(server, section, restartAfter = false, buildOverrid
   }
 }
 
-// ---- Default model for new users (admin only) -----------------------------
+// Default model for new users (admin only)
 
 async function loadDefaultModelForNewUsersEditor() {
   const selectEl = document.getElementById("default-model-for-new-users");
@@ -3237,13 +2967,9 @@ async function loadDefaultModelForNewUsersEditor() {
   if (current.model) selectEl.value = current.model;
 }
 
-// Admin-only (see app/templates/settings.html) — this element and the
-// rest of this block don't exist in the DOM at all for a regular user,
-// same as the other admin-only sections guarded this way elsewhere in
-// this file. The unguarded version of this call used to throw for
-// every non-admin user on page load, which — since it ran at the top
-// level, not inside a function — halted this whole script's execution
-// right there, breaking every *other* tab too (including My Settings).
+// Admin-only (settings.html): this element and the rest of the block don't exist for regular users, as other admin-only
+// sections guarded like this. The unguarded call threw for every non-admin on page load and, running at top level,
+// halted the whole script, breaking every other tab including My Settings.
 const defaultModelForNewUsersSaveBtn = document.getElementById("default-model-for-new-users-save-btn");
 if (defaultModelForNewUsersSaveBtn) {
   defaultModelForNewUsersSaveBtn.addEventListener("click", async () => {
@@ -3267,12 +2993,10 @@ if (defaultModelForNewUsersSaveBtn) {
   });
 }
 
-// ---- Default vision model (admin only) -------------------------------------
-// The model any message with an image attached is answered by, for that
-// one reply only (see app.services.chat_service.build_reply_stream) — a
-// separate picker from "Default model for new users" above since a
-// vision-capable model is a different kind of thing from an ordinary
-// chat model (see model_catalog_service.installed_vision_models).
+// Default vision model (admin only)
+// The model that answers any message with an image attached, for that reply only (chat_service.build_reply_stream). A
+// separate picker from "Default model for new users" since a vision model differs from an ordinary chat model
+// (model_catalog_service.installed_vision_models).
 
 async function loadDefaultVisionModelEditor() {
   const selectEl = document.getElementById("default-vision-model");
@@ -3328,10 +3052,9 @@ if (defaultVisionModelSaveBtn) {
   });
 }
 
-// ---- Default embedding model (admin only) ---------------------------------
-// The model app.services.inference_client.embed uses for the Knowledge base
-// (RAG) feature — same select/empty-state/save pattern as "Default vision
-// model" above, just against the embedding-capable model list instead.
+// Default embedding model (admin only)
+// The model app.services.inference_client.embed uses for the Knowledge base (RAG); same select/empty-state/save pattern
+// as "Default vision model", against the embedding-capable list.
 
 async function loadDefaultEmbeddingModelEditor() {
   const selectEl = document.getElementById("default-embedding-model");
@@ -3387,11 +3110,10 @@ if (defaultEmbeddingModelSaveBtn) {
   });
 }
 
-// ---- Account (everyone) ---------------------------------------------------
+// Account (everyone)
 
-// Profile: name + picture (see app/routers/account.py). `has_avatar` lets
-// the "Remove" button show/hide without re-deriving it from avatar_url
-// itself, matching the has_password precedent elsewhere on this page.
+// Profile: name + picture (app/routers/account.py). `has_avatar` lets "Remove" show/hide without re-deriving from
+// avatar_url, like has_password elsewhere on this page.
 async function loadAccountProfileIntoEditor() {
   const profile = await api("/api/account/profile");
   document.getElementById("account-first-name").value = profile.first_name || "";
@@ -3401,7 +3123,7 @@ async function loadAccountProfileIntoEditor() {
   fillTimezoneSelect(profile.timezone);
 }
 
-// Timezone: the browser's own IANA list (always includes UTC via the fallback) with the saved one selected.
+// Timezone: the browser's IANA list (UTC via the fallback) with the saved one selected.
 function fillTimezoneSelect(selected) {
   const select = document.getElementById("account-timezone");
   const zones = new Set(typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : []);
@@ -3439,7 +3161,7 @@ document.getElementById("account-timezone-save-btn")?.addEventListener("click", 
 
 document.getElementById("account-avatar-input")?.addEventListener("change", async (e) => {
   const file = e.target.files[0];
-  e.target.value = ""; // lets picking the exact same file again still fire "change"
+  e.target.value = "";
   if (!file) return;
 
   const statusEl = document.getElementById("account-avatar-status");
@@ -3448,9 +3170,8 @@ document.getElementById("account-avatar-input")?.addEventListener("change", asyn
   try {
     const formData = new FormData();
     formData.append("file", file);
-    // No JSON Content-Type here (see api()'s default) — a raw fetch
-    // instead, same reasoning as chat.js's attachment upload: the
-    // browser must set the multipart boundary itself.
+    // A raw fetch without the JSON Content-Type (api's default), as chat.js's attachment upload: the browser must set
+    // the multipart boundary.
     const response = await fetch("/api/account/avatar", { method: "PUT", body: formData });
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
@@ -3531,9 +3252,8 @@ document.getElementById("account-password-save-btn")?.addEventListener("click", 
     statusEl.classList.add("text-warning-400");
     return;
   }
-  // Mirrors app/schemas.py's ChangePasswordRequest constraint, so a
-  // too-short password shows a plain message here instead of a raw
-  // FastAPI validation error.
+  // Mirrors ChangePasswordRequest's constraint (app/schemas.py), so a too-short password shows a plain message instead
+  // of a raw FastAPI validation error.
   if (new_password.length < 3 || new_password.length > 200) {
     statusEl.textContent = "New password must be 3-200 characters.";
     statusEl.classList.add("text-warning-400");
@@ -3568,10 +3288,9 @@ document.getElementById("account-password-save-btn")?.addEventListener("click", 
   }
 });
 
-// ---- App-wide UI theme (see app/static/js/theme.js's ThemeManager) ----
-// Clicking a swatch live-previews instantly — repaints the whole page (no network call, no reload) via
-// ThemeManager.apply(); only "Save theme" persists it. Same picker (and the same ThemeManager class) also lives
-// in the account panel reachable from every other page — see app/static/js/account_panel.js.
+// App-wide UI theme (ThemeManager in theme.js)
+// A swatch click previews live (repaints the page via ThemeManager.apply, no network call or reload); only "Save
+// theme" persists. The same picker and ThemeManager class are in the account panel on other pages (account_panel.js).
 const themeManager = new ThemeManager();
 let pendingUiTheme = themeManager.current;
 
@@ -3611,11 +3330,9 @@ document.getElementById("ui-theme-save-btn")?.addEventListener("click", async ()
   }
 });
 
-// ---- Default persona/rules/skill notes on new chats/channels (every user, not admin-only) ----
-// A plain on/off toggle, not a Save button: unlike theme's multi-swatch "try a few, then commit"
-// flow, there's nothing to preview here — flipping it saves immediately, the way a real hardware
-// switch would. Only ever affects chats/channels this user starts *after* changing it (see
-// app.services.note_service.seed_initial_disabled_notes's own docstring for why).
+// Default persona/rules/skill notes on new chats/channels (every user)
+// A plain on/off toggle, not a Save button: there is nothing to preview, so flipping it saves at once. It affects only
+// chats/channels this user starts afterward (note_service.seed_initial_disabled_notes).
 
 async function loadDefaultNotesEnabledIntoEditor() {
   const toggleEl = document.getElementById("default-notes-enabled-toggle");
@@ -3633,7 +3350,7 @@ document.getElementById("default-notes-enabled-toggle")?.addEventListener("chang
     await api("/api/notes/default-notes-enabled", { method: "PUT", body: JSON.stringify({ enabled }) });
     statusEl.textContent = "Saved";
   } catch (err) {
-    e.target.checked = !enabled; // revert the visible toggle — the save didn't actually take effect
+    e.target.checked = !enabled;
     statusEl.textContent = err.message;
     statusEl.classList.add("text-warning-400");
   } finally {
@@ -3645,8 +3362,7 @@ document.getElementById("default-notes-enabled-toggle")?.addEventListener("chang
   }
 });
 
-// ---- RAG upload limits (admin only — these elements don't exist in the
-// DOM at all for a non-admin user, same as the rest of the System tab) ----
+// RAG upload limits (admin only; these elements don't exist for non-admins, like the rest of the System tab)
 
 const ragLimitsSaveBtn = document.getElementById("rag-limits-save-btn");
 const ragEnabledToggle = document.getElementById("rag-enabled");
@@ -3659,10 +3375,8 @@ async function loadRagLimitsIntoEditor() {
   document.getElementById("rag-limit-max-space").value = limits.max_user_space_mb;
 }
 
-// PUT /api/settings/rag-limits always takes the full RagLimits object (unlike default-notes-enabled's own
-// dedicated single-field endpoint above), so both the toggle's own immediate auto-save and the numeric
-// limits' own Save button below go through this one shared function, each sending whatever's currently in
-// all three fields rather than just the one that actually changed.
+// PUT /api/settings/rag-limits takes the full RagLimits object (unlike default-notes-enabled's single-field endpoint),
+// so the toggle's auto-save and the numeric limits' Save button both use this function, each sending all three fields.
 async function saveRagLimits(statusEl) {
   const enabled = ragEnabledToggle.checked;
   const max_file_mb = parseFloat(document.getElementById("rag-limit-max-file").value);
@@ -3675,17 +3389,16 @@ async function saveRagLimits(statusEl) {
     method: "PUT",
     body: JSON.stringify({ enabled, max_file_mb, max_user_space_mb }),
   });
-  currentUploadLimits = null; // stale — the Knowledge tab will refetch next time it loads
-  // Reflects the new on/off state immediately if the Knowledge tab happens to already be open in this
-  // same page load, same as every other cross-tab refresh this file already does after a save.
+  currentUploadLimits = null;
+  // Reflects the new on/off state at once if the Knowledge tab is already open in this page load, like other cross-tab
+  // refreshes here.
   await loadRagAvailability();
   return true;
 }
 
 if (ragEnabledToggle) {
-  // A plain on/off toggle, not tied to the Save button below (see default-notes-enabled-toggle's own
-  // identical convention) — flipping it saves immediately, the way a real hardware switch would, rather
-  // than silently doing nothing until the numeric limits happen to get saved too.
+  // A plain on/off toggle, not tied to the Save button below (as default-notes-enabled-toggle): flipping it saves at
+  // once instead of silently waiting for the numeric limits to be saved.
   ragEnabledToggle.addEventListener("change", async () => {
     const statusEl = document.getElementById("rag-limits-status");
     const wasChecked = !ragEnabledToggle.checked;
@@ -3694,9 +3407,9 @@ if (ragEnabledToggle) {
     try {
       const ok = await saveRagLimits(statusEl);
       statusEl.textContent = ok ? "Saved." : statusEl.textContent;
-      if (!ok) ragEnabledToggle.checked = wasChecked; // limits were invalid - revert, nothing was sent
+      if (!ok) ragEnabledToggle.checked = wasChecked;
     } catch (err) {
-      ragEnabledToggle.checked = wasChecked; // the save didn't actually take effect
+      ragEnabledToggle.checked = wasChecked;
       statusEl.textContent = `Failed to save: ${err.message}`;
     } finally {
       ragEnabledToggle.disabled = false;
@@ -3722,7 +3435,7 @@ if (ragLimitsSaveBtn) {
   });
 }
 
-// ---- Chat title mode (admin only) -----------------------------------
+// Chat title mode (admin only)
 
 const titleModeSaveBtn = document.getElementById("title-mode-save-btn");
 
@@ -3751,10 +3464,9 @@ if (titleModeSaveBtn) {
   });
 }
 
-// ---- Channel reply delivery mode (read: any user; save: admin only) ------
-// See app.services.chat_settings_service.get_channel_delivery_mode/
-// set_channel_delivery_mode and app/static/js/chat.js, which reads the
-// same GET endpoint to decide how to behave in a channel chat.
+// Channel reply delivery mode (read: any user; save: admin only)
+// See chat_settings_service.get_channel_delivery_mode/set_channel_delivery_mode and chat.js, which reads the same GET
+// endpoint to decide how to behave in a channel chat.
 
 const channelDeliveryModeSaveBtn = document.getElementById("channel-delivery-mode-save-btn");
 
@@ -3787,12 +3499,10 @@ if (channelDeliveryModeSaveBtn) {
   });
 }
 
-// ---- Reply timeouts (admin only) -------------------------------------------
-// See app.services.chat_settings_service.get_reply_timeout_seconds/
-// get_vision_reply_timeout_seconds and app.services.reply_generation_service,
-// the only reader of either — no frontend code branches on them, unlike
-// channel delivery mode above. Two independent settings, same {timeout_seconds}
-// shape and save flow, so one small helper wires both instead of duplicating it.
+// Reply timeouts (admin only)
+// See chat_settings_service.get_reply_timeout_seconds/get_vision_reply_timeout_seconds and reply_generation_service,
+// the only reader; no frontend code branches on them. Two independent settings with the same {timeout_seconds} shape
+// and save flow, so one helper wires both.
 
 function wireTimeoutSetting(inputId, saveBtnId, statusId, apiPath) {
   const saveBtn = document.getElementById(saveBtnId);
@@ -3832,10 +3542,9 @@ const loadVisionReplyTimeoutIntoEditor =
     "/api/settings/vision-reply-timeout"
   ) || (async () => {});
 
-// ---- Data retention (admin only) ------------------------------------------
-// See app.services.retention_settings_service and app.services.retention_poller,
-// the only reader of this — no frontend code outside this section branches
-// on it, same as reply timeout above.
+// Data retention (admin only)
+// See retention_settings_service and retention_poller, the only reader; no frontend code outside this section branches
+// on it.
 
 const retentionSaveBtn = document.getElementById("retention-save-btn");
 
@@ -3869,17 +3578,13 @@ if (retentionSaveBtn) {
   });
 }
 
-// ---- Users (admin only) --------------------------------------------------
+// Users (admin only)
 
-// Whoever's logged in right now — set server-side as a data attribute on
-// <body> (see app/templates/base.html) — just so their own row in the
-// list below can be marked "(you)" rather than looking like any other.
+// The logged-in user (data attribute on <body>, see base.html), so their own row can be marked "(you)".
 const currentUsername = document.body.dataset.username || "";
 
-// Mirrors app/schemas.py's UserCreate/UserUpdate constraints, so a bad
-// username/password shows a plain-English message here instead of the
-// raw list-of-field-errors FastAPI's own 422 response would otherwise
-// surface through the generic api() error handling.
+// Mirrors UserCreate/UserUpdate constraints (app/schemas.py), so a bad username/password shows a plain message instead
+// of FastAPI's raw 422 list of field errors.
 const USERNAME_RE = /^[A-Za-z0-9_.-]{3,50}$/;
 function validUsername(value) {
   return USERNAME_RE.test(value);
@@ -3888,8 +3593,7 @@ function validPassword(value) {
   return value.length >= 3 && value.length <= 200;
 }
 
-/** While one row of a list is being edited (or an "add" form is open), shows only that row/form: hides the
- * list's other rows plus any `chrome` elements (Add button, pagination). `row` null restores everything. */
+/* While one row of a list is edited (or an "add" form is open), shows only that row/form: hides the other rows and any `chrome` elements (Add button, pagination). `row` null restores everything. */
 function focusListRow(listEl, row, ...chrome) {
   if (!listEl) return;
   for (const child of listEl.children) child.style.display = row && child !== row ? "none" : "";
@@ -3902,11 +3606,7 @@ const addUserForm = document.getElementById("add-user-form");
 const addUserStatusEl = document.getElementById("add-user-status");
 const createUserBtn = document.getElementById("create-user-btn");
 
-/** Renders one row in the Users list. Starts in a compact "view" state
- * (username, role, status, an Edit button); clicking Edit swaps the
- * same row into an inline form (password/role/status) rather than
- * opening a separate modal — there's no modal machinery elsewhere in
- * this app, so this matches everything else here. */
+/* Renders one row of the Users list: a compact "view" state (username, role, status, Edit button) that swaps into an inline form (password/role/status) on Edit, as the app has no modals. */
 function renderUserRow(user) {
   const row = document.createElement("div");
   row.className = "px-4 py-2.5";
@@ -3934,15 +3634,10 @@ function renderUserRow(user) {
     `;
     wrap.querySelector(".edit-user-btn").addEventListener("click", renderEdit);
 
-    // Right in the main list — no need to open Edit first. Permanent
-    // and cascading (see DELETE /api/settings/users/{username}): this
-    // removes the account's conversations, documents, and notes along
-    // with it, with no undo. Disabling (inside Edit) is the reversible
-    // way to just revoke access instead. Not rendered at all for
-    // "admin" (see the ternary above) — that account can't be deleted
-    // (app.routers.settings.delete_user enforces this server-side
-    // regardless), so there's no point offering a button that can only
-    // ever fail.
+    // In the main list, no need to open Edit. Permanent and cascading (DELETE /api/settings/users/{username}): removes
+    // the account's conversations, documents and notes, with no undo; disabling (in Edit) is the reversible way to
+    // revoke access. Not rendered for "admin" (see the ternary above), which can't be deleted
+    // (app.routers.settings.delete_user enforces it), so a button could only fail.
     const deleteBtn = wrap.querySelector(".delete-user-btn");
     if (deleteBtn) {
       deleteBtn.addEventListener("click", async () => {
@@ -4010,11 +3705,8 @@ function renderUserRow(user) {
         msgEl.textContent = "Password must be 3-200 characters.";
         return;
       }
-      // first_name/last_name are always sent (even as "") so clearing a
-      // name actually clears it — see user_service.update_user's "or
-      // None" handling, which relies on receiving "" rather than the
-      // field being left out entirely to tell "cleared" apart from
-      // "untouched".
+      // first_name/last_name are always sent (even as "") so clearing a name clears it; user_service.update_user's "or
+      // None" handling needs "" to tell "cleared" from "untouched".
       const body = { first_name, last_name, role, status };
       if (password) body.password = password;
 
@@ -4036,9 +3728,8 @@ function renderUserRow(user) {
   return row;
 }
 
-// How many users to show per page — the full list is still fetched in
-// one request (this app's scale doesn't need server-side paging, same
-// reasoning as MY_DOCS_PAGE_SIZE above), just not all rendered at once.
+// Users shown per page. The full list is fetched in one request (no server paging at this scale, as MY_DOCS_PAGE_SIZE),
+// but not all rendered at once.
 const USER_PAGE_SIZE = 20;
 let allUsers = [];
 let userPage = 1;
@@ -4046,9 +3737,7 @@ let userPage = 1;
 function renderUserPage() {
   const paginationEl = document.getElementById("system-user-pagination");
   const totalPages = Math.max(1, Math.ceil(allUsers.length / USER_PAGE_SIZE));
-  // Clamped rather than trusted as-is: a delete can shrink the list
-  // between renders, which could otherwise leave the page number
-  // pointing past the new last page.
+  // Clamped, as a delete can shrink the list between renders and leave the page past the last.
   userPage = Math.min(Math.max(1, userPage), totalPages);
 
   const start = (userPage - 1) * USER_PAGE_SIZE;
@@ -4065,12 +3754,9 @@ function renderUserPage() {
   document.getElementById("system-user-next-btn").disabled = userPage >= totalPages;
 }
 
-// Guarded like every other admin-only element in this file (userListEl
-// is null for a non-admin, since the whole Users tab isn't rendered for
-// them) — these two were missed when pagination was added, which meant
-// a non-admin's page crashed here with "Cannot read properties of null",
-// silently killing every script line after this one (the rest of this
-// file, including the Add User form wiring below).
+// Guarded like other admin-only elements (userListEl is null for non-admins, whose page has no Users tab). These two
+// were missed when pagination was added, so a non-admin's page crashed with "Cannot read properties of null", silently
+// killing the rest of the script, including the Add User form wiring below.
 if (userListEl) {
   document.getElementById("system-user-prev-btn").addEventListener("click", () => {
     userPage -= 1;
@@ -4087,10 +3773,7 @@ async function loadUsers() {
   renderUserPage();
 }
 
-/** Disables "+ Add user" (with an explanatory note) when no model is
- * installed at all — matches the server-side guard in
- * POST /api/settings/users, which would otherwise 400 on submit; this
- * just surfaces the same reason before the form is even opened. */
+/* Disables "+ Add user" (with a note) when no model is installed, matching the server-side guard in POST /api/settings/users (400 otherwise); surfaces the reason before the form opens. */
 async function refreshAddUserGate() {
   if (!addUserBtn) return;
   await loadCatalog();
@@ -4149,10 +3832,8 @@ if (addUserBtn) {
         body: JSON.stringify({ username, password, first_name, last_name, role, status }),
       });
       showAddUser(false);
-      // list_users orders by created_at, so the user just created is always on the *last* page — jump there
-      // (renderUserPage's own clamp settles this to whatever that turns out to be) rather than silently
-      // re-fetching behind whichever page happened to be showing, which could leave it looking like nothing
-      // happened at all.
+      // list_users orders by created_at, so a new user is on the last page: jump there (renderUserPage's clamp settles
+      // it) rather than re-fetching behind the shown page, which could look like nothing happened.
       userPage = Number.MAX_SAFE_INTEGER;
       await loadUsers();
     } catch (err) {
@@ -4163,23 +3844,15 @@ if (addUserBtn) {
   });
 }
 
-// ---- Channels (admin only — these elements don't exist in the DOM at
-// all for a non-admin user, same as System/Users above) --------------
+// Channels (admin only; these elements don't exist for non-admins, like System/Users)
 //
-// The member/manager picker below is what makes channel creation usable
-// with 1000+ users: rather than a fixed-height <select multiple> (which
-// becomes an unscrollable wall of options at that size) or fetching
-// pages of users from the server (this app's established convention —
-// see USER_PAGE_SIZE/MY_DOCS_PAGE_SIZE above — is to fetch the full
-// list once and do everything else client-side), it's a search box over
-// the already-fetched user list plus a capped, always-shows-your-
-// current-selection checkbox list. See buildChannelForm below.
+// The member/manager picker makes channel creation usable with 1000+ users. A fixed-height <select multiple> becomes an
+// unscrollable wall, and server-side paging goes against this app's convention (USER_PAGE_SIZE/MY_DOCS_PAGE_SIZE: fetch
+// the full list once, do the rest client-side). So it is a search box over the fetched user list plus a capped checkbox
+// list that always shows the current selection (buildChannelForm).
 
-// How many *unselected* matching rows to paint into the member picker
-// at once — the thing that actually breaks at 1000+ users is rendering
-// every row simultaneously, not the lack of a fancier widget. Already-
-// selected members are always shown in full regardless of this cap, so
-// narrowing the search never hides what's already picked.
+// How many unselected matching rows to paint at once: rendering every row at 1000+ users is what breaks. Selected
+// members always show in full, so narrowing the search never hides a pick.
 const MEMBER_PICKER_RENDER_LIMIT = 50;
 
 function renderUserCheckboxRow(user, checked, onToggle) {
@@ -4197,20 +3870,14 @@ function renderUserCheckboxRow(user, checked, onToggle) {
   return row;
 }
 
-/** Builds the name + member/manager picker form shared by "+ Add
- * channel" and each row's inline Edit (mirrors the Users tab's
- * renderView/renderEdit row-swap pattern) — `channel` is null when
- * creating. `onSave(body)` receives a {name, member_user_ids,
- * manager_user_ids} object shaped for POST/PATCH
- * /api/settings/channels; `onCancel()` closes the form unsaved. */
+/* Builds the name + member/manager picker form shared by "+ Add channel" and each row's inline Edit (as the Users tab's renderView/renderEdit swap); `channel` is null when creating. `onSave(body)` gets {name, member_user_ids, manager_user_ids} shaped for POST/PATCH /api/settings/channels; `onCancel` closes the form unsaved. */
 function buildChannelForm(users, channel, { onSave, onCancel }) {
   const selectedMemberIds = new Set((channel?.members || []).map((m) => m.user_id));
   const selectedManagerIds = new Set((channel?.members || []).filter((m) => m.is_manager).map((m) => m.user_id));
 
-  // No border/bg of its own — the two callers below already sit inside one: #add-channel-form carries it
-  // directly in settings.html (for the "add" flow, which has no other frame around it), and the "edit in place"
-  // flow appends this straight into a channel row already inside #channel-list's own bordered box, where a
-  // second border here would nest visibly inside the first.
+  // No border/bg of its own: both callers already sit in one. #add-channel-form carries it in settings.html (add flow),
+  // and edit-in-place appends this into a channel row inside #channel-list's bordered box, where a second border would
+  // nest.
   const form = document.createElement("div");
   form.className = "space-y-3";
   form.innerHTML = `
@@ -4246,9 +3913,8 @@ function buildChannelForm(users, channel, { onSave, onCancel }) {
   function renderMembers() {
     const query = searchInput.value.trim().toLowerCase();
     const matches = users.filter((u) => u.username.toLowerCase().includes(query));
-    // Selected members first, in full, so narrowing the search can never
-    // make an already-picked member disappear from view; the rest of
-    // the matches are capped (see MEMBER_PICKER_RENDER_LIMIT above).
+    // Selected members first, in full, so narrowing the search never hides a pick; the other matches are capped
+    // (MEMBER_PICKER_RENDER_LIMIT).
     const selectedMatches = matches.filter((u) => selectedMemberIds.has(u.id));
     const restMatches = matches.filter((u) => !selectedMemberIds.has(u.id));
     const shown = [...selectedMatches, ...restMatches.slice(0, MEMBER_PICKER_RENDER_LIMIT)];
@@ -4261,7 +3927,7 @@ function buildChannelForm(users, channel, { onSave, onCancel }) {
       memberListEl.appendChild(renderUserCheckboxRow(u, selectedMemberIds.has(u.id), () => {
         if (selectedMemberIds.has(u.id)) {
           selectedMemberIds.delete(u.id);
-          selectedManagerIds.delete(u.id); // can't manage a channel you're not a member of
+          selectedManagerIds.delete(u.id);
         } else {
           selectedMemberIds.add(u.id);
         }
@@ -4275,15 +3941,10 @@ function buildChannelForm(users, channel, { onSave, onCancel }) {
   }
 
   function renderManagers() {
-    // Every channel_manager-role user is listed here regardless of
-    // whether they're currently a member — checking one below binds
-    // them to the channel automatically (member_user_ids must be a
-    // superset of manager_user_ids, both here and server-side — see
-    // channel_service._validate_membership), rather than requiring a
-    // separate trip to the Members list first. Unchecking a manager,
-    // by contrast, only revokes their manager rights and leaves their
-    // membership alone — turning a manager back into a plain member,
-    // not removing them from the channel.
+    // Every channel_manager-role user is listed regardless of membership: checking one binds them to the channel
+    // (member_user_ids must be a superset of manager_user_ids, here and server-side,
+    // channel_service._validate_membership), with no trip to the Members list first. Unchecking revokes manager rights
+    // only and keeps membership.
     const eligible = users.filter((u) => u.role === "channel_manager");
     managerListEl.innerHTML = "";
     managerHintEl.classList.toggle("hidden", eligible.length > 0);
@@ -4343,13 +4004,7 @@ const addChannelBtn = document.getElementById("add-channel-btn");
 const addChannelFormEl = document.getElementById("add-channel-form");
 let allChannels = [];
 
-/** One channel's row: a compact view (name, member/manager counts, Edit/
- * Delete) that swaps to buildChannelForm's inline editor on Edit — same
- * row-swap pattern as renderUserRow above. Always fetches a fresh user
- * list for the picker (not the Users tab's cached `allUsers`) so a role
- * change made moments ago on the Users tab (e.g. granting someone
- * Channel manager) is reflected immediately rather than needing a page
- * reload. */
+/* One channel's row: a compact view (name, member/manager counts, Edit/Delete) that swaps to buildChannelForm's inline editor on Edit, as renderUserRow. It fetches a fresh user list (not the Users tab's cached `allUsers`) so a role change just made there (e.g. granting Channel manager) shows at once. */
 function renderChannelRow(channel) {
   const row = document.createElement("div");
   row.className = "px-4 py-2.5";
@@ -4432,9 +4087,7 @@ async function loadChannels() {
 
 if (addChannelBtn) {
   addChannelBtn.addEventListener("click", async () => {
-    // Acts as a toggle: clicking again while the form's open closes it
-    // unsaved, same as there being no separate "Cancel" affordance next
-    // to the button itself (the form's own Cancel button covers that).
+    // Acts as a toggle: clicking while the form is open closes it unsaved (the form's own Cancel also does).
     const closeAdd = () => {
       addChannelFormEl.classList.add("hidden");
       addChannelFormEl.innerHTML = "";
@@ -4459,13 +4112,11 @@ if (addChannelBtn) {
   });
 }
 
-// ---- Boot -------------------------------------------------------------
+// Boot
 
 (async function init() {
-  // Each step runs independently — a failure in one (e.g. Ollama being
-  // unreachable breaks populateConversationSelect's own model-catalog
-  // fetch) must not silently prevent the unrelated ones after it from
-  // ever running, the way a single sequential await chain would.
+  // Each step runs independently: a failure in one (e.g. Ollama unreachable breaking populateConversationSelect's
+  // model-catalog fetch) must not stop the unrelated steps after it, as a sequential await chain would.
   const steps = hasUserTabs
     ? [initModelTab, populateConversationSelect, loadRagAvailability, loadEmbeddingCatalog, loadKnowledgeSummary, loadDocumentLists]
     : [initModelTab, loadEmbeddingCatalog];
@@ -4478,20 +4129,15 @@ if (addChannelBtn) {
   }
 })();
 
-// Restores the tab a reload was asked to land back on (see
-// SETTINGS_TAB_STORAGE_KEY's own comment) — placed at the very end of
-// the file, after every function/const a restored tab's own loaders
-// might reach (e.g. loadTabData("external-servers") needs
-// EXTERNAL_SERVERS, declared earlier but still after this file's
-// halfway point) has actually been defined.
+// Restores the tab a reload was asked to land on (SETTINGS_TAB_STORAGE_KEY), at the end of the file so every
+// function/const its loaders reach (e.g. loadTabData("external-servers") needs EXTERNAL_SERVERS) is defined.
 (function restoreTabAfterReload() {
   let savedTab = null;
   try {
     savedTab = sessionStorage.getItem(SETTINGS_TAB_STORAGE_KEY);
     sessionStorage.removeItem(SETTINGS_TAB_STORAGE_KEY);
   } catch (_err) {
-    // Private-browsing/storage-blocked — falls back to the default tab,
-    // same as if nothing had been saved.
+    // Storage blocked: falls back to the default tab.
   }
   if (savedTab && document.querySelector(`[data-tab="${savedTab}"]`)) {
     activateTab(savedTab);

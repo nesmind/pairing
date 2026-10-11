@@ -1,5 +1,6 @@
-"""Unit tests for app/services/chat_history_service.py — the pure history-trimming/merging helpers split out
-of chat_service.py under CLAUDE.md's file-size rule (see that module's own docstring)."""
+"""Tests for services/chat_history_service.py: the pure history-trimming/merging helpers split from chat_service.py
+(file-size rule).
+"""
 
 from app.models import Message
 from app.services.chat_history_service import trim_history
@@ -16,47 +17,44 @@ def test_trim_history_keeps_everything_when_it_fits():
 
 
 def test_trim_history_drops_oldest_first_when_over_budget():
-    # num_ctx=256 (the function's own floor) minus 512 reserved clamps to
-    # a 256-token floor -> 1024 characters of budget (256 * 4 chars/token).
+    # num_ctx=256 (the function's floor) minus 512 reserved clamps to a 256-token floor -> 1024 characters (256 * 4
+    # chars/token).
     old = _msg("user", "x" * 900)
     newer = _msg("assistant", "y" * 900)
     newest = _msg("user", "z" * 100)
     trimmed = trim_history([old, newer, newest], num_ctx=256)
 
     contents = [m["content"] for m in trimmed]
-    assert old.content not in contents  # dropped: budget exceeded once it's included
-    assert newest.content in contents  # newest is always kept, even alone
-    assert contents.index(newer.content) < contents.index(newest.content)  # order preserved
+    assert old.content not in contents
+    assert newest.content in contents
+    assert contents.index(newer.content) < contents.index(newest.content)
 
 
 def test_trim_history_always_keeps_at_least_the_newest_message():
-    """Even a single message longer than the whole budget must not be
-    dropped — an empty history would mean the model sees no prompt at
-    all, which is worse than one slightly-over-budget message."""
+    """Even a single message longer than the whole budget is kept: an empty history means no prompt at all, worse
+    than one slightly over budget.
+    """
     huge = _msg("user", "x" * 100_000)
     trimmed = trim_history([huge], num_ctx=256)
     assert len(trimmed) == 1
 
 
 def test_trim_history_leaves_single_message_turns_untouched():
-    """The overwhelmingly common case (a personal chat, or a channel message that was itself the one that
-    asked the AI) must come out byte-for-byte identical to before consecutive-role merging existed — no
-    sender prefix, no joining, even though every "user" message here does have a sender_id set."""
+    """The common case (a personal chat, or a channel message that asked the AI) must come out byte-for-byte as before
+    role merging existed: no sender prefix or joining, even with sender_id set on every "user" message.
+    """
     messages = [_msg("user", "hi", sender_id="u1"), _msg("assistant", "hello")]
     trimmed = trim_history(messages, num_ctx=4096)
     assert trimmed == [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}]
 
 
 def test_trim_history_merges_consecutive_user_messages_with_sender_prefixes():
-    """The real bug this covers: a channel's shared conversation can accumulate several "user"-role messages
-    in a row (any member can post with ask_ai=False — see chat_service.build_reply_stream's own docstring),
-    which a real, strict chat template (Mistral/Ministral's) rejects outright — confirmed live against
-    Ollama's own server logs: "After the optional system message, conversation roles must alternate user and
-    assistant roles". Sender display names can't come from a bare in-memory Message here (sender_display_name
-    reads message.sender.username, which needs a real DB-loaded relationship) — covered instead by
-    test_chat_service.py's build_reply_stream-level tests, which use real committed Users. This test only
-    proves the merge/grouping itself: consecutive same-role runs collapse into one turn, non-consecutive ones
-    don't."""
+    """Covers a channel conversation accumulating several "user" messages in a row (ask_ai=False, see
+    chat_service.build_reply_stream), which a strict chat template (Mistral/Ministral) rejects: "After the
+    optional system message, conversation roles must alternate user and assistant roles" (seen in Ollama's logs).
+    Sender display names need a DB-loaded relationship, so test_chat_service.py covers them with real Users; this
+    proves only the grouping: consecutive same-role runs collapse into one turn, non-consecutive ones don't.
+    """
     messages = [
         _msg("user", "first"),
         _msg("user", "second"),
@@ -82,8 +80,9 @@ def test_failed_replies_are_left_out_but_their_question_stays():
 
 
 def test_trim_history_keeps_the_same_first_message_while_the_chat_grows():
-    """A sliding window shifts the start of the prompt every turn, so the model's prompt cache never matches.
-    Trimming in steps keeps the start put until the next step is needed."""
+    """A sliding window moves the prompt start every turn, so the model's prompt cache never matches. Stepwise
+    trimming keeps the start until the next step.
+    """
     budget_chars = (4096 - 512) * 4
     history: list[Message] = []
     firsts = []
@@ -93,8 +92,8 @@ def test_trim_history_keeps_the_same_first_message_while_the_chat_grows():
         assert sum(len(m["content"]) for m in trimmed) <= budget_chars
         firsts.append(trimmed[0]["content"][:3])
     changes = sum(1 for a, b in zip(firsts, firsts[1:], strict=False) if a != b)
-    assert changes <= 14  # a one-message window would change on each of the ~55 turns once full
-    assert trimmed[-1]["content"].startswith("a79")  # the newest is always there
+    assert changes <= 14
+    assert trimmed[-1]["content"].startswith("a79")
 
 
 def test_trim_history_never_returns_an_empty_history():

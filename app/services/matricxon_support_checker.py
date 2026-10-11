@@ -1,17 +1,11 @@
-"""
-Whether Matricxon (the sibling from-scratch GGUF runtime, ../matricxon — see app.services.matricxon_client) can
-actually run a given model — computed live against Matricxon's own real, current support surface instead of a
-hand-maintained flag that silently drifts out of sync the moment Matricxon's own registries change (see
-../matricxon/ROADMAP.md's "Expose supported architectures/quantizations" entry for the full history).
+"""Whether Matricxon (the sibling from-scratch GGUF runtime../matricxon, matricxon_client) can run a model,
+computed live against its current support surface rather than a hand-kept flag that drifts when its
+registries change (../matricxon/ROADMAP.md "Expose supported architectures/quantizations").
 
-One `MatricxonSupportChecker` is built once per catalog build (`await MatricxonSupportChecker.load()`, one real
-network round trip to Matricxon — or none at all if it isn't the active engine, see `load`'s own docstring) and
-its `.verdict_for(...)` reused for every entry in that catalog — the same "fetch once, reuse for every model"
-contract the three catalog builders (app.services.model_catalog_service.ChatModelCatalogBuilder,
-embedding_model_catalog_service.EmbeddingModelCatalogService,
-app.services.extended_model_catalog_service.ExtendedModelCatalog) already kept as separate functions before
-this class existed — consolidated here since all three were duplicating the exact same fetch-then-check
-sequence.
+One `MatricxonSupportChecker` is built per catalog build (`await MatricxonSupportChecker.load`: one
+network round trip, or none if Matricxon isn't active, see `load`) and `.verdict_for(...)` reused for every
+entry: the "fetch once, reuse" contract the three catalog builders (ChatModelCatalogBuilder,
+EmbeddingModelCatalogService, ExtendedModelCatalog) each duplicated before this class.
 """
 
 import asyncio
@@ -30,28 +24,23 @@ class MatricxonSupportChecker(EngineSupportChecker):
 
     @classmethod
     def unloaded(cls) -> "MatricxonSupportChecker":
-        """The "not active / unreachable" instance — same shape `load()` falls back to when Matricxon can't be
-        reached, so a caller never needs to tell the two apart (see verdict_for's own "Could not reach
-        Matricxon..." branch)."""
+        """The "not active / unreachable" instance, the same shape `load` falls back to when Matricxon can't be
+        reached, so callers needn't tell them apart (verdict_for's "Could not reach Matricxon..." branch).
+        """
         return cls(None, None)
 
     @classmethod
     async def load(cls, installed_models: list[dict] | None = None) -> "MatricxonSupportChecker":
-        """A real network round trip to Matricxon's own GET /api/health (and, unless `installed_models` is
-        given, GET /api/tags too) — see app.services.engine_support_checker.EngineSupportSet.load, the caller
-        that decides whether this engine is even active before calling this at all (asking a non-active engine,
-        possibly a paid remote API, on every catalog load would be a real, unwanted cost for no benefit).
+        """A round trip to Matricxon's GET /api/health (and GET /api/tags unless `installed_models` is given). The
+        caller EngineSupportSet.load decides whether this engine is active at all (asking an inactive, possibly
+        paid remote engine on every catalog load is needless cost).
 
-        `installed_models` — pass the caller's own already-fetched list_models() result (every one of the three
-        catalog builders — ChatModelCatalogBuilder, EmbeddingModelCatalogService, ExtendedModelCatalog.build —
-        already calls it for their own separate reasons before reaching here) to skip a second, fully redundant
-        GET /api/tags round trip: when Matricxon is active, that call is *literally* matricxon_client.list_models
-        under the hood (see app.services.inference_client.list_models's own active-engine dispatch), same data,
-        same host. Confirmed live, 2026-09-22: a single Settings > Model page load was making this same call
-        twice per catalog builder — up to six /api/tags requests to Matricxon for three pieces of data — real,
-        unnecessary latency, and since Matricxon's own /api/tags can be slow to answer while it's mid-generation,
-        real extra risk of the whole page load timing out. The two real calls that remain (this and
-        capabilities) run concurrently rather than one after another, for the same reason."""
+        `installed_models`: pass the caller's list_models result (all three catalog builders already call it) to skip
+        a redundant GET /api/tags: with Matricxon active, that call is matricxon_client.list_models (via
+        inference_client.list_models). On one Settings > Model load made up to six /api/tags requests
+        for three pieces of data: extra latency, and a risk of timing out since /api/tags can be slow while Matricxon
+        generates. The two remaining calls (this and capabilities) run concurrently.
+        """
         if installed_models is not None:
             return cls(await cls._capabilities_or_none(), cls._installed_info_from(installed_models))
         capabilities, installed_info = await asyncio.gather(cls._capabilities_or_none(), cls._installed_info_or_none())
@@ -59,9 +48,9 @@ class MatricxonSupportChecker(EngineSupportChecker):
 
     @staticmethod
     async def _capabilities_or_none() -> dict | None:
-        """matricxon_client.get_capabilities()'s own response, or None if Matricxon couldn't be reached —
-        best-effort: a caller still needs to render the rest of the catalog even if Matricxon itself happens to
-        be down right now; verdict_for below treats None the same as "not installed," not a hard failure."""
+        """matricxon_client.get_capabilities's response, or None if Matricxon is unreachable. Best-effort: the rest
+        of the catalog still renders; verdict_for treats None as "not installed".
+        """
         try:
             return await matricxon_client.get_capabilities()
         except MatricxonError:
@@ -69,12 +58,11 @@ class MatricxonSupportChecker(EngineSupportChecker):
 
     @staticmethod
     def _installed_info_from(installed: list[dict]) -> dict[str, dict]:
-        """{tag: {"capabilities": [...], "estimated_ram_gb": float}} — the shape both call sites below need,
-        built from a models list either already in hand (load's own `installed_models` param) or freshly
-        fetched (_installed_info_or_none). Feeds Matricxon's own real per-tag RAM estimate (estimated_ram_gb
-        below) — its always-dequantize-to-bf16 real requirement runs meaningfully higher than this app's own
-        static, Ollama-shaped min_ram_gb estimate (confirmed: a real Ministral-3B file needs ~7.5GB on
-        Matricxon, not the ~3GB that estimate implies)."""
+        """{tag: {"capabilities": [...], "estimated_ram_gb": float}} from a models list in hand (load's
+        `installed_models`) or fetched (_installed_info_or_none). Feeds Matricxon's own per-tag RAM estimate: it
+        dequantizes to bf16, so it runs well above this app's static, Ollama-shaped min_ram_gb (a Ministral-3B file
+        needs ~7.5GB, not ~3GB).
+        """
         return {
             m["name"]: {"capabilities": m.get("capabilities", []), "estimated_ram_gb": m.get("estimated_ram_gb")}
             for m in installed
@@ -82,9 +70,9 @@ class MatricxonSupportChecker(EngineSupportChecker):
 
     @staticmethod
     async def _installed_info_or_none() -> dict[str, dict] | None:
-        """GET /api/tags on Matricxon specifically (not app.services.inference_client's active-engine-dispatched
-        list_models) — only ever called when the caller didn't already have a models list in hand (see load's
-        own `installed_models` param, which every real caller today does provide)."""
+        """GET /api/tags on Matricxon specifically (not inference_client's active-engine list_models); only when the
+        caller had no models list (every real caller today passes one to load).
+        """
         try:
             installed = await matricxon_client.list_models()
         except MatricxonError:
@@ -98,11 +86,10 @@ class MatricxonSupportChecker(EngineSupportChecker):
         download_gb: float | None = None,
         fallback_min_ram_gb: float = 0.0,
     ) -> float | None:
-        """Matricxon's own real per-tag RAM estimate — None if this tag isn't confirmed installed there (an
-        un-pulled tag's real requirement can't be computed without its real GGUF file to read tensor shapes
-        from, so this is never a guess). `download_gb`/`fallback_min_ram_gb` are part of the generic
-        EngineSupportChecker signature (see OllamaSupportChecker, which actually uses them) — ignored here,
-        since Matricxon never estimates from anything but a real installed file's own tensor shapes."""
+        """Matricxon's per-tag RAM estimate; None if the tag isn't confirmed installed (an un-pulled tag's need can't be
+        computed without its GGUF tensor shapes, never guessed). `download_gb`/`fallback_min_ram_gb` are part of the
+        EngineSupportChecker signature (OllamaSupportChecker uses them) and ignored here.
+        """
         if tag is None:
             return None
         return self._installed_info.get(tag, {}).get("estimated_ram_gb")
@@ -114,20 +101,17 @@ class MatricxonSupportChecker(EngineSupportChecker):
         *,
         is_projector: bool = False,
     ) -> SupportVerdict:
-        """Whether Matricxon implements `architecture`/`quantizations` — the base text-chat requirement, the
-        same thing regardless of whether the entry also happens to be a vision model (see CatalogEntry.vision's
-        own docstring: matricxon_supported here is deliberately just this architecture+quantization check, not
-        a claim about whether a vision entry's image support specifically is confirmed paired — confirmed live
-        (2026-09-21) that gating this field on vision-pairing too made an installed, demonstrably-working chat
-        model (moondream2, text half confirmed running) show a plain "Not supported" badge, which reads as "this
-        doesn't work at all" and is wrong for a model whose text chat clearly does).
+        """Whether Matricxon implements `architecture`/`quantizations`: the base text-chat requirement, the same for
+        vision entries (CatalogEntry.vision). matricxon_supported is just this check, not a claim about image
+        support: gating it on vision pairing made an installed, working chat model (moondream2) show "Not
+        supported".
 
-        `is_projector` (a vision-projector/mmproj sidecar, never a standalone chat model — see
-        app.services.huggingface_client's own is_projector docstring) always wins: architecture/quantization
-        support means nothing for a file that was never meant to run on its own. `architecture=None` (an
-        admin-added entry whose real GGUF header couldn't be probed — see
-        app.services.extended_model_catalog_enrichment.HuggingFaceModelProbe) gets its own honest "unknown"
-        reason rather than a misleading "doesn't implement architecture 'None'"."""
+        `is_projector` (an mmproj sidecar, never a standalone chat model; huggingface_client's is_projector) always
+        wins: architecture/quantization support is meaningless for a file never meant to run alone.
+        `architecture=None` (an admin-added entry whose GGUF header probe failed,
+        extended_model_catalog_enrichment.HuggingFaceModelProbe) gets an honest "unknown" reason, not a
+        misleading "doesn't implement architecture 'None'".
+        """
         if is_projector:
             return SupportVerdict(
                 False,

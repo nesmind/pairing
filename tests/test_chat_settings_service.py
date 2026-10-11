@@ -1,8 +1,6 @@
-"""Unit tests for app/services/chat_settings_service.py: channel delivery
-mode and the reply timeout (see tests/test_title_service.py for title
-mode's own two-mode behavior — this file only covers the plain getter/
-setter round-trip for it, alongside the other settings that live in this
-module)."""
+"""Tests for services/chat_settings_service.py: channel delivery mode and reply timeout. Title mode's behavior is
+in tests/test_title_service.py; here only its getter/setter round-trip.
+"""
 
 import pytest
 
@@ -40,9 +38,8 @@ async def test_set_channel_delivery_mode_round_trips(db):
 
 @pytest.mark.asyncio
 async def test_get_channel_delivery_mode_falls_back_on_an_invalid_stored_value(db):
-    """Defensive against a hand-edited or stale row holding a value this
-    version of the app no longer recognizes — falls back to the default
-    rather than surfacing a nonsense mode to the frontend."""
+    """Defends against a hand-edited or stale row with an unrecognized value: fall back to the default instead of
+    showing the frontend a nonsense mode."""
     db.add(
         AppSetting(
             owner_id=SYSTEM_OWNER_ID, key=chat_settings_service.CHANNEL_DELIVERY_MODE_KEY, value={"mode": "bogus"}
@@ -69,9 +66,8 @@ async def test_set_reply_timeout_seconds_round_trips(db):
 
 @pytest.mark.asyncio
 async def test_set_reply_timeout_seconds_zero_means_no_timeout(db):
-    """0 is a real, intentional value (see
-    chat_settings_service.DEFAULT_REPLY_TIMEOUT_SECONDS's own docstring
-    for why), not just an edge case that happens to be allowed."""
+    """0 is a real, intentional value (see chat_settings_service.DEFAULT_REPLY_TIMEOUT_SECONDS), not an allowed edge
+    case."""
     await chat_settings_service.set_reply_timeout_seconds(db, 0)
     assert await chat_settings_service.get_reply_timeout_seconds(db) == 0
 
@@ -106,7 +102,7 @@ async def test_set_vision_reply_timeout_seconds_round_trips(db):
 
 @pytest.mark.asyncio
 async def test_vision_reply_timeout_seconds_is_independent_of_the_text_one(db):
-    """The whole point of splitting these into two settings — changing one must never affect the other."""
+    """The point of two settings: changing one never affects the other."""
     await chat_settings_service.set_reply_timeout_seconds(db, 60)
     await chat_settings_service.set_vision_reply_timeout_seconds(db, 1200)
 

@@ -1,9 +1,7 @@
-"""Unit tests for app/services/instance_service.py (async orchestration
-+ locking) and the pure decision logic in app/services/instance_process.py
-it builds on. Every test here monkeypatches the actual subprocess/PID/
-network primitives — none of these spawn a real process or touch the
-real filesystem, matching how app/services/db_config_service.py's tests
-stub out the sync-driver-connect step."""
+"""Tests for services/instance_service.py (async orchestration and locking) and the pure decision logic in
+instance_process.py. Every test patches the subprocess/PID/network primitives: no real process, no real
+filesystem (as db_config_service's tests stub the sync-driver connect).
+"""
 
 import asyncio
 
@@ -15,13 +13,12 @@ from app.services import instance_process, instance_service, settings_service
 
 @pytest.fixture(autouse=True)
 def isolated_tracking_file(tmp_path, monkeypatch):
-    """Every test gets its own tracking file under pytest's tmp_path —
-    without this, tests would read/write the real project's
+    """Each test gets its own tracking file in tmp_path; otherwise tests would read/write the project's
     data/instances.json."""
     monkeypatch.setattr(instance_process, "_TRACKING_FILE", tmp_path / "instances.json")
 
 
-# ---- Pure logic (instance_process.plan_changes / port_for_index) --------
+# Pure logic (instance_process.plan_changes / port_for_index)
 
 
 def test_plan_changes_scales_up_from_empty():
@@ -31,8 +28,7 @@ def test_plan_changes_scales_up_from_empty():
 
 
 def test_plan_changes_scales_down_terminates_only_the_excess():
-    # desired_count=2 means only index 1 is wanted (range(1, 2) == [1]);
-    # both 2 and 3 are excess and must be terminated.
+    # desired_count=2 wants only index 1 (range(1, 2) == [1]); 2 and 3 are excess and terminated.
     to_spawn, to_terminate = instance_process.plan_changes(2, {1, 2, 3})
     assert to_spawn == set()
     assert to_terminate == {2, 3}
@@ -45,9 +41,7 @@ def test_plan_changes_is_a_noop_when_already_matching():
 
 
 def test_plan_changes_never_wants_to_spawn_index_zero():
-    # Index 0 is the primary, never a sibling plan_changes could ever
-    # decide to spawn — "wanted" is always range(1, desired_count), by
-    # construction, no matter how high desired_count is.
+    # Index 0 is the primary, never a sibling plan_changes could spawn: "wanted" is always range(1, desired_count).
     to_spawn, _to_terminate = instance_process.plan_changes(8, set())
     assert 0 not in to_spawn
 
@@ -56,13 +50,12 @@ def test_port_for_index_is_app_port_plus_index():
     assert instance_process.port_for_index(3) == APP_PORT + 3
 
 
-# ---- Orchestration (instance_service) ------------------------------------
+# Orchestration (instance_service)
 
 
 @pytest.mark.asyncio
 async def test_reconcile_on_startup_spawns_nothing_at_default_count(db, monkeypatch):
-    """Default saved count is 1 (just the primary) — reconcile must not
-    spawn anything on a completely fresh install."""
+    """The default saved count is 1 (just the primary): reconcile must spawn nothing on a fresh install."""
     spawned = []
     monkeypatch.setattr(instance_process, "spawn_sibling", lambda index: spawned.append(index) or 1000 + index)
 
@@ -90,7 +83,7 @@ async def test_reconcile_on_startup_terminates_extras_on_count_decrease(db, monk
     monkeypatch.setattr(instance_process, "is_alive", lambda pid: True)
     terminated = []
     monkeypatch.setattr(instance_process, "terminate_sibling", lambda pid: terminated.append(pid))
-    # count=2 means only index 1 is wanted — 2 and 3 are both excess.
+    # count=2 wants only index 1: 2 and 3 are excess.
     await settings_service.set_instance_count(db, 2)
 
     await instance_service.reconcile_on_startup(db)
@@ -107,14 +100,13 @@ async def test_reconcile_on_startup_is_idempotent_when_state_already_matches(db,
     monkeypatch.setattr(instance_process, "terminate_sibling", lambda pid: pytest.fail("should not terminate"))
     await settings_service.set_instance_count(db, 3)
 
-    await instance_service.reconcile_on_startup(db)  # must not raise via the fail() stubs above
+    await instance_service.reconcile_on_startup(db)
 
 
 @pytest.mark.asyncio
 async def test_reconcile_on_startup_respawns_a_tracked_pid_that_is_no_longer_alive(db, monkeypatch):
-    """Covers PID reuse / a sibling that died unexpectedly: a tracked
-    index whose is_alive check now fails must be treated as dead and
-    respawned, not assumed to still be that same process."""
+    """Covers PID reuse or a sibling dying unexpectedly: a tracked index whose is_alive now fails is dead and respawned,
+    not assumed to be the same process."""
     instance_process.write_tracking({1: {"pid": 1001}})
     monkeypatch.setattr(instance_process, "is_alive", lambda pid: False)
     spawned = []
@@ -174,15 +166,11 @@ async def test_get_status_reports_alive_and_healthy(db, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_reconcile_on_startup_serializes_concurrent_calls(monkeypatch):
-    """Proves _lock actually provides mutual exclusion: two concurrent
-    reconcile_on_startup calls must never have their critical sections
-    (_reconcile_locked) running at the same time. Tracks concurrent
-    entries directly via a counter rather than trying to force a
-    specific spawn-count race through timing — asyncio only yields
-    control at genuine suspension points, so a race built from fakes
-    that don't themselves yield mid-operation can't reliably reproduce
-    interleaving even when the lock is missing; a direct concurrency
-    counter proves the same thing deterministically instead."""
+    """Proves _lock gives mutual exclusion: two concurrent reconcile_on_startup calls must never run their critical
+    sections (_reconcile_locked) together. Tracks concurrent entries with a counter rather than forcing a
+    spawn-count race through timing: asyncio yields only at real suspension points, so fakes that never yield
+    can't reproduce interleaving even without the lock; a counter proves it deterministically.
+    """
     in_progress = 0
     max_concurrent = 0
 

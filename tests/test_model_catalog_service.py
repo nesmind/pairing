@@ -1,9 +1,8 @@
-"""Unit tests for app/services/model_catalog_service.py — installed_embedding_models and resolve_installed_model,
-the parts of this module with no coverage elsewhere (ChatModelCatalogBuilder itself is covered end to end by
-tests/test_model_catalog_matricxon_compat.py; HiddenModelTags/DefaultModelSettings delegation by
-tests/test_default_model_settings.py). Every network-touching dependency is monkeypatched on this module's own
-imported binding (not its origin module — see the "module-split import-binding gotcha" this codebase already
-tracks), so no real Ollama call happens here."""
+"""Tests for services/model_catalog_service.py: installed_embedding_models and resolve_installed_model, the parts
+with no coverage elsewhere (ChatModelCatalogBuilder: tests/test_model_catalog_matricxon_compat.py;
+HiddenModelTags/DefaultModelSettings delegation: tests/test_default_model_settings.py). Network dependencies
+are patched on this module's binding (module-split gotcha): no real Ollama call.
+"""
 
 import pytest
 
@@ -18,9 +17,9 @@ async def _async_return(value):
 
 
 def test_find_entry_and_find_embedding_entry_never_cross_match():
-    """The cheapest possible regression guard for the "embedding models can never leak into the chat
-    picker" invariant CuratedCatalog.embedding_models' own docstring describes — the two collections must stay
-    disjoint."""
+    """The cheapest guard for the "embedding models can never leak into the chat picker" invariant
+    (CuratedCatalog.embedding_models): the two collections stay disjoint.
+    """
     assert model_catalog.CATALOG.find(_NOMIC_TAG) is None
     assert model_catalog.CATALOG.find_embedding(_NOMIC_TAG) is not None
     for entry in model_catalog.CATALOG.chat_models:
@@ -32,7 +31,7 @@ def test_find_entry_and_find_embedding_entry_never_cross_match():
     [
         ("hf.co/unsloth/Llama-3.2-3B-Instruct-GGUF:Llama-3.2-3B-Instruct-Q3_K_M", "unsloth"),
         ("hf.co/google/gemma-4-E2B-it-qat-q4_0-gguf:gemma-4-E2B_q4_0-it", "google"),
-        ("custom:latest", "Other"),  # a plain Ollama-library tag has no real org to read
+        ("custom:latest", "Other"),
     ],
 )
 def test_vendor_from_tag(tag, expected):
@@ -43,9 +42,12 @@ def test_vendor_from_tag(tag, expected):
     "value,expected",
     [
         ("llama", "llama"),
-        ("unknown", None),  # Matricxon's own literal sentinel for "genuinely don't know" — see this method's
-        # own docstring, confirmed live, 2026-09-22
-        ("UNKNOWN", None),  # case-insensitive — same reasoning
+        (
+            "unknown",
+            None,
+        ),  # Matricxon's literal sentinel for "don't know" (see this method's docstring, confirmed)
+        # see the method's docstring, confirmed
+        ("UNKNOWN", None),
         (None, None),
         ("", None),
     ],
@@ -61,13 +63,14 @@ def test_clean_engine_reported(value, expected):
         ("hf.co/cjpais/llava-1.6-mistral-7b-gguf:llava-v1.6-mistral-7b.Q3_K_M", "Q3_K_M"),
         ("hf.co/leliuga/all-MiniLM-L6-v2-GGUF:Q8_0", "Q8_0"),
         ("hf.co/unsloth/MiniMax-M3-GGUF:UD-IQ1_M", "IQ1_M"),
-        ("custom:latest", None),  # a plain Ollama-library tag has nothing quant-shaped to find
+        ("custom:latest", None),
     ],
 )
 def test_quant_from_tag(tag, expected):
-    """Confirmed live, 2026-09-22: a bare "?" for parameter_size is less useful than the exact quantization
-    already sitting right there in the tag when nothing else is known — see _QUANT_TOKEN_RE's own module-level
-    comment for why this is deliberately more precise than the existing coarse Matricxon-compatibility guess."""
+    """Confirmed: a bare "?" for parameter_size is less useful than the exact quantization in the
+    tag when nothing else is known (_QUANT_TOKEN_RE says why this is more precise than the coarse
+    Matricxon-compatibility guess).
+    """
     assert svc.ChatModelCatalogBuilder._quant_from_tag(tag) == expected
 
 
@@ -86,12 +89,10 @@ async def test_installed_embedding_models_filters_by_capability(monkeypatch):
     assert await svc.installed_embedding_models() == [_NOMIC_TAG]
 
 
-# ---- resolve_installed_model -----------------------------------------------
-# The real bug this covers: an admin switching the active engine (see
-# app.services.engine_service) leaves every existing conversation's own
-# `model` column pointed at a tag that engine may never have heard of —
-# Ollama and Matricxon each have their own separate catalog. See
-# app.services.chat_service.build_reply_stream for the only caller.
+# resolve_installed_model
+# Covers an admin switching the active engine (engine_service) leaving every conversation's `model` at a tag
+# the new engine may not know (Ollama and Matricxon have separate catalogs). Only caller:
+# chat_service.build_reply_stream.
 
 _CHAT_TAG = "some-chat-model"
 
@@ -114,8 +115,7 @@ async def test_resolve_installed_model_falls_back_to_the_system_default_when_the
     monkeypatch, db, user
 ):
     monkeypatch.setattr(svc, "installed_chat_models", lambda: _async_return([_CHAT_TAG]))
-    # user's own default ("some other tag never pulled") isn't installed, so this must skip past it rather than
-    # returning it anyway.
+    # The user's default ("some other tag never pulled") isn't installed, so it must be skipped, not returned.
     await svc.settings_service.set_default_model(db, user.id, "never-pulled-tag")
     await svc.set_default_model_for_new_users(db, _CHAT_TAG)
     assert await svc.resolve_installed_model(db, user, "stale-tag") == _CHAT_TAG
@@ -131,7 +131,7 @@ async def test_resolve_installed_model_falls_back_to_whatever_is_installed_first
 
 @pytest.mark.asyncio
 async def test_resolve_installed_model_returns_the_original_tag_when_nothing_at_all_is_installed(monkeypatch, db, user):
-    """No fallback exists — returns the original (still-invalid) tag rather than raising, same as before this
-    existed: the caller's own attempt at using it fails the normal way, with a clear error, not a crash here."""
+    """No fallback exists: returns the original (still invalid) tag rather than raising, as before; the caller's attempt
+    fails the normal way with a clear error."""
     monkeypatch.setattr(svc, "installed_chat_models", lambda: _async_return([]))
     assert await svc.resolve_installed_model(db, user, "stale-tag") == "stale-tag"

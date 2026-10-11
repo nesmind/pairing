@@ -1,7 +1,7 @@
-"""Unit tests for GET /health (app/routers/health.py) — how it combines the active engine's own
-pool probe and a database check into one overall status/status-code. Per-host probing itself is
-tested separately in tests/test_ollama_pool.py/test_matricxon_pool.py's check_hosts tests; this
-file stubs that out and only covers the route's own combining logic, for both engines."""
+"""Tests for GET /health (routers/health.py): how it combines the active engine's pool probe and a database
+check into one status and code. Per-host probing is tested in tests/test_ollama_pool.py/test_matricxon_pool.py
+(check_hosts); this stubs it and covers the combining logic for both engines.
+"""
 
 import json
 
@@ -82,8 +82,8 @@ async def test_health_ok_when_at_least_one_engine_host_is_up(db, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_health_unhealthy_when_every_engine_host_is_down(db, monkeypatch):
-    """The scenario this endpoint exists for: a machine's only local engine died, so every instance
-    running there should report unhealthy and the proxy should stop routing to that machine."""
+    """The scenario it exists for: a machine's only local engine died, so every instance there reports unhealthy and the
+    proxy stops routing to it."""
     engine_service._cached_engine = "ollama"
 
     async def fake_check_hosts():

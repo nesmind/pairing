@@ -16,8 +16,7 @@
       <form method="post" action="/logout" class="flex items-center">
         <button type="submit" class="text-xs text-slate-500 hover:text-slate-300 transition-colors">Log out</button>
       </form>
-      <!-- Opens the slide-in account panel — see
-           app/static/js/account_panel.js and app/templates/_account_panel.html. -->
+      <!-- Opens the slide-in account panel (app/static/js/account_panel.js, _account_panel.html). -->
       <button id="account-panel-badge" type="button"
         class="h-7 w-7 shrink-0 rounded-full overflow-hidden bg-slate-800 text-xs font-medium text-slate-300 hover:opacity-80 transition-opacity"
         title="{{ username }}"></button>
@@ -37,21 +36,13 @@
 
       <p id="connectors-error" class="hidden text-sm text-red-400"></p>
 
-      <!-- Populated by app/static/js/connectors.js — one card per connector, generic form built
-           from that connector's own config_fields (see app.services.connectors), so a future
-           connector needs no template change here. A grid (not flex) naturally left-aligns a
-           partial last row instead of centering/stretching it. items-start keeps a collapsed
-           card's own box from stretching to match a taller, expanded neighbor in the same row. -->
+      <!-- Filled by app/static/js/connectors.js: one card per connector, with a generic form from its config_fields (app.services.connectors), so a new connector needs no template change. A grid (not flex) left-aligns a partial last row instead of centering/stretching it; items-start keeps a collapsed card from stretching to a taller expanded neighbor. -->
       <div id="connectors-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-start"></div>
     </div>
   </div>
 </div>
 
-<!-- Template for one connector row, cloned and filled in by connectors.js. Kept in the DOM (hidden)
-     rather than built as an HTML string in JS, so the toggle/inputs stay real, inspectable elements.
-     Collapsed by default (same hidden + rotating-chevron toggle idiom as Settings > Model's
-     "Browse more models" panel) — clicking the row reveals its config form; only one connector's
-     form is open at a time (see connectors.js). -->
+<!-- Template for one connector row, cloned and filled by connectors.js. Kept in the DOM (hidden) rather than built as an HTML string, so the toggle/inputs are real, inspectable elements. Collapsed by default (the hidden + rotating-chevron idiom of Settings > Model's "Browse more models"); clicking reveals the config form, and only one form is open at a time (connectors.js). -->
 <template id="connector-card-template">
   <div class="connector-card rounded-lg bg-slate-900 border border-slate-800 overflow-hidden">
     <div class="flex items-center justify-between gap-3 px-4 py-3">

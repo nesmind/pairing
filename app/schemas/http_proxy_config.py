@@ -1,15 +1,6 @@
-"""
-Schemas for Settings > System > Outbound HTTP proxy — see
-app/services/http_proxy_service.py for the get/set logic and
-app/routers/http_proxy_admin.py for the admin endpoints. Deliberately
-named distinctly from app.schemas.instances.ProxyMode: that's an
-unrelated, pre-existing concept (whether this app's own *incoming* HTTP
-requests get load-balanced across local sibling instances — labeled
-"Local pAIring server mode" in the UI specifically to avoid this exact
-collision). This one is about outbound: whether this app's own genuinely
-internet-facing downloads (Ollama/ComfyUI installers, and Ollama's own
-model pulls when it runs in local mode) go through an admin-configured
-HTTP proxy.
+"""Schemas for Settings > System > Outbound HTTP proxy (services/http_proxy_service.py,
+routers/http_proxy_admin.py). Outbound only: internet-facing downloads (Ollama/ComfyUI installers,
+Ollama pulls in local mode); unrelated to instances.ProxyMode, which load-balances incoming requests.
 """
 
 from urllib.parse import quote
@@ -18,38 +9,25 @@ from pydantic import BaseModel, Field
 
 
 class HttpProxyConfig(BaseModel):
-    """Admin-configured from Settings > System. No scheme picker — always
-    constructed as http://{host}:{port} (see proxy_url below), matching
-    what was actually asked for: a plain IP:port. `username`/`password`
-    are optional — some proxies require them, most on a private LAN
-    don't. `enabled` is stored separately from host/port (rather than
-    "empty host means disabled") so a temporarily-disabled proxy doesn't
-    lose its saved host/port.
+    """Admin-configured. Always http://{host}:{port} (no scheme picker). `username`/`password` are optional.
+    `enabled` is separate from host/port so disabling keeps them.
 
-    `password` is write-only in practice: app.services.http_proxy_service's
-    get_http_proxy_config_for_display redacts it (via `has_password`
-    instead) before this ever reaches a browser — same "never re-display
-    a saved secret" precedent as app.schemas.db_config.MysqlParams/
-    DbConfig. Only the *internal* get_http_proxy_config (used by the
-    installer/process call sites that actually need a working proxy_url)
-    ever sees the real value."""
+    `password` is write-only in practice: get_http_proxy_config_for_display redacts it (`has_password`),
+    as with db_config.MysqlParams/DbConfig. Only the internal get_http_proxy_config sees the real value.
+    """
 
     enabled: bool = False
     host: str | None = None
     port: int | None = Field(default=None, ge=1, le=65535)
     username: str | None = None
     password: str | None = None
-    # Read-only/informational — set by get_http_proxy_config_for_display;
-    # meaningless as input (a PUT never needs to send it).
+    # Informational, set by get_http_proxy_config_for_display; never sent on PUT.
     has_password: bool = False
 
     def proxy_url(self) -> str | None:
-        """http://[user[:pass]@]host:port when usable, else None — every
-        call site just does `if config.proxy_url(): ...` without
-        re-deriving this same enabled-and-complete check itself.
-        Username/password are percent-encoded (safe="") since either can
-        contain characters (":", "@", "/") that would otherwise corrupt
-        the URL."""
+        """http://[user[:pass]@]host:port when enabled and complete, else None. Credentials are percent-encoded
+        (safe="") since ":", "@" or "/" would corrupt the URL.
+        """
         if not (self.enabled and self.host and self.port):
             return None
         if self.username:

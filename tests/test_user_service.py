@@ -1,7 +1,6 @@
-"""Unit tests for app/services/user_service.py: first_name/last_name
-handling — in particular the "empty string clears it, omitted leaves it
-alone" behavior update_user relies on (see its "or None" comment) — and
-delete_user's own cascade cleanup."""
+"""Tests for services/user_service.py: first_name/last_name handling, notably "empty string clears it, omitted
+leaves it" (update_user's "or None") and delete_user's cascade cleanup.
+"""
 
 import pytest
 from sqlalchemy import select
@@ -29,8 +28,7 @@ async def test_create_user_stores_and_normalizes_names(db, monkeypatch):
     assert with_name.first_name == "Alice"
     assert with_name.last_name == "Smith"
 
-    # An empty string (not just an omitted field) normalizes down to
-    # NULL rather than being stored as a blank string.
+    # An empty string (not just an omitted field) is normalized to NULL, not stored blank.
     blank_name = await user_service.create_user(
         db,
         UserCreate(username="bob", password="bob-password", first_name="", last_name=""),
@@ -56,9 +54,8 @@ async def test_update_user_can_set_then_clear_a_name(db, monkeypatch):
     assert updated.first_name == "Carol"
     assert updated.last_name == "Jones"
 
-    # Explicitly sending "" (as the Settings UI always does — see
-    # settings.js's save handler) clears a previously-set name; omitting
-    # the field entirely (not exercised here) would leave it untouched.
+    # Sending "" (as the Settings UI always does; settings.js's save handler) clears a set name; omitting the field (not
+    # exercised here) leaves it.
     cleared = await user_service.update_user(db, "carol", UserUpdate(first_name="", last_name=""))
     assert cleared.first_name is None
     assert cleared.last_name is None
@@ -66,11 +63,10 @@ async def test_update_user_can_set_then_clear_a_name(db, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_delete_user_also_removes_their_channel_memberships(db, admin_user, user, channel_manager_user):
-    """The regression this covers: a ChannelMember row surviving its own User's deletion crashed the entire
-    admin Channels list over one bad row (confirmed live) — channel_service.to_channel_out reads
-    member.user.username unconditionally, and a membership pointing at a deleted user has no User to read that
-    from. delete_user must clean these up the same way it already does for the user's own conversations/
-    documents/notes."""
+    """Regression: a ChannelMember row surviving its User's deletion crashed the entire admin Channels list, as
+    channel_service.to_channel_out reads member.user.username unconditionally.
+    delete_user must clean these up as it does the user's conversations, documents and notes.
+    """
     body = ChannelCreate(
         name="general", member_user_ids=[user.id, channel_manager_user.id], manager_user_ids=[channel_manager_user.id]
     )

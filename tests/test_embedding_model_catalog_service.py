@@ -1,9 +1,7 @@
-"""Unit tests for app/services/embedding_model_catalog_service.py — the embedding-model analogue of
-ChatModelCatalogBuilder (see tests/test_model_catalog_service.py). Every network-touching dependency
-(list_models) is monkeypatched on each module's own imported binding — both this module's and
-app.services.default_model_settings' own separate one (its own installed-check for the configured default tag
-makes its own independent list_models call — see the "module-split import-binding gotcha" this codebase already
-tracks) — so no real Ollama call happens here."""
+"""Tests for services/embedding_model_catalog_service.py, the embedding analogue of ChatModelCatalogBuilder
+(tests/test_model_catalog_service.py). list_models is monkeypatched on each module's own binding, including
+default_model_settings' (its installed-check makes an independent call; import-binding gotcha), so no real Ollama call.
+"""
 
 import pytest
 
@@ -47,8 +45,8 @@ async def test_build_marks_the_matching_entry_installed(monkeypatch, db):
 
 @pytest.mark.asyncio
 async def test_build_ignores_a_non_embedding_capable_match(monkeypatch, db):
-    """A model whose name happens to match a catalog tag but lacks the "embedding" capability (e.g. still
-    mid-pull, or a same-named chat model) must not be reported as installed."""
+    """A model whose name matches a catalog tag but lacks the "embedding" capability (still mid-pull, or a same-named
+    chat model) must not count as installed."""
     _stub_list_models(monkeypatch, [{"name": _NOMIC_TAG, "capabilities": ["completion"]}])
 
     response = await EmbeddingModelCatalogService(db).build()
@@ -86,5 +84,5 @@ async def test_build_hardware_ok_exempts_an_installed_entry(monkeypatch, db):
     response = await EmbeddingModelCatalogService(db).build()
 
     by_tag = {e.tag: e for e in response.entries}
-    assert by_tag[_NOMIC_TAG].hardware_ok is True  # installed, so exempt from the (trivially tiny) RAM gate
-    assert by_tag[_MINILM_TAG].hardware_ok is False  # not installed, and 0GB available
+    assert by_tag[_NOMIC_TAG].hardware_ok is True
+    assert by_tag[_MINILM_TAG].hardware_ok is False

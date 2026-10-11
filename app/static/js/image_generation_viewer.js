@@ -1,7 +1,4 @@
-/**
- * Gallery extras for the Images page: the finished-image tile (picture + a Save link under it) and a click-to-enlarge
- * viewer. Exposes window.completeTileHtml for image_generation.js.
- */
+/* Images page gallery extras: the finished-image tile (picture + Save link) and a click-to-enlarge viewer. Exposes window.completeTileHtml for image_generation.js. */
 (() => {
   const fileName = (job) => `${job.prompt.replace(/[^\w]+/g, "_").slice(0, 40) || "image"}_${job.id.slice(0, 6)}.png`;
   const saveClass = "shrink-0 text-xs text-brand-400 hover:text-brand-300";

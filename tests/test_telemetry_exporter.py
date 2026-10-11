@@ -1,10 +1,8 @@
-"""Unit tests for app/services/telemetry_exporter.py — the cross-thread
-bridge behind the Telemetry page's OpenTelemetry export pipeline. Uses a
-real file-backed engine (not the shared `db` fixture's :memory: one —
-see tests/test_reply_generation_service.py's own docstring on why a
-genuinely concurrent writer, here a real background thread, needs a
-real file so it gets its own connection instead of fighting over the
-one shared :memory: connection)."""
+"""Tests for services/telemetry_exporter.py, the cross-thread bridge of the Telemetry page's OpenTelemetry
+export. Uses a real file-backed engine, not the shared `db`'s:memory: (see tests/test_reply_generation_service.py: a
+genuinely concurrent writer, here a real background thread, needs its own connection, not the one shared:memory:
+connection).
+"""
 
 import asyncio
 import os
@@ -33,10 +31,9 @@ async def _build_file_session_factory():
 
 
 def _make_readable_span(name="ollama.chat", scope="pairing.ollama", success=True, attributes=None):
-    """Builds a real ReadableSpan via a throwaway TracerProvider + a
-    capturing exporter — simplest way to get a genuine span instance
-    (with real start/end timestamps, instrumentation_scope, etc.)
-    without hand-rolling a fake that could drift from the real shape."""
+    """Builds a real ReadableSpan via a throwaway TracerProvider + capturing exporter: the simplest genuine instance
+    (real timestamps, instrumentation_scope) without a hand-rolled fake that could drift.
+    """
 
     class _Capture(SpanExporter):
         def __init__(self):
@@ -87,7 +84,7 @@ async def test_export_persists_spans_from_a_real_background_thread(monkeypatch):
         }
     )
 
-    # Mirrors production: BatchSpanProcessor calls export() from its own worker thread, never the main loop's.
+    # Mirrors production: BatchSpanProcessor calls export from its own worker thread, never the main loop's.
     result = await asyncio.to_thread(DBSpanExporter().export, [span])
 
     assert result == SpanExportResult.SUCCESS
@@ -107,10 +104,12 @@ async def test_export_persists_spans_from_a_real_background_thread(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_export_persists_matricxon_spans_stamped_with_the_matricxon_engine(monkeypatch):
-    """The real feature this covers: a "pairing.matricxon" scope (see matricxon_telemetry.get_tracer) must
-    produce a row with engine="matricxon", not be silently dropped the way any pre-Matricxon scope other than
-    "pairing.ollama" used to be (see test_export_ignores_spans_from_a_different_instrumentation_scope below for
-    that still-correct behavior, now checked against a real *third*, unrelated scope instead)."""
+    """A "pairing.matricxon" scope (matricxon_telemetry.get_tracer) must produce a row with engine="matricxon", not be
+    dropped as
+    any scope other than "pairing.ollama" used to be before Matricxon
+    (test_export_ignores_spans_from_a_different_instrumentation_scope
+    now checks a real *third*, unrelated scope).
+    """
     engine, session_factory = await _build_file_session_factory()
     monkeypatch.setattr(telemetry_exporter, "AsyncSessionLocal", session_factory)
     telemetry_exporter.capture_main_loop()

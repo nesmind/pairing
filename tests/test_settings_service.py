@@ -1,10 +1,7 @@
-"""Unit tests for app/services/settings_service.py's proxy-mode and
-external-server-config getters/setters (see app/services/instance_pool.py
-for where the cached copy of proxy-mode actually gets used for routing
-decisions). See tests/test_chat_settings_service.py instead for title
-mode, channel delivery mode, and the reply timeout — those moved to
-app/services/chat_settings_service.py to keep this file under
-CLAUDE.md's file-size rule."""
+"""Tests for services/settings_service.py's proxy-mode and external-server-config getters/setters
+(instance_pool.py uses the cached proxy-mode for routing). Title mode, channel delivery mode and the reply
+timeout are in tests/test_chat_settings_service.py (moved to chat_settings_service.py for the file-size rule).
+"""
 
 import pytest
 
@@ -49,10 +46,8 @@ async def test_set_ollama_server_config_round_trips(db):
 
 
 def test_ollama_server_config_falls_back_to_local_when_remote_has_no_hosts():
-    # Regression: local mode shows no Save button until something's
-    # installed, so saving "remote" with an empty host list used to leave
-    # an admin stuck with no UI path back to local — see the matching
-    # validator on OllamaServerConfig itself.
+    # Regression: local mode shows no Save button until something is installed, so saving "remote" with no hosts
+    # left an admin with no UI path back to local (see OllamaServerConfig's validator).
     config = OllamaServerConfig(mode="remote", remote_hosts=[])
     assert config.mode == "local"
 
@@ -68,9 +63,8 @@ async def test_set_ollama_server_config_normalizes_remote_with_no_hosts_to_local
 
 @pytest.mark.asyncio
 async def test_get_ollama_server_config_self_heals_an_already_stuck_remote_row(db):
-    # A row saved before this fix existed, stuck on "remote" with no
-    # hosts — must self-heal back to "local" the moment it's read, not
-    # just on the next save.
+    # A row saved before this fix, stuck on "remote" with no hosts, must self-heal to "local" when read, not just on the
+    # next save.
     db.add(
         AppSetting(
             owner_id=SYSTEM_OWNER_ID,
@@ -87,9 +81,8 @@ async def test_get_ollama_server_config_self_heals_an_already_stuck_remote_row(d
 
 @pytest.mark.asyncio
 async def test_get_comfyui_config_defaults_mode_and_remote_hosts_for_a_pre_existing_row(db):
-    """A row saved before mode/remote_hosts existed (just the three
-    original path fields) must still load cleanly, with the new fields
-    defaulting in — not a crash or a silently dropped old value."""
+    """A row saved before mode/remote_hosts existed (the three original path fields) must load, with the new fields
+    defaulted, not crash or drop an old value."""
     db.add(
         AppSetting(
             owner_id=SYSTEM_OWNER_ID,
@@ -119,8 +112,8 @@ async def test_set_comfyui_config_round_trips_remote_mode(db):
 
 
 def test_comfyui_config_falls_back_to_local_when_remote_has_no_hosts():
-    # See test_ollama_server_config_falls_back_to_local_when_remote_has_no_hosts
-    # — same regression, same fix, mirrored on ComfyUIProcessConfig.
+    # See test_ollama_server_config_falls_back_to_local_when_remote_has_no_hosts: same regression and fix on
+    # ComfyUIProcessConfig.
     config = ComfyUIProcessConfig(mode="remote", remote_hosts=[])
     assert config.mode == "local"
 
@@ -134,11 +127,10 @@ async def test_set_comfyui_config_normalizes_remote_with_no_hosts_to_local(db):
     assert config.mode == "local"
 
 
-# ---- default model (per-engine) --------------------------------------------
-# Real bug found live, 2026-09-22: a single shared "default_model" key meant switching the active engine had
-# to explicitly wipe it (see the now-removed app.services.engine_switch_service), losing the admin's actual
-# preference outright rather than just no longer being able to display it. default_model_key scopes the
-# stored value per engine instead, so neither switching nor a restart ever loses it.
+# default model (per-engine)
+# Bug found: one shared "default_model" key meant switching engines had to wipe it (the removed
+# engine_switch_service), losing the admin's preference. default_model_key scopes it per engine, so neither a switch nor
+# a restart loses it.
 
 
 @pytest.fixture(autouse=True)
@@ -167,8 +159,8 @@ async def test_set_default_model_then_get_round_trips(db, user):
 
 @pytest.mark.asyncio
 async def test_default_model_survives_an_engine_switch_and_back(db, user):
-    """The exact scenario reported live: set a default while Ollama is active, switch to Matricxon, switch
-    back — the Ollama-scoped default must still be there, untouched, the whole time."""
+    """The reported scenario: set a default under Ollama, switch to Matricxon and back; the Ollama-scoped default must
+    stay untouched throughout."""
     engine_service._cached_engine = "ollama"
     await settings_service.set_default_model(db, user.id, "ollama-tag")
 

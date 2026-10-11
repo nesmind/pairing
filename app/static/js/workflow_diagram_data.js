@@ -1,41 +1,27 @@
-/**
- * Content for the Stats page's "Visual chat workflow" diagram — a hand-laid-
- * out (not force-simulated) node graph documenting exactly what this
- * app's own chat pipeline does, end to end, verified against the real
- * source (app/routers/chat.py, app/services/chat_service.py,
- * app/services/chat_history_service.py, app/services/reply_generation_service.py,
- * app/services/inference_client.py, app/services/ollama_client.py, app/services/ollama_pool.py,
- * app/services/matricxon_client.py, app/services/matricxon_pool.py,
- * app/services/model_catalog_service.py, app/services/reply_broadcast_service.py,
- * app/services/document_retrieval.py, app/services/reply_termination_service.py,
- * app/services/reply_cross_instance_service.py, app/services/title_service.py,
- * app/services/chat_attachment_service.py, app/services/tool_loop_service.py). Kept separate from
- * workflow_diagram.js (rendering only) so this substantial amount of
- * descriptive text can be edited independently of the D3 mechanics.
- *
- * Node shape: {id, label, category, x, y, w, h, detail: {server, title, location, body}}.
- * `detail.server` is which actual process runs this step — "Browser"
- * (chat.js, in the user's own tab), "pAIring" (this app's own backend),
- * or "ML engine" (the separate model-serving process this app talks to —
- * Ollama or Matricxon, whichever Admin settings > External servers has active
- * right now; see app.services.inference_client/engine_service) —
- * shown as a badge in the click-to-expand detail panel.
- *
- * Edge shape: {from, to, branch}. `branch: true` edges are the side
- * paths (RAG, attachments, error handling, live delivery to other
- * viewers, channel differences, smart titles) forking off the main
- * top-to-bottom chain — rendered dashed so the diagram reads as one
- * clear happy path with real detail branching off it, not one tangle.
+/*
+ * Content for the Stats "Visual chat workflow" diagram: a hand-laid-out node graph of what the chat pipeline does end
+ * to end, checked against the source (app/routers/chat.py and app/services/: chat_service, chat_history_service,
+ * reply_generation_service, inference_client, ollama_client, ollama_pool, matricxon_client, matricxon_pool,
+ * model_catalog_service, reply_broadcast_service, document_retrieval, reply_termination_service,
+ * reply_cross_instance_service, title_service, chat_attachment_service, tool_loop_service). Separate from
+ * workflow_diagram.js (rendering) so the text can be edited on its own.
+ * 
+ * Node: {id, label, category, x, y, w, h, detail: {server, title, location, body}}. `detail.server` is the process
+ * running the step: "Browser" (chat.js), "pAIring" (this backend) or "ML engine" (the model-serving process, Ollama or
+ * Matricxon per Admin settings > External servers; see inference_client/engine_service). It shows as a badge in the
+ * detail panel.
+ * 
+ * Edge: {from, to, branch}. `branch: true` edges are side paths (RAG, attachments, error handling, live delivery,
+ * channel differences, smart titles) forking off the main top-to-bottom chain, drawn dashed so the happy path reads
+ * clearly.
  */
 
-// The app's own display name — read from <body data-app-name> (see app/config.py's APP_NAME, the single source
-// of truth every server-rendered page passes down; base.html sets this attribute on every page's <body>) rather
-// than hardcoded here, so every "pAIring" label below stays correct even if the app is ever renamed/rebranded.
+// The app's display name, read from <body data-app-name> (app/config.py APP_NAME, passed by every server-rendered page;
+// base.html sets it) rather than hardcoded, so every "pAIring" label survives a rename.
 const APP_NAME = document.body.dataset.appName || "pAIring";
 
-// Themed via ThemeColors (see app/static/js/theme.js) rather than fixed hex — each category keeps the same
-// --chart-N slot across every theme, so a returning user's mental map of "frontend = the first/coolest hue"
-// stays intact even though the actual color shifts with their chosen theme.
+// Themed via ThemeColors (theme.js), not fixed hex: each category keeps its --chart-N slot in every theme, so "frontend
+// = the first/coolest hue" holds as the colors shift.
 const WORKFLOW_CATEGORY_COLORS = {
   frontend: ThemeColors.chart(1),
   router: ThemeColors.chart(2),
@@ -43,8 +29,8 @@ const WORKFLOW_CATEGORY_COLORS = {
   background_task: ThemeColors.chart(7),
   engine: ThemeColors.chart(8),
   broadcast: ThemeColors.chart(5),
-  // The ML engine's forward-pass stages (see workflow_diagram_ml.js): fixed hues, picked to stay apart from
-  // each other and readable on every theme's node background; each group is also tinted into its nodes.
+  // Colours of the ML engine's forward-pass stages (workflow_diagram_ml.js): fixed hues, distinct from each other and
+  // readable on every theme's node background; each group also tints its nodes.
   ml_pre: "#38bdf8",
   ml_norm: "#2dd4bf",
   ml_attn: "#e879f9",
@@ -621,9 +607,9 @@ const WORKFLOW_EDGES = [
   { from: "mcp_gate", to: "mcp_catalog", branch: true },
   { from: "mcp_gate", to: "mcp_tool_loop", branch: true },
   { from: "mcp_server_call", to: "mcp_record", branch: true },
-  // MCP -> ML engine: the tool definitions and tool results are rendered into the prompt by the chat template. The way
-  // back (the engine parses the model's tool call out of its text and returns it as tool_calls) is the ordinary
-  // reply stream, described in the detokenize / stop-check stages, not a separate edge (it would cross the ML rows).
+  // MCP -> ML engine: tool definitions and results are rendered into the prompt by the chat template. The way back (the
+  // engine parses the tool call from the model's text and returns tool_calls) is the ordinary reply stream, described
+  // in the detokenize / stop-check stages, not a separate edge (it would cross the ML rows).
   { from: "mcp_tool_loop", to: "ml_template", branch: true, dir: "v" },
   { from: "mcp_tool_loop", to: "inference_client_stream", branch: true },
   { from: "mcp_tool_loop", to: "mcp_server_call", branch: true },

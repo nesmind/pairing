@@ -1,4 +1,4 @@
-"""Unit tests for app/services/theme_service.py's per-user UI theme getter/setter."""
+"""Tests for services/theme_service.py's per-user UI theme getter/setter."""
 
 import pytest
 

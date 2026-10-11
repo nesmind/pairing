@@ -1,8 +1,7 @@
-"""Unit tests for app/services/server_pool_broadcast.py — mirrors
-tests/test_instance_db_broadcast.py's own conventions exactly (same
-fix shape: propagate a live config change to every other local
-instance's own in-memory state). Every test fakes instance_process.
-read_tracking/is_alive rather than spawning real processes."""
+"""Tests for services/server_pool_broadcast.py, with the conventions of tests/test_instance_db_broadcast.py (propagate
+a live config change to every other local instance). Every test fakes instance_process.read_tracking/is_alive, no real
+processes.
+"""
 
 import httpx
 import pytest

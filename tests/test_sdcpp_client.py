@@ -1,4 +1,4 @@
-"""Unit tests for app/services/sdcpp_client.py — httpx is monkeypatched; no real sd-server is reachable here."""
+"""Tests for services/sdcpp_client.py: httpx is patched; no real sd-server."""
 
 import base64
 
@@ -104,7 +104,7 @@ async def test_cancel_job_posts_to_the_job_and_swallows_errors(monkeypatch):
     await sdcpp_client.cancel_job("http://h:1", "job_9")
     assert sent[0][0] == "http://h:1/sdcpp/v1/jobs/job_9/cancel"
     monkeypatch.setattr(httpx, "AsyncClient", lambda **_kw: _FakeAsyncClient(raise_error=httpx.ConnectError("down")))
-    await sdcpp_client.cancel_job("http://h:1", "job_9")  # must not raise
+    await sdcpp_client.cancel_job("http://h:1", "job_9")
 
 
 @pytest.mark.asyncio

@@ -1,8 +1,6 @@
-"""Unit tests for app/services/channel_service.py (channel creation,
-membership, and the manage-rights check that gates a channel
-conversation's model/persona/rules/skill) plus the channel-aware
-generalizations this feature made to conversation_service and
-document_retrieval."""
+"""Tests for services/channel_service.py (creation, membership, and the manage-rights check gating a channel
+conversation's model/persona/rules/skill) plus the channel-aware changes to conversation_service and document_retrieval.
+"""
 
 import numpy as np
 import pytest
@@ -45,8 +43,8 @@ async def test_create_channel_builds_shared_conversation_and_membership(db, admi
 async def test_create_channel_starts_its_shared_conversation_with_notes_disabled_by_default(
     db, admin_user, user, channel_manager_user
 ):
-    """Same seeding a brand-new personal chat gets (see test_conversation_service.py's identical
-    test) — the creator's own default_notes_setting decides this, not each member's."""
+    """Same seeding as a new personal chat (test_conversation_service.py); the creator's default_notes_setting decides,
+    not each member's."""
     body = ChannelCreate(
         name="general", member_user_ids=[user.id, channel_manager_user.id], manager_user_ids=[channel_manager_user.id]
     )
@@ -74,19 +72,17 @@ async def test_create_channel_leaves_notes_enabled_when_the_creator_turned_it_on
 async def test_to_channel_out_skips_a_membership_whose_user_no_longer_exists(
     db, admin_user, user, channel_manager_user
 ):
-    """The actual regression this covers: a ChannelMember row surviving its own User's deletion (confirmed live
-    — user_service.delete_user didn't used to clean these up) made to_channel_out crash the *entire* admin
-    Channels list over one bad row, since it read member.user.username unconditionally. member.user reads as
-    None once its User is gone; to_channel_out must skip that membership, not blow up on it — while a real,
-    still-existing member (channel_manager_user here) still shows up normally."""
+    """Regression: a ChannelMember row surviving its User's deletion (user_service.delete_user once didn't clean
+    them) crashed the *entire* admin Channels list, as to_channel_out read member.user.username. member.user is None
+    once the User is gone; to_channel_out must skip it, while a real member (channel_manager_user) still appears.
+    """
     body = ChannelCreate(
         name="general", member_user_ids=[user.id, channel_manager_user.id], manager_user_ids=[channel_manager_user.id]
     )
     channel = await channel_service.create_channel(db, body, admin_user)
 
-    # Simulates the orphaned row directly (rather than going through user_service.delete_user, which now cleans
-    # this up itself) — this test's job is proving to_channel_out survives one existing regardless of how it
-    # got there, not re-testing delete_user's own cleanup (see test_user_service.py for that).
+    # Creates the orphaned row directly (not via user_service.delete_user, which now cleans up): this proves
+    # to_channel_out survives one however it arose (delete_user is tested in test_user_service.py).
     await db.delete(user)
     await db.commit()
     await db.refresh(channel)
@@ -163,17 +159,11 @@ async def test_update_channel_replaces_membership_wholesale(db, admin_user, user
 
 @pytest.mark.asyncio
 async def test_update_channel_survives_a_fresh_session_after_create():
-    """Regression test: PATCH /api/settings/channels/{id} used to 500
-    with sqlalchemy.exc.MissingGreenlet. update_channel's blanket
-    `await db.refresh(channel)` expired channel.members/conversation
-    without safely reloading them under AsyncSession, so the very next
-    touch — channel_service.to_channel_out, called by the router right
-    after update_channel returns — attempted a synchronous lazy load and
-    crashed. This only reproduces across two separate sessions (exactly
-    like two separate HTTP requests: one to create the channel, a later
-    one to edit it) — the shared single-session `db` fixture used by
-    every other test in this file masks it completely, which is why this
-    test builds its own second engine/session instead.
+    """Regression: PATCH /api/settings/channels/{id} 500'd with MissingGreenlet. update_channel's blanket
+    `await db.refresh(channel)` expired channel.members/conversation without safely reloading them under
+    AsyncSession, so the next touch (channel_service.to_channel_out, called by the router) lazy-loaded and crashed.
+    It reproduces only across two sessions (two HTTP requests); the shared single-session `db` fixture masks it,
+    hence this test's own second engine/session.
     """
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
@@ -201,7 +191,7 @@ async def test_update_channel_survives_a_fresh_session_after_create():
         )
         channel_id = channel.id
 
-    # A fresh session, like a second HTTP request — must not raise.
+    # A fresh session, like a second HTTP request: must not raise.
     async with session_factory() as edit_db:
         channel = await channel_service.get_channel_or_404(edit_db, channel_id)
         channel = await channel_service.update_channel(
@@ -235,10 +225,8 @@ async def test_can_manage_channel_conversation(db, admin_user, user, channel_man
 
 @pytest.mark.asyncio
 async def test_get_accessible_conversation_or_404_channel_membership(db, admin_user, user, channel_manager_user):
-    # A *separate* channel_manager-role user from the channel_manager_user
-    # fixture — that fixture is deliberately left out of this channel's
-    # membership below, since the test needs a genuine non-member to
-    # assert the 404 case against.
+    # A *separate* channel_manager-role user: the channel_manager_user fixture is left out of this channel's
+    # membership, since the test needs a genuine non-member for the 404 case.
     manager = User(username="another_manager", password_hash=hash_password("x"), role="channel_manager")
     db.add(manager)
     await db.commit()
@@ -360,11 +348,9 @@ async def test_retrieve_context_channel_scope_excludes_private_docs(db, user, mo
 async def test_delete_channel_removes_its_conversations_attachments_folder(
     db, admin_user, user, channel_manager_user, tmp_path, monkeypatch
 ):
-    """Deleting a channel takes its shared conversation (and every
-    message in it) down via the ORM cascade — see
-    chat_attachment_service.delete_conversation_attachments, called from
-    delete_channel before that cascade runs, since the cascade itself has
-    no idea attachment files exist on disk at all."""
+    """Deleting a channel removes its conversation and messages via ORM cascade;
+    chat_attachment_service.delete_conversation_attachments runs first, as the cascade ignores files on disk.
+    """
     monkeypatch.setattr(chat_attachment_service, "ATTACHMENTS_DIR", tmp_path)
 
     channel = await channel_service.create_channel(

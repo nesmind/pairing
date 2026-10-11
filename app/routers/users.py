@@ -1,14 +1,6 @@
-"""
-Account management for the Settings > Users tab (admin-only), plus small
-admin-configured system-wide settings that don't cleanly belong to any
-other file: the default model brand-new accounts are created with, the
-reply-generation settings from app/services/chat_settings_service.py
-(chat-title mode, channel delivery mode, reply timeout), and the
-Telemetry/System retention windows from
-app/services/retention_settings_service.py. See
-app/services/user_service.py and app/services/model_catalog_service.py
-for the actual business logic — this file only handles HTTP routing,
-status codes, and Depends() injection.
+"""Account management for Settings > Users (admin-only), plus small system-wide admin settings: default model
+for new accounts, reply settings from chat_settings_service.py (title mode, channel delivery, timeouts),
+and Telemetry/System retention (retention_settings_service.py). Logic: user_service.py, model_catalog_service.py.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -41,8 +33,7 @@ async def get_default_model_for_new_users_endpoint(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),
 ):
-    """The model new accounts are created with. Admin-only — regular
-    users have no reason to see or change this."""
+    """The model new accounts start with. Admin-only."""
     try:
         installed = await model_catalog_service.installed_chat_models()
     except InferenceError as exc:
@@ -63,9 +54,7 @@ async def set_default_model_for_new_users_endpoint(
 
 @router.get("/installed-vision-models", response_model=InstalledModelsResponse)
 async def get_installed_vision_models_endpoint(_admin: User = Depends(require_admin)):
-    """Installed vision-capable model tags, for the "default vision
-    model" picker below — admin-only, unlike GET /installed-models,
-    since only this settings section ever needs it."""
+    """Installed vision-capable model tags for the default-vision-model picker. Admin-only."""
     try:
         models = await model_catalog_service.installed_vision_models()
     except InferenceError as exc:
@@ -78,10 +67,9 @@ async def get_default_vision_model_endpoint(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),
 ):
-    """The model any message with an image attachment is answered by,
-    for that reply only (see app.services.chat_service.build_reply_stream)
-    — never the conversation's own model, so switching this setting never
-    changes what an existing chat "normally" replies with."""
+    """The model that answers any message with an image attachment, for that reply only
+    (chat_service.build_reply_stream); never the conversation's own model.
+    """
     return DefaultModel(model=await model_catalog_service.get_default_vision_model(db) or "")
 
 
@@ -97,9 +85,7 @@ async def set_default_vision_model_endpoint(
 
 @router.get("/installed-embedding-models", response_model=InstalledModelsResponse)
 async def get_installed_embedding_models_endpoint(_admin: User = Depends(require_admin)):
-    """Installed embedding-capable model tags, for the "default embedding
-    model" picker below — admin-only, same convention as
-    get_installed_vision_models_endpoint above."""
+    """Installed embedding-capable model tags for the default-embedding-model picker. Admin-only."""
     try:
         models = await model_catalog_service.installed_embedding_models()
     except InferenceError as exc:
@@ -112,8 +98,8 @@ async def get_default_embedding_model_endpoint(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),
 ):
-    """The model app.services.inference_client.embed calls use for the Knowledge base (RAG) feature — see
-    app.services.model_catalog_service.get_default_embedding_model's own docstring."""
+    """The model inference_client.embed uses for the Knowledge base
+    (model_catalog_service.get_default_embedding_model)."""
     return DefaultModel(model=await model_catalog_service.get_default_embedding_model(db) or "")
 
 
@@ -129,9 +115,9 @@ async def set_default_embedding_model_endpoint(
 
 @router.get("/title-mode", response_model=TitleMode)
 async def get_title_mode_endpoint(db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)):
-    """Whether a new chat's title comes from quick local text processing
-    ("simple") or by asking the model itself ("smart") — see
-    app.services.chat_settings_service.get_title_mode."""
+    """Whether a new chat's title comes from quick text processing ("simple") or the model ("smart")
+    (chat_settings_service.get_title_mode).
+    """
     return TitleMode(mode=await chat_settings_service.get_title_mode(db))
 
 
@@ -150,10 +136,9 @@ async def get_channel_delivery_mode_endpoint(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ):
-    """Open to any logged-in user, not admin-only — unlike title-mode,
-    chat.js needs this value client-side to decide whether to poll or
-    open a live /subscribe connection for a channel chat it has open
-    (see app.services.chat_settings_service.get_channel_delivery_mode)."""
+    """Open to all users: chat.js needs it to choose between polling and a live /subscribe connection for a
+    channel (chat_settings_service.get_channel_delivery_mode).
+    """
     return ChannelDeliveryMode(mode=await chat_settings_service.get_channel_delivery_mode(db))
 
 
@@ -169,11 +154,9 @@ async def set_channel_delivery_mode_endpoint(
 
 @router.get("/reply-timeout", response_model=ReplyTimeout)
 async def get_reply_timeout_endpoint(db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)):
-    """How long the app waits for a model to finish a reply before
-    giving up on it — see app.services.chat_settings_service.get_reply_timeout_seconds.
-    Admin-only to both read and change, unlike channel-delivery-mode
-    above: this is a pure backend operational cap, nothing in the
-    frontend needs to branch on it."""
+    """How long to wait for a model to finish a reply (chat_settings_service.get_reply_timeout_seconds).
+    Admin-only: a backend cap the frontend never branches on.
+    """
     return ReplyTimeout(timeout_seconds=await chat_settings_service.get_reply_timeout_seconds(db))
 
 
@@ -189,9 +172,9 @@ async def set_reply_timeout_endpoint(
 
 @router.get("/vision-reply-timeout", response_model=ReplyTimeout)
 async def get_vision_reply_timeout_endpoint(db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)):
-    """Same as reply-timeout above, but for a reply with an image attached — see
-    app.services.chat_settings_service.get_vision_reply_timeout_seconds' own docstring for why that needs its own,
-    more generous setting rather than sharing reply-timeout's."""
+    """Like reply-timeout, for replies with an image; it needs a more generous limit
+    (chat_settings_service.get_vision_reply_timeout_seconds).
+    """
     return ReplyTimeout(timeout_seconds=await chat_settings_service.get_vision_reply_timeout_seconds(db))
 
 
@@ -207,8 +190,7 @@ async def set_vision_reply_timeout_endpoint(
 
 @router.get("/retention", response_model=RetentionSettings)
 async def get_retention_endpoint(db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)):
-    """How long the Stats page's Telemetry/System views keep their poller-written history — see
-    app.services.retention_poller. Admin-only to both read and change, same reasoning as reply-timeout above."""
+    """How long Telemetry/System history is kept (retention_poller). Admin-only, like reply-timeout."""
     return await retention_settings_service.get_retention_settings(db)
 
 
@@ -224,9 +206,7 @@ async def set_retention_endpoint(
 
 @router.get("/users", response_model=list[UserOut])
 async def list_users(db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)):
-    """Every account, for the System tab's Users section. Admin-only —
-    usernames and roles aren't sensitive exactly, but there's no reason
-    for a regular user to see the full account list either."""
+    """Every account, for the Users section. Admin-only."""
     return (await db.execute(select(User).order_by(User.created_at))).scalars().all()
 
 
@@ -236,9 +216,7 @@ async def create_user(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),
 ):
-    """Creates a new account. Admin-only: there's no public
-    self-registration in this app by design, since it's meant for a
-    private, invite-only deployment."""
+    """Creates an account. Admin-only: no self-registration, by design (private, invite-only)."""
     try:
         return await user_service.create_user(db, body)
     except InferenceError as exc:
@@ -252,8 +230,7 @@ async def update_user(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),
 ):
-    """Edits an existing account: change its password, promote/demote
-    between admin and user, and/or disable or re-enable it."""
+    """Edits an account: password, admin/user role, disabled or enabled."""
     return await user_service.update_user(db, username, body)
 
 
@@ -263,7 +240,6 @@ async def delete_user(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),
 ):
-    """Permanently deletes an account and everything it owns. There's no
-    undo; disabling (via PATCH above) is the reversible alternative."""
+    """Permanently deletes an account and everything it owns; disabling (PATCH) is the reversible alternative."""
     await user_service.delete_user(db, username)
     return OkResponse()

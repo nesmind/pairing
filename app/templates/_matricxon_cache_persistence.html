@@ -1,6 +1,4 @@
-<!-- Settings > Matricxon > saved chat caches, shown only while Matricxon is the active engine. Wired by
-     app/static/js/settings_cache_persistence.js to /api/settings/matricxon/cache-persistence
-     (app/routers/matricxon_cache_admin.py). Changes apply instantly. -->
+<!-- Settings > Matricxon > saved chat caches, shown only while Matricxon is the active engine. Wired by app/static/js/settings_cache_persistence.js to /api/settings/matricxon/cache-persistence (app/routers/matricxon_cache_admin.py). Changes apply at once. -->
 <section class="hidden space-y-3" id="matricxon-cache-panel">
   <h2 class="text-sm font-semibold text-slate-200">Matricxon saved chat caches</h2>
   <p class="text-xs text-slate-500 -mt-2">
@@ -47,3 +45,6 @@
     </div>
   </div>
 </section>
+<p id="matricxon-cache-managed" class="hidden rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-xs text-slate-400">
+  Saved chat caches: cluster mode is on, so the limits are managed on the Cluster page.
+</p>

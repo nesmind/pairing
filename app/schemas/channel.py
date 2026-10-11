@@ -12,8 +12,7 @@ class ChannelMemberOut(BaseModel):
 
 
 class ChannelOut(BaseModel):
-    """One channel, for the admin Channels tab — full membership included
-    so the edit form can pre-populate its member/manager pickers."""
+    """One channel for the admin Channels tab, with full membership for the edit form's pickers."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -25,35 +24,29 @@ class ChannelOut(BaseModel):
 
 
 class ChannelSummary(BaseModel):
-    """One channel the current user belongs to, for the sidebar (see
-    app/routers/channels.py's GET /api/channels) — just enough to list
-    and open it, plus whether *this* viewer can manage it."""
+    """A channel the user belongs to, for the sidebar (GET /api/channels): enough to list and open it, plus
+    whether this viewer can manage it.
+    """
 
     id: str
     name: str
     conversation_id: str
     is_manager: bool
-    # Admins and this channel's managers may change its settings (Behavior tab); true for either.
+    # Admins and the channel's managers may change its settings (Behavior tab).
     can_manage: bool = False
 
 
 class ChannelCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     member_user_ids: list[str] = Field(..., min_length=1)
-    # Must be a subset of member_user_ids, and every id in it must belong
-    # to a user whose role is "channel_manager" — validated in
-    # app.services.channel_service.create_channel.
+    # Subset of member_user_ids, all with role "channel_manager" (checked in channel_service.create_channel).
     manager_user_ids: list[str] = []
 
 
 class ChannelUpdate(BaseModel):
-    """Every field is optional so a save can rename a channel without
-    touching membership. member_user_ids/manager_user_ids, when given,
-    are a full replace (not a diff) of the current membership — the same
-    "resend everything that should be true" convention as
-    app.services.note_service.sync_pins — so manager_user_ids should
-    always be resent alongside member_user_ids on a membership change,
-    even if the manager set itself didn't change."""
+    """All fields optional. member_user_ids/manager_user_ids replace the membership wholesale (like
+    note_service.sync_pins), so resend manager_user_ids with member_user_ids on any membership change.
+    """
 
     name: str | None = Field(None, min_length=1, max_length=255)
     member_user_ids: list[str] | None = None

@@ -1,15 +1,12 @@
-"""OpenTelemetry SDK bootstrap for the Telemetry page's Matricxon
-instrumentation — the Matricxon-flavored twin of app.services.ollama_telemetry (see app.services.matricxon_client
-for the actual spans, app.services.telemetry_exporter for where both engines' spans end up, shared unmodified).
-Kept as its own module rather than parameterizing ollama_telemetry.py, matching how this codebase already keeps
-ollama_client.py/matricxon_client.py, ollama_pool.py/matricxon_pool.py, etc. as separate same-shaped files rather
-than one shared abstraction — see this module's own functions for the (deliberately identical) reasoning behind
-each one, copied from ollama_telemetry.py's own docstrings.
+"""OpenTelemetry SDK bootstrap for the Telemetry page's Matricxon instrumentation: the twin of ollama_telemetry
+(spans: matricxon_client; storage: telemetry_exporter, shared by both). A separate module rather than
+parameterizing ollama_telemetry.py, as the codebase keeps ollama_*/matricxon_* files separate (reasoning
+copied from ollama_telemetry's docstrings).
 
-A separate TracerProvider (not a shared one, and not just a second BatchSpanProcessor on Ollama's) so an admin
-disabling/removing one engine's instrumentation later can't accidentally affect the other's — and so each
-engine's own get_tracer() stays a simple, independent call with no engine-name branching anywhere in either
-engine's own client module."""
+A separate TracerProvider (not shared, not a second BatchSpanProcessor on Ollama's) so disabling one
+engine's instrumentation can't affect the other's, and each get_tracer stays independent with no
+engine-name branching.
+"""
 
 import asyncio
 import logging
@@ -23,12 +20,9 @@ from opentelemetry.trace import Span, Status, StatusCode
 from app.config import INSTANCE_INDEX
 from app.services.telemetry_exporter import DBSpanExporter, capture_main_loop
 
-# Same field names Matricxon's own /api/chat done-line already uses (confirmed against
-# ../matricxon/app/routers/chat_router.py directly, not assumed from Ollama's shape) — matricxon_client.py's own
-# docstring already establishes it was "matched field-for-field against Ollama", so this mapping needs no
-# separate Matricxon-specific version. Matricxon's done line never carries prompt_eval_duration (no separate
-# prompt-processing timer exists there yet) — harmless, same as Ollama's own embed() calls never populating any
-# of these: record_chat_success below only ever sets what's actually present.
+# Field names match Matricxon's /api/chat done-line (checked against../matricxon/app/routers/chat_router.py),
+# which matricxon_client.py matches to Ollama's, so no Matricxon-specific mapping. Its done line has no
+# prompt_eval_duration (no separate prompt timer yet); harmless, as record_chat_success sets only what's present.
 _CHAT_DURATION_FIELDS = (
     ("total_duration", "ollama.total_duration_ns"),
     ("load_duration", "ollama.load_duration_ns"),
@@ -44,9 +38,9 @@ _tracer_provider: TracerProvider | None = None
 
 
 def init_matricxon_telemetry() -> None:
-    """Called once per process from startup_service.run_startup_tasks()
-    — on every instance (not primary-gated), since each instance routes
-    its own Matricxon calls independently and each needs its own tracer."""
+    """Called once per process from startup_service.run_startup_tasks, on every instance (not primary-gated):
+    each routes its own Matricxon calls and needs its own tracer.
+    """
     global _tracer_provider
     capture_main_loop()
     resource = Resource.create({"service.name": "pairing", "service.instance.id": str(INSTANCE_INDEX)})
@@ -57,18 +51,18 @@ def init_matricxon_telemetry() -> None:
 
 
 def get_tracer() -> trace.Tracer:
-    """Safe to call before init_matricxon_telemetry() has run (e.g. in any test that never calls it) — falls
-    back to the OTel API's own no-op tracer rather than touching the global registry (see this module's own
-    docstring for why the real provider is never installed there)."""
+    """Safe before init_matricxon_telemetry (e.g. in tests): falls back to the OTel API's no-op tracer without
+    touching the global registry (see module docstring).
+    """
     if _tracer_provider is not None:
         return _tracer_provider.get_tracer("pairing.matricxon")
     return trace.get_tracer("pairing.matricxon")
 
 
 def record_chat_success(span: Span, host: str, attempts: int, done_payload: dict) -> None:
-    """Fills in a "matricxon.chat" span's outcome once chat_stream's NDJSON loop finishes normally —
-    done_payload is whatever Matricxon's final `done:true` line carried (empty if a caller closed the generator
-    before that line ever arrived, e.g. a cancelled reply)."""
+    """Fills a "matricxon.chat" span's outcome once chat_stream's NDJSON loop ends normally. done_payload is
+    Matricxon's final `done:true` line (empty if the generator closed first, e.g. a cancelled reply).
+    """
     span.set_attribute("server.address", host)
     span.set_attribute("ollama.attempt_count", attempts)
     if "prompt_eval_count" in done_payload:
@@ -87,8 +81,9 @@ def record_chat_error(span: Span, host: str, attempts: int, exc: Exception) -> N
 
 
 async def shutdown_matricxon_telemetry() -> None:
-    """Called from startup_service.run_shutdown_tasks(). See
-    ollama_telemetry.shutdown_ollama_telemetry's own docstring for why this hops onto a worker thread rather than
-    calling TracerProvider.shutdown() directly on the main event loop — identical deadlock risk, identical fix."""
+    """Called from startup_service.run_shutdown_tasks. Hops to a worker thread rather than calling
+    TracerProvider.shutdown on the event loop: same deadlock risk and fix as
+    ollama_telemetry.shutdown_ollama_telemetry.
+    """
     if _tracer_provider is not None:
         await asyncio.to_thread(_tracer_provider.shutdown)

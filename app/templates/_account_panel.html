@@ -1,13 +1,4 @@
-<!-- Slide-in "edit my profile" panel — opened by clicking the small round
-     #account-panel-badge in the header (see chat.html/notes.html/
-     image_generation.html/stats.html, each of which includes this
-     partial; not on settings.html itself, which already has the full
-     Account tab inline). First/Last name + picture (see
-     app/routers/account.py) plus the same app-wide UI theme picker as
-     Settings' own Appearance section (see app/services/theme_service.py) —
-     password change stays Settings-page-only, linked to from the bottom
-     of this panel instead of duplicated. See app/static/js/account_panel.js
-     for the behavior. -->
+<!-- Slide-in "edit my profile" panel, opened from the round #account-panel-badge in the header (included by chat.html, notes.html, image_generation.html and stats.html; not settings.html, which has the full Account tab). First/Last name + picture (app/routers/account.py) and the app-wide UI theme picker (app/services/theme_service.py); password change stays in Settings, linked from the panel's bottom. Behavior: app/static/js/account_panel.js. -->
 <div id="account-panel-backdrop" class="hidden fixed inset-0 z-50 bg-black/60"></div>
 <div id="account-panel"
   class="fixed inset-y-0 right-0 z-50 flex w-full max-w-sm translate-x-full transform flex-col border-l border-slate-800 bg-slate-900 shadow-xl transition-transform duration-200 ease-out">

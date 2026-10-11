@@ -1,25 +1,23 @@
-/**
- * The ML stages *inside* the engine for the Stats page's "Visual chat workflow" diagram — the leaves
- * behind the two "ML engine" nodes in workflow_diagram_data.js: the chat model's whole inference
- * pass (a band of rows under the "ML engine" node) and the RAG embedding model's (a small lane in
- * the RAG column). Appended to WORKFLOW_NODES/WORKFLOW_EDGES, so load this after
- * workflow_diagram_data.js. Same node/edge shape as there; an edge may add `dir: "v"` to force a
- * top/bottom connection where the automatic choice would run through a neighbouring node.
- *
- * Laid out in rows inside the diagram's existing width (x 30–1300; six columns for the chat model) as a snake — each
- * row ends where the next begins — so the new stages only add height, never a horizontal scrollbar.
- * Written from Matricxon's real pipeline (app/runtime/chat_engine.py, app/architectures/*,
- * app/runtime/sampler.py, app/runtime/tokenizer.py); Ollama (llama.cpp) runs the same stages in
- * C++ with its own cache and scheduler details, which each body mentions only where they differ.
- * All of it runs in the ML engine's process, not in this app.
+/*
+ * The ML stages inside the engine for the Stats "Visual chat workflow" diagram: the leaves behind the two "ML engine"
+ * nodes in workflow_diagram_data.js, namely the chat model's inference pass (a band of rows under the "ML engine" node)
+ * and the RAG embedding model's (a small lane in the RAG column). Appended to WORKFLOW_NODES/WORKFLOW_EDGES, so load
+ * after workflow_diagram_data.js. Same node/edge shape; an edge may add `dir: "v"` to force a top/bottom connection
+ * where the automatic choice would cross a neighbour.
+ * 
+ * Laid out in rows inside the diagram's width (x 30–1300; six 176px columns, 38px apart, right edge 1276) as a snake,
+ * each row ending where the next begins, so new stages add height, never a horizontal scrollbar. Written from
+ * Matricxon's pipeline (app/runtime/chat_engine.py, app/architectures/*, app/runtime/sampler.py,
+ * app/runtime/tokenizer.py); Ollama (llama.cpp) runs the same stages in C++ with its own cache and scheduler details,
+ * noted in each body where they differ. All of it runs in the ML engine's process, not this app.
  */
 
-const ML_COL = [30, 244, 458, 672, 886, 1100]; // six 176px columns, 38px apart (right edge 1276)
+const ML_COL = [30, 244, 458, 672, 886, 1100];
 const ML_W = 176;
 const ML_H = 64;
 const ML_ROW = { r1: 1040, r2: 1140, r2b: 1240, r3: 1340, r4: 1440 };
 
-// Colour group per stage (see WORKFLOW_CATEGORY_COLORS): where in the forward pass it sits / what it does.
+// Colour group per stage (WORKFLOW_CATEGORY_COLORS): where it sits in the forward pass / what it does.
 const ML_GROUP = {
   ml_load: "ml_pre", ml_template: "ml_pre", ml_tokenize: "ml_pre", ml_prompt_cache: "ml_pre",
   ml_embed: "ml_pre", ml_vision: "ml_pre", ml_emb_tok: "ml_pre", ml_emb_pos: "ml_pre",
@@ -32,18 +30,17 @@ const ML_GROUP = {
   ml_kernels: "ml_support", ml_kv: "ml_support",
 };
 
-// Stages that run on Matricxon's native C kernels (app/native/src/*.c) when that backend is built —
-// the quantized matmuls, embedding-row dequant, the gated delta rule, and the fused RMSNorm / RoPE /
-// decode-attention / sampler ops (app/native/src/mx_fused_ops.c, mx_attention.c, mx_sample.c). Marked "K".
+// Stages that run on Matricxon's native C kernels (app/native/src/*.c) when built: the quantized matmuls, embedding-row
+// dequant, the gated delta rule, and the fused RMSNorm / RoPE / decode-attention / sampler ops (mx_fused_ops.c,
+// mx_attention.c, mx_sample.c). Marked "K".
 const ML_NATIVE = new Set([
   "ml_embed", "ml_attention", "ml_linear_attn", "ml_ffn", "ml_lm_head", "ml_kernels",
   "ml_norm_attn", "ml_norm_ffn", "ml_final_norm", "ml_sampler",
 ]);
 
-// Stages that can run on the GPU (Matricxon's experimental MATRICXON_DEVICE=cuda mode): the forward
-// pass proper. Tokenizing, sampling, the stop check, the vision tower and MoE routing stay on the CPU.
-// Marked "G"; a stage that is also in ML_NATIVE shows "K|G" (the native C kernels on the CPU, or the
-// GPU when the engine runs on one).
+// Stages that can run on the GPU (Matricxon's experimental MATRICXON_DEVICE=cuda): the forward pass proper. Tokenizing,
+// sampling, the stop check, the vision tower and MoE routing stay on the CPU. Marked "G"; a stage also in ML_NATIVE
+// shows "K|G" (C kernels on the CPU, or the GPU when the engine runs on one).
 const ML_GPU = new Set([
   "ml_embed", "ml_norm_attn", "ml_attention", "ml_linear_attn", "ml_norm_ffn", "ml_ffn",
   "ml_final_norm", "ml_lm_head", "ml_kernels", "ml_kv", "ml_emb_pos", "ml_emb_enc",
@@ -227,8 +224,8 @@ const WORKFLOW_ML_EDGES = [
   { from: "ml_sampler", to: "ml_kv", branch: true },
 ];
 
-// Small captions above each row of the chat-model band, so "before / inside / after the layers" reads at
-// a glance (rendered by workflow_diagram.js; x is the column-3 edge, clear of every edge in the band).
+// Small captions above each row of the chat-model band, so "before / inside / after the layers" reads at a glance
+// (rendered by workflow_diagram.js; x is the column-3 edge, clear of every edge in the band).
 const WORKFLOW_ANNOTATIONS = [
   { text: "① BEFORE THE LAYERS", x: ML_COL[2], y: ML_ROW.r1 - 12, group: "ml_pre" },
   { text: "② INSIDE EVERY LAYER (×N)", x: ML_COL[2], y: ML_ROW.r2 - 12, group: "ml_attn" },

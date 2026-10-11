@@ -1,0 +1,39 @@
+<!-- Saved chat caches of every node, kept in the cluster's replicated config (cluster_cache.js). Shown while
+     cluster mode is on; needs a quorum. Replaces the single-node form on Settings > External servers. -->
+<form id="cluster-cache-form" class="hidden max-w-2xl space-y-3 rounded-lg border border-slate-800 bg-slate-900 px-4 py-3">
+  <div>
+    <p class="text-sm font-medium text-slate-100">Saved chat caches</p>
+    <p class="text-xs text-slate-500">
+      Keeps each long chat's processed state on the shared disk, encrypted, so returning to it after a restart or a
+      long break (or on another node) does not re-read the whole conversation. Applied on every node within a few
+      seconds; a node that was down picks it up when it is back. Turning it off deletes everything saved.
+    </p>
+  </div>
+  <p id="cluster-cache-quorum" class="hidden rounded-lg border border-red-800/60 bg-red-900/20 px-3 py-2 text-xs text-red-200">
+    No quorum: the limits cannot be changed until a majority of the voters is back.
+  </p>
+  <label class="flex items-center gap-2 text-sm text-slate-200">
+    <input id="cluster-cache-enabled" type="checkbox"> Save chat caches to disk
+  </label>
+  <div class="grid items-start gap-3 sm:grid-cols-2">
+    <label class="block">
+      <span class="text-xs text-slate-400">Disk limit (MB)</span>
+      <input id="cluster-cache-budget" type="number" min="0" max="1048576"
+        class="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-brand-500 disabled:opacity-40">
+      <span class="mt-1 block text-xs text-slate-500">Oldest are deleted first; 0 saves nothing</span>
+    </label>
+    <label class="block">
+      <span class="text-xs text-slate-400">Keep for (hours)</span>
+      <input id="cluster-cache-ttl" type="number" min="1" max="8760"
+        class="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-brand-500 disabled:opacity-40">
+      <span class="mt-1 block text-xs text-slate-500">168 hours is 7 days</span>
+    </label>
+  </div>
+  <div class="flex flex-wrap items-center gap-3">
+    <button id="cluster-cache-save" type="submit"
+      class="rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">Save</button>
+    <button id="cluster-cache-clear" type="button"
+      class="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800 disabled:opacity-50">Delete all saved caches</button>
+    <span id="cluster-cache-note" class="text-xs text-slate-500"></span>
+  </div>
+</form>

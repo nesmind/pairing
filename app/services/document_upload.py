@@ -1,14 +1,9 @@
-"""
-Upload validation, on-disk staging, and the poll-based background-job orchestration behind POST
-/api/documents/upload — the business logic that used to live directly in app/routers/documents.py. See
-app/services/document_ingest.py for the actual chunk+embed pipeline this kicks off once files are accepted.
+"""Upload validation, staging and the poll-based background jobs behind POST /api/documents/upload
+(chunk+embed: document_ingest.py).
 
-Uploading is a two-step, poll-based flow rather than one long request: the router validates and saves the files,
-kicks off the slow chunk+embed work as a background task via run_upload_job, and returns a job id right away; the
-browser then polls the job's status. This used to be a single request streamed back over SSE, but that depends on
-the browser's fetch()+ReadableStream reading behaving consistently, which isn't reliable across browsers in the same
-way for every user's setup. Plain POST/GET with ordinary JSON bodies has no such dependency — it works the same
-everywhere.
+Two steps, not one long request: the router validates and saves files, starts the slow chunk+embed via
+run_upload_job and returns a job id; the browser polls its status. It used to stream over SSE, which
+depends on fetch+ReadableStream behaving the same in every browser; plain POST/GET JSON does.
 """
 
 import re
@@ -29,17 +24,14 @@ from app.services.document_ingest import GLOBAL_DIR, user_folder
 from app.services.document_sync import sync_folder_stream
 from app.services.settings_service import get_rag_limits
 
-# Client-supplied filenames are untrusted, but the only thing that actually needs blocking is a path separator
-# (which would escape the upload folder — already impossible here since Path(name).name below strips any directory
-# component before this even runs) and characters that are outright invalid in a filename on some filesystem
-# pAIring might run on. Everything else — spaces, parentheses, commas, accented or non-Latin letters (Hebrew,
-# etc.) — is real, legitimate filename content and is left alone, so an uploaded file keeps a name that actually
-# looks like what the user picked.
+# Client filenames are untrusted, but only path separators (already stripped by Path(name).name) and
+# characters invalid on some filesystem need blocking. Spaces, parentheses, commas and accented or non-Latin
+# letters (e.g. Hebrew) are legitimate and kept, so names look like what the user picked.
 _UNSAFE_CHARS_RE = re.compile(r'[\x00-\x1f\x7f<>:"/\\|?*]')
 
 
 def safe_filename(name: str) -> str:
-    base = Path(name or "").name  # drops any directory component
+    base = Path(name or "").name
     base = _UNSAFE_CHARS_RE.sub("_", base).strip().strip(".")
     return base or "file"
 
@@ -62,15 +54,10 @@ async def get_knowledge_summary(db: AsyncSession, user: User) -> KnowledgeSummar
     )
 
 
-# ---- Upload jobs -----------------------------------------------------------
-#
-# In-memory only, per-process — never shared or synced across this app's local instances (see
-# app/services/instance_service.py). A poll landing on a different instance than the one that started the job
-# would otherwise 404 mid-upload; start_upload_job below prefixes each job id with its own INSTANCE_INDEX
-# specifically so app/services/instance_proxy.py's built-in load balancer can route a poll straight back to the
-# right instance deterministically, without this dict itself needing to know anything about that. A job is small
-# (a per-file status dict), so a plain dict keyed by job id is enough; _prune_old_jobs keeps it from growing
-# forever across a long-running server's lifetime.
+# Upload jobs
+# In-memory, per-process, not shared across local instances (instance_service.py). A poll on another
+# instance would 404, so start_upload_job prefixes job ids with INSTANCE_INDEX and instance_proxy.py's
+# balancer routes polls back to the right instance. Jobs are small; _prune_old_jobs bounds the dict.
 
 _upload_jobs: dict[str, dict] = {}
 _JOB_TTL_SECONDS = 30 * 60
@@ -88,10 +75,10 @@ def get_job(job_id: str) -> dict | None:
 
 
 def get_job_for_user(job_id: str, user: User) -> dict | None:
-    """Same as get_job, but returns None (not just for a missing job) if `user` didn't start it and isn't an admin
-    — a job id is an unguessable-in-practice UUID, but it's still exposed to the browser (network tab, logs), so
-    nothing about it should double as an access token letting any authenticated user read another's upload
-    filenames and per-file error text. The only caller (app/routers/documents.py) 404s either way regardless."""
+    """Like get_job, but None if `user` didn't start it and isn't an admin: a job id is a UUID but visible to the
+    browser (network tab, logs), so it must not let others read upload filenames and error text.
+    routers/documents.py 404s either way.
+    """
     job = get_job(job_id)
     if job is None or (job["user_id"] != user.id and user.role != "admin"):
         return None
@@ -110,9 +97,9 @@ async def _run_upload_job(
     rejects: list[tuple[str, str]],
     user_id: str,
 ) -> None:
-    """The actual slow work (chunk + embed each accepted file), run as a fire-and-forget background task after the
-    request that started it has already returned. Uses its own DB session — the request-scoped one from
-    Depends(get_db) is closed by the time this runs."""
+    """The slow chunk + embed work, as a fire-and-forget task after the request returned. Uses its own DB
+    session (the request's is closed by then).
+    """
     job = _upload_jobs[job_id]
     accepted_set = set(accepted)
     extra_errors: list[str] = []
@@ -124,9 +111,8 @@ async def _run_upload_job(
                 if event["stage"] == "done":
                     stats_errors = event["stats"]["errors"]
                 elif filename not in accepted_set:
-                    # sync_folder_stream re-checks this owner's *whole* folder, not just the files in this job —
-                    # anything else (an older, already-up-to-date document) is real but not part of what this job
-                    # promised to report on.
+                    # sync_folder_stream re-checks the owner's *whole* folder; other up-to-date documents aren't part of
+                    # this job's report.
                     continue
                 elif event["stage"] == "file_start":
                     job["files"][filename] = {"status": "processing", "chunk": 0, "chunks_total": None}
@@ -156,13 +142,12 @@ async def stage_upload(
     scope: str,
     user: User,
 ) -> tuple[list[str], list[tuple[str, str]], Path, str | None]:
-    """Validates every file against the admin-configured limits (size, supported type, per-user quota) and writes
-    whatever's accepted to disk — the fast, synchronous half of an upload. Returns (accepted filenames, (original
-    name, rejection reason) pairs, the target folder, the owner_id rows should be created under) for the caller to
-    hand off to run_upload_job / start_upload_job below.
+    """Validates each file against admin limits (size, type, per-user quota) and writes accepted ones to disk
+    (the fast synchronous half). Returns (accepted filenames, (name, rejection reason) pairs, target folder,
+    owner_id) for run_upload_job / start_upload_job.
 
-    A file that fails a limit check, isn't a supported type, or fails to parse (a corrupt/password-protected PDF,
-    say) is reported as its own per-file error rather than failing the whole batch — the rest still go through.
+    A failing, unsupported or unparseable file (e.g. a corrupt or password-protected PDF) is its own per-file
+    error; the rest of the batch continues.
     """
     limits = await get_rag_limits(db)
     max_file_bytes = limits.max_file_mb * 1024 * 1024
@@ -171,9 +156,8 @@ async def stage_upload(
     target_dir = GLOBAL_DIR if scope == "global" else user_folder(user.id)
     owner_id = None if scope == "global" else user.id
 
-    # Tracks running usage as files are accepted one by one, so a batch can partially succeed (accept whatever
-    # fits, reject the rest) instead of an all-or-nothing decision. Re-uploading a file that's already there only
-    # counts its *new* size against the quota, not both old and new — its old size is subtracted out first.
+    # Running usage is tracked per accepted file, so a batch can partly succeed. Re-uploading counts only the
+    # new size against the quota (the old one is subtracted first).
     existing_sizes_by_name: dict[str, int] = {}
     running_total = 0
     if scope == "mine":
@@ -216,26 +200,22 @@ async def start_upload_job(
     rejects: list[tuple[str, str]],
     user: User,
 ) -> UploadJobStatus:
-    """Registers a new job and, if there's anything to actually process,
-    schedules run_upload_job as a background task. Returns the job's
-    initial status right away — see this module's docstring for why
-    that's a snapshot to poll rather than a long-held request."""
+    """Registers a job and, if anything is left to process, schedules run_upload_job. Returns the initial status
+    snapshot to poll (see module docstring).
+    """
     _prune_old_jobs()
-    # Prefixed with this process's own instance index (see app/config.py) purely so
-    # app/services/instance_proxy.py's built-in load balancer can route a later poll straight back to whichever
-    # instance's in-memory _upload_jobs dict the job actually lives in, without any proxy-side state of its own —
-    # this dict is never shared/synced across instances (see this module's own docstring on that).
+    # Prefixed with this process's INSTANCE_INDEX so instance_proxy.py's balancer routes later polls to the
+    # instance holding the job's in-memory _upload_jobs entry (never shared across instances).
     job_id = f"{INSTANCE_INDEX}-{uuid.uuid4().hex}"
     files_state = {name: {"status": "waiting", "chunk": 0, "chunks_total": None} for name in accepted}
     for filename, reason in rejects:
         files_state[filename] = {"status": "error", "error": reason}
     _upload_jobs[job_id] = {
         "created_at": time.time(),
-        "done": not accepted,  # nothing left to do if every file was rejected up front
+        "done": not accepted,  # nothing to do if every file was rejected
         "files": files_state,
         "result": None,
-        # Who started this job — checked by app/routers/documents.py's GET /upload/{job_id} so one user can't
-        # poll another's job status (filenames, per-file error text) just by guessing or observing its id.
+        # Who started the job; routers/documents.py GET /upload/{job_id} checks it so users can't poll others' jobs.
         "user_id": user.id,
     }
     if accepted:

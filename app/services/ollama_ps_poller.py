@@ -1,15 +1,9 @@
-"""Periodically polls Ollama's GET /api/ps ("what's currently loaded in
-memory right now") on every configured host, and appends a snapshot row
-per (host, model) — see app.services.ollama_snapshot_service for how the
-Telemetry page reads these back. Genuinely new territory for this
-codebase: no periodic/background-loop precedent exists anywhere else
-(every other asyncio.create_task in this app is a one-shot detached task
-per request/event, not a timer) — this is the first one.
+"""Polls Ollama's GET /api/ps ("what's loaded now") on every host and appends a snapshot row per (host, model)
+(read back by ollama_snapshot_service for the Telemetry page). The first periodic loop in this codebase;
+every other asyncio.create_task is a one-shot per request/event.
 
-Primary-gated (see startup_service.run_startup_tasks): which models are
-loaded is host-level Ollama state, not per-instance state, so having
-every instance in this app's multi-instance deployment poll
-independently would only produce duplicate rows, not better data.
+Primary-gated (startup_service.run_startup_tasks): loaded models are host-level state, so every instance polling
+would only duplicate rows.
 """
 
 import asyncio
@@ -27,9 +21,8 @@ logger = logging.getLogger("llama_chat")
 POLL_INTERVAL_SECONDS = 30.0
 _PS_TIMEOUT = httpx.Timeout(5.0, connect=2.0)
 
-# Same strong-ref-set/done-callback idiom as title_service._background_title_tasks
-# — a bare asyncio.create_task() result is only weakly referenced, so
-# without this the poller task could be garbage-collected mid-run.
+# Same strong-ref set/done-callback idiom as title_service._background_title_tasks: a bare create_task
+# result is weakly referenced and could be garbage-collected mid-run.
 _background_poller_tasks: set[asyncio.Task] = set()
 
 
@@ -67,7 +60,7 @@ async def _poll_once() -> None:
         try:
             snapshots.extend(await _poll_host(host))
         except httpx.HTTPError as exc:
-            # One unreachable host shouldn't stop the others from being polled.
+            # One unreachable host mustn't stop the others being polled.
             logger.warning("Could not poll /api/ps on %s: %s", host, exc)
     if not snapshots:
         return
@@ -81,14 +74,13 @@ async def _run_ollama_ps_poller() -> None:
         try:
             await _poll_once()
         except Exception:
-            # A single bad poll (e.g. a transient DB error) must never kill the loop permanently.
+            # A bad poll (e.g. a transient DB error) must never kill the loop for good.
             logger.exception("Ollama /api/ps poll failed.")
         await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
 
 def start_ollama_ps_poller() -> None:
-    """Called once, from startup_service.run_startup_tasks (primary
-    only) — see this module's own docstring for why."""
+    """Called once from startup_service.run_startup_tasks (primary only); see module docstring."""
     task = asyncio.create_task(_run_ollama_ps_poller())
     _background_poller_tasks.add(task)
     task.add_done_callback(_background_poller_tasks.discard)

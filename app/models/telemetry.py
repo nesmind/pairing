@@ -1,18 +1,12 @@
-"""Ollama/Matricxon telemetry — see app/services/ollama_telemetry.py and app/services/matricxon_telemetry.py for
-how these rows actually get written (an OpenTelemetry span exporter, not a plain service-layer insert) and
-app/services/telemetry_service.py for the aggregation queries the Telemetry page's dashboard runs against them,
-one engine at a time (see that module's own docstring for why `engine` is filtered on, not grouped by).
+"""Ollama/Matricxon telemetry rows, written by an OpenTelemetry span exporter (app/services/ollama_telemetry.py,
+matricxon_telemetry.py) and aggregated by telemetry_service.py, one engine at a time.
 
-Both tables are pure append-only event logs — nothing ever looks a row
-up by its own id from outside this app (unlike e.g. ImageGenerationJob,
-whose id is embedded in a URL) — so they use plain autoincrementing
-integer keys instead of this codebase's usual new_id() convention,
-which exists specifically for ids that get exposed externally.
+Both tables are append-only logs never looked up by id externally, so they use autoincrement integer keys
+instead of new_id.
 
-Class/table names predate Matricxon support and still read Ollama-specific — kept as-is rather than renamed
-(see migration 20260920_.*_add_telemetry_engine_column's own message for the full reasoning) since a rename
-would touch every existing caller for no functional gain; `engine` is what actually makes each row's source
-unambiguous now, not the name."""
+Names still read Ollama-specific (see migration 20260920_.*_add_telemetry_engine_column); `engine` identifies the
+source.
+"""
 
 from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, Integer, String, Text
 
@@ -20,22 +14,18 @@ from app.database import Base
 
 
 class TelemetryEvent(Base):
-    """One completed (or failed) call to Ollama or Matricxon — one row per app.services.ollama_client or
-    app.services.matricxon_client's chat_stream/embed invocation, written by that engine's own DBSpanExporter
-    (see telemetry_exporter.py, shared by both) once the call's OpenTelemetry span ends. duration_ms is our own
-    wall-clock measurement (span start to end); the total_duration_ms/load_duration_ms/*_eval_* fields are the
-    engine's own server-side timing, only ever populated for "chat" events — neither engine's embedding response
-    carries timing/token fields at all."""
+    """One completed or failed Ollama/Matricxon call (chat_stream/embed), written by that engine's DBSpanExporter
+    (telemetry_exporter.py) when its span ends. duration_ms is our wall-clock; the total_/load_/*_eval_*
+    fields are the engine's own timing, only for "chat" events (embeddings carry none).
+    """
 
     __tablename__ = "telemetry_events"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    # "ollama" | "matricxon" — which engine (see app.services.engine_service) actually served this call,
-    # regardless of which one is active *now*: a row is stamped at call time, from the OpenTelemetry
-    # instrumentation scope that produced its span (see telemetry_exporter._persist_spans), so switching the
-    # active engine later never rewrites history.
+    # "ollama" | "matricxon": the engine that served this call, stamped from the span's instrumentation scope
+    # (telemetry_exporter._persist_spans), so switching engines never rewrites history.
     engine = Column(String(20), nullable=False, default="ollama")
-    kind = Column(String(20), nullable=False)  # "chat" | "embed"
+    kind = Column(String(20), nullable=False)
     model = Column(String(255), nullable=True)
     host = Column(String(255), nullable=False)
     success = Column(Boolean, nullable=False)
@@ -48,24 +38,20 @@ class TelemetryEvent(Base):
     eval_duration_ms = Column(Float, nullable=True)
     prompt_eval_count = Column(Integer, nullable=True)
     eval_count = Column(Integer, nullable=True)
-    # How many hosts chat_stream's failover tried (or embed's cold-start
-    # retry loop attempted) before this call resolved — 1 in the common
-    # case; see app.services.ollama_client's own docstrings.
+    # Hosts tried by chat_stream's failover (or embed's cold-start retries); 1 normally.
     attempt_count = Column(Integer, nullable=False, default=1)
 
 
 class ModelSnapshot(Base):
-    """One row per (host, currently-loaded model) on every poll of an engine's GET /api/ps — see
-    app.services.ollama_ps_poller and app.services.matricxon_ps_poller, both of which write here. Appended
-    unconditionally rather than upserted: at a 30s poll interval this stays small for a typical single/few-host
-    deployment, and doubling as a cheap time series (was model X loaded on host Y at time T) is the whole point —
-    app.services.ollama_snapshot_service reads back only the newest row per (engine, host, model_name) for the
-    "currently loaded" dashboard table, one engine at a time."""
+    """One row per (host, loaded model) on each engine GET /api/ps poll (ollama_ps_poller, matricxon_ps_poller).
+    Appended, not upserted: small at a 30s interval, and a cheap time series. ollama_snapshot_service reads the
+    newest row per (engine, host, model_name).
+    """
 
     __tablename__ = "model_snapshots"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    # "ollama" | "matricxon" — see TelemetryEvent.engine's own comment for the identical reasoning.
+    # "ollama" | "matricxon" (see TelemetryEvent.engine).
     engine = Column(String(20), nullable=False, default="ollama")
     host = Column(String(255), nullable=False)
     model_name = Column(String(255), nullable=False)

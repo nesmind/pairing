@@ -1,14 +1,14 @@
-"""Unit tests for app/services/extended_model_catalog_enrichment.py. gguf_probe.probe_metadata is monkeypatched
-at its real origin module (see the "module-split import-binding gotcha" this codebase already tracks — this
-module calls it via a plain `gguf_probe.probe_metadata(...)` attribute lookup, not a `from x import y` binding),
-so no real Hugging Face call happens here."""
+"""Tests for services/extended_model_catalog_enrichment.py. gguf_probe.probe_metadata is patched at its origin
+module (this module calls `gguf_probe.probe_metadata(...)` as an attribute lookup, not a `from x import y`
+binding; module-split gotcha), so no real Hugging Face call.
+"""
 
 import pytest
 
 from app.services import gguf_probe
 from app.services.extended_model_catalog_enrichment import HuggingFaceModelProbe
 
-# ---- guess_quantizations_from_filename --------------------------------------------------------------------
+# guess_quantizations_from_filename
 
 
 @pytest.mark.parametrize(
@@ -31,7 +31,7 @@ def test_guess_quantizations_from_filename_returns_none_for_an_unrecognized_name
     assert HuggingFaceModelProbe.guess_quantizations_from_filename("weird-name-nozzle.gguf") is None
 
 
-# ---- probe ---------------------------------------------------------------------------------------------------
+# probe
 
 
 @pytest.mark.asyncio
@@ -55,5 +55,5 @@ async def test_probe_degrades_cleanly_when_the_real_probe_fails(monkeypatch):
 
     result = await HuggingFaceModelProbe.probe("org/repo", "model-q4_k_m.gguf", proxy_url=None)
 
-    # quantizations is still real, pure, filename-only guessing — unaffected by the network-side probe failing.
+    # quantizations is still pure filename-only guessing, unaffected by the network probe failing.
     assert result == {"architecture": None, "name": None, "quantizations": ["Q4_K"]}

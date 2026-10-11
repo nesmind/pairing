@@ -1,10 +1,8 @@
-"""Unit tests for app/services/instance_db_broadcast.py — the fix for a
-real production incident: app.database.switch_database only ever rebinds
-the *current process's* own live engine, so with instance_count > 1,
-every other local instance silently kept running against the old
-database until this existed. Every test fakes instance_process.
-read_tracking/is_alive (same pattern tests/test_instance_pool.py already
-uses) rather than spawning real processes."""
+"""Tests for services/instance_db_broadcast.py, the fix for a production incident: app.database.switch_database
+rebinds only the *current process's* engine, so with instance_count > 1 every other local instance kept the
+old database. Every test fakes instance_process.read_tracking/is_alive (as tests/test_instance_pool.py), no real
+processes.
+"""
 
 import httpx
 import pytest
@@ -14,22 +12,21 @@ from app.services import instance_db_broadcast, instance_process
 
 def test_other_live_ports_excludes_self_and_dead_or_untracked_indices(monkeypatch):
     monkeypatch.setattr(instance_process, "read_tracking", lambda: {1: {"pid": 101}, 2: {"pid": 102}})
-    monkeypatch.setattr(instance_process, "is_alive", lambda pid: pid == 101)  # only index 1 is actually alive
-    monkeypatch.setattr(instance_db_broadcast, "INSTANCE_INDEX", 0)  # this call originated on the primary
+    monkeypatch.setattr(instance_process, "is_alive", lambda pid: pid == 101)
+    monkeypatch.setattr(instance_db_broadcast, "INSTANCE_INDEX", 0)
 
     ports = instance_db_broadcast._other_live_ports()
 
-    assert sorted(ports) == [instance_process.port_for_index(1)]  # not self (0), not the dead index 2
+    assert sorted(ports) == [instance_process.port_for_index(1)]
 
 
 def test_other_live_ports_excludes_self_when_self_is_a_sibling(monkeypatch):
-    """The primary (index 0) is always a candidate even though it's
-    never in the tracking file — confirmed here from a *sibling's* own
-    point of view, where self-exclusion must drop 0, not a tracked
-    index."""
+    """The primary (index 0) is always a candidate though never in the tracking file; from a *sibling's* view,
+    self-exclusion must drop 0, not a tracked index.
+    """
     monkeypatch.setattr(instance_process, "read_tracking", lambda: {1: {"pid": 101}})
     monkeypatch.setattr(instance_process, "is_alive", lambda pid: True)
-    monkeypatch.setattr(instance_db_broadcast, "INSTANCE_INDEX", 1)  # this call originated on sibling 1
+    monkeypatch.setattr(instance_db_broadcast, "INSTANCE_INDEX", 1)
 
     ports = instance_db_broadcast._other_live_ports()
 
@@ -69,9 +66,8 @@ async def test_broadcast_database_switch_posts_to_every_other_live_instance(monk
 
 @pytest.mark.asyncio
 async def test_broadcast_database_switch_is_best_effort_and_reports_failures(monkeypatch):
-    """One unreachable/crashed sibling must not raise, and must not stop
-    the *other* siblings from still being called — this is the whole
-    point of the fix being best-effort rather than all-or-nothing."""
+    """One unreachable or crashed sibling must not raise or stop the others being called: best-effort, not
+    all-or-nothing."""
 
     class _FakeResponse:
         def raise_for_status(self):

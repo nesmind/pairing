@@ -1,28 +1,14 @@
-"""
-Symmetric encryption for secrets this app stores in its own database (as
-opposed to .env — see the note below on why an .env-stored secret can't
-be meaningfully protected this same way). Currently used for
-app.schemas.http_proxy_config.HttpProxyConfig's own password field: the
-key (derived from app.config.SECRET_KEY) lives in .env, while the
-ciphertext lives in the app_settings table — two genuinely separate
-storage locations/access levels, so this provides real defense in depth
-(e.g. against someone with DB read access but not filesystem access).
+"""Symmetric encryption for secrets stored in the app's own database (not .env, where a secret can't be
+protected this way). Used for HttpProxyConfig's password: the key (derived from SECRET_KEY) lives in .env and
+the ciphertext in app_settings, two storage locations, giving defense in depth (e.g. DB read access without
+filesystem access).
 
-Deliberately NOT used for the MySQL database password (see
-app.services.db_config_url) — that password lives *inside* DATABASE_URL,
-itself stored in .env, the same file SECRET_KEY comes from. Encrypting
-a value with a key stored right next to it in the same file protects
-against nothing; anyone who can read one can read the other. Real
-protection there would need the key to come from somewhere else
-entirely (an OS keyring, a mounted secret, ...) — real infrastructure
-work outside this module's scope, not something to fake with a
-same-file key.
+Not used for the MySQL password (db_config_url): it sits inside DATABASE_URL in .env, the same file as
+SECRET_KEY, and encrypting with a key beside the value protects nothing. Real protection needs the key
+elsewhere (OS keyring, mounted secret), out of scope.
 
-Never used for user login passwords: those are one-way bcrypt hashes
-(see app.services.auth_service), which is strictly stronger than
-reversible encryption for anything only ever *verified*, never
-resubmitted elsewhere — encrypting an already-hashed value would add
-nothing.
+Not used for login passwords: those are one-way bcrypt hashes (auth_service), stronger than reversible
+encryption for values only verified, never resubmitted.
 """
 
 import base64
@@ -39,16 +25,12 @@ logger = logging.getLogger("llama_chat")
 
 @lru_cache(maxsize=1)
 def _fernet() -> Fernet:
-    """Fernet needs an exact 32-byte url-safe-base64 key; SECRET_KEY is
-    an arbitrary-length string (a random hex token by default, or
-    whatever an admin sets) — hashed down to exactly 32 bytes first.
-    Cached (not re-derived per call) since SECRET_KEY is fixed for this
-    process's lifetime, same reasoning as any other derive-once value.
+    """Fernet needs a 32-byte url-safe-base64 key; SECRET_KEY is arbitrary-length (random hex by default), hashed
+    to 32 bytes. Cached: SECRET_KEY is fixed per process.
 
-    If SECRET_KEY isn't pinned in .env, it's regenerated randomly every
-    restart (see app.config's own warning) — anything encrypted under
-    the old key becomes undecryptable, the exact same accepted tradeoff
-    that already applies to session cookies for the same reason."""
+    If SECRET_KEY isn't pinned in .env it's regenerated every restart (see app.config's warning), and anything
+    encrypted under the old key becomes undecryptable: the same accepted tradeoff as session cookies.
+    """
     key_bytes = hashlib.sha256(SECRET_KEY.encode("utf-8")).digest()
     return Fernet(base64.urlsafe_b64encode(key_bytes))
 
@@ -58,11 +40,9 @@ def encrypt(plaintext: str) -> str:
 
 
 def decrypt(ciphertext: str) -> str | None:
-    """None (rather than raising) on a token that won't decrypt under
-    the current key — SECRET_KEY having changed since this was encrypted
-    is a real, expected possibility (see _fernet's own docstring), and a
-    corrupt/foreign value should degrade to "treat as unset", not crash
-    whatever was loading this config."""
+    """None (not an exception) for a token that won't decrypt under the current key: SECRET_KEY may have changed
+    (see _fernet), and a corrupt or foreign value should read as unset, not crash the config load.
+    """
     try:
         return _fernet().decrypt(ciphertext.encode("utf-8")).decode("utf-8")
     except InvalidToken:

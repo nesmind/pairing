@@ -1,19 +1,15 @@
 #!/usr/bin/env bash
+# Installs pAIring on Linux or macOS: a Python venv, this app's dependencies, a real SECRET_KEY in .env, and a migrated
+# + seeded database.
 #
-# Installs pAIring itself on Linux or macOS: a Python venv, this app's own
-# dependencies, a real SECRET_KEY in .env, and a migrated + seeded database
+# Interactive from a real terminal (asks about dev dependencies, the port, and whether to start pAIring afterward); with
+# no tty on stdin (piped, CI) it uses safe defaults and no prompts.
 #
-# Interactive when run from a real terminal (asks about dev dependencies,
-# the port to listen on, and whether to start pAIring once done) — falls
-# back to sane defaults with no prompts when stdin isn't a tty (piped in,
-# or run from CI), so it's still safe to script.
-#
-# Safe to re-run: every step below skips work that's already done, and
-# never overwrites an .env you've already configured.
+# Safe to re-run: each step skips finished work and never overwrites a configured.env.
 #
 # Usage:
 #   bash scripts/install.sh          # runtime dependencies only
-#   bash scripts/install.sh --dev    # plus pytest/ruff, for working on the project itself
+#   bash scripts/install.sh --dev    # plus pytest/ruff, for working on the project
 
 set -euo pipefail
 
@@ -23,9 +19,7 @@ success() { printf '\033[1;32m  ✓\033[0m %s\n' "$1"; }
 warn()    { printf '\033[1;33m  ! \033[0m%s\n' "$1"; }
 die()     { printf '\033[1;31mError:\033[0m %s\n' "$1" >&2; exit 1; }
 
-# Whether to prompt at all — piping this script in (`curl ... | bash`) or
-# running it from CI leaves stdin non-interactive, and a `read` there would
-# either hang or silently read garbage from whatever was piped in.
+# Whether to prompt at all: when piped (`curl... | bash`) or run from CI, a `read` could hang or read bad input.
 INTERACTIVE=false
 if [ -t 0 ]; then
     INTERACTIVE=true
@@ -102,9 +96,7 @@ fi
 
 # ---------------------------------------------------------------------------
 step "3. Installing Python dependencies"
-# ---------------------------------------------------------------------------
-# Only asks if `--dev` wasn't already given on the command line — an
-# explicit flag always wins over the interactive prompt.
+# Asks only if `--dev` wasn't given; an explicit flag wins over the prompt.
 if [ "$DEV_FLAG_GIVEN" = false ] && [ "$INTERACTIVE" = true ]; then
     read -r -p "Install dev dependencies too (pytest, ruff — only needed if you're working on pAIring itself)? [y/N] " DEV_ANSWER
     case "$DEV_ANSWER" in
@@ -131,13 +123,11 @@ if [ ! -f "$APP_DIR/.env" ]; then
 else
     info ".env already exists — leaving its settings as configured."
 fi
-# .env holds SECRET_KEY and (if configured) the MySQL password — owner-only, regardless of whatever the
-# filesystem's default umask would otherwise have left it at. Applied every run, not just on first creation, so
-# a pre-existing .env with looser permissions (e.g. from before this line existed) gets fixed too.
+# .env holds SECRET_KEY and (if set) the MySQL password, so make it owner-only whatever the umask. Applied every run, so
+# an existing.env with looser permissions is fixed too.
 chmod 600 "$APP_DIR/.env"
 
-# Only offered on a brand-new .env — re-running this script must never
-# silently change a port someone already deployed with.
+# Offered only on a brand-new.env; re-running must never change a port someone already deployed with.
 APP_PORT_CHOSEN=8000
 if [ "$ENV_IS_NEW" = true ] && [ "$INTERACTIVE" = true ]; then
     read -r -p "Which port should pAIring listen on? [8000] " PORT_ANSWER
@@ -160,10 +150,8 @@ if grep -qE '^SECRET_KEY=.+' "$APP_DIR/.env" 2>/dev/null; then
 else
     NEW_SECRET="$("$APP_DIR/.venv/bin/python" -c 'import secrets; print(secrets.token_hex(32))')"
     if grep -qE '^SECRET_KEY=' "$APP_DIR/.env" 2>/dev/null; then
-        # Portable in-place sed: BSD sed (macOS) requires an explicit (even
-        # if empty) backup-suffix argument after -i; GNU sed (Linux) treats
-        # that same bare argument as the pattern instead and breaks. Writing
-        # to a temp file and moving it over works identically on both.
+        # Portable in-place sed: BSD sed (macOS) needs an explicit (even empty) backup suffix after -i, while GNU sed
+        # treats that argument as the pattern. Writing to a temp file and moving it over works on both.
         sed "s|^SECRET_KEY=.*|SECRET_KEY=$NEW_SECRET|" "$APP_DIR/.env" > "$APP_DIR/.env.tmp"
         mv "$APP_DIR/.env.tmp" "$APP_DIR/.env"
     else
@@ -174,13 +162,9 @@ fi
 
 # ---------------------------------------------------------------------------
 step "5. Setting up the database"
-# ---------------------------------------------------------------------------
-# Runs the exact same schema-migration + starter-admin-seeding logic the
-# app itself runs on every startup (see app/services/startup_service.py) —
-# just directly, once, right now, rather than waiting for the first
-# request. That's what makes "open the browser and log in" work
-# immediately after this script finishes, instead of only after the app's
-# own first (silent, in-the-background) startup pass has had time to run.
+# Runs the same schema migration + starter-admin seeding as app startup (app/services/startup_service.py), once and
+# directly, so "open the browser and log in" works as soon as this script ends instead of after the app's first
+# background startup pass.
 if "$APP_DIR/.venv/bin/python" -c "
 import asyncio
 from app.database import init_db, AsyncSessionLocal

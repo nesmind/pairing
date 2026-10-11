@@ -1,17 +1,9 @@
-"""
-Admin-managed "browse more models" catalog for Settings > Model (see
-app/model_catalog.py for the small, hand-curated default list shown up
-front unchanged — this is the separate, admin-extensible list behind
-"Browse more models"). Stored as one AppSetting JSON row (system-wide,
-not per-user — like app.services.model_catalog_service.HiddenModelTags),
-since this is catalog curation, not a personal preference.
+"""Admin-managed "browse more models" catalog for Settings > Model (the small curated default list is
+app/model_catalog.py). Stored as one system-wide AppSetting JSON row (catalog curation, not a personal
+preference; like model_catalog_service.HiddenModelTags).
 
-Sourced entirely from Hugging Face (see
-app.services.huggingface_client.HuggingFaceCatalogSearch) — search/verify
-never touches Ollama's own registry. The model still gets *pulled*
-through Ollama (its existing hf.co/ passthrough — see add's own
-docstring on how the tag is built), this module just never uses Ollama
-to find or confirm one exists.
+Sourced from Hugging Face (huggingface_client.HuggingFaceCatalogSearch). Models are still *pulled* through
+Ollama's hf.co/ passthrough (see add for the tag); Ollama is never used to find or confirm one.
 """
 
 from __future__ import annotations
@@ -33,8 +25,9 @@ from app.services.model_catalog_service import HiddenModelTags
 
 
 class ExtendedModelCatalog:
-    """The one place admin-added Hugging Face entries are stored, verified, and turned into catalog rows —
-    the extended-catalog analogue of app.services.model_catalog_service.ChatModelCatalogBuilder."""
+    """Stores, verifies and turns admin-added Hugging Face entries into catalog rows; the analogue of
+    ChatModelCatalogBuilder.
+    """
 
     _KEY = "extended_model_catalog"
 
@@ -45,8 +38,8 @@ class ExtendedModelCatalog:
 
     @staticmethod
     def build_tag(repo_id: str, filename: str) -> str:
-        """`hf.co/<repo_id>:<filename minus its .gguf extension>` — see HuggingFaceCatalogSearch's own docstring
-        on why the full filename (not a hand-extracted quant code) is used."""
+        """`hf.co/<repo_id>:<filename minus.gguf>` (the full filename, not a quant code; see
+        HuggingFaceCatalogSearch)."""
         stem = filename.removesuffix(".gguf")
         return f"hf.co/{repo_id}:{stem}"
 
@@ -57,13 +50,10 @@ class ExtendedModelCatalog:
 
     @staticmethod
     def _vendor_from_tag(tag: str) -> str:
-        """Same logic as app.services.model_catalog_service.ModelCatalogService._vendor_from_tag, duplicated
-        to avoid a circular import for one helper — every tag here is
-        always `hf.co/<org>/<repo>:<suffix>` (see build_tag above), so the org segment is always real, never
-        the "Other" this returned unconditionally before this fix (confirmed live, 2026-09-27: two Browse-more-
-        models entries both published by "unsloth" rendered under separate vendor headings in the Model tab
-        because of it, while an already-installed unsloth model showed the real vendor via the other code
-        path)."""
+        """Like ModelCatalogService._vendor_from_tag, duplicated to avoid a circular import. Tags are always
+        `hf.co/<org>/<repo>:<suffix>` (build_tag), so the org is real; it used to return "Other" always, so two
+        "unsloth" entries rendered under separate vendor headings.
+        """
         if not tag.startswith("hf.co/"):
             return "Other"
         repo_id = tag.removeprefix("hf.co/").split(":", 1)[0]
@@ -71,8 +61,7 @@ class ExtendedModelCatalog:
 
     @staticmethod
     def _min_ram_gb(download_gb: float | None) -> float:
-        """Ollama's own rule-of-thumb multiplier — same OLLAMA_RAM_ESTIMATE_MULTIPLIER
-        app.services.engine_support_checker.OllamaSupportChecker uses for its own real per-model estimate."""
+        """Ollama's rule-of-thumb multiplier (OLLAMA_RAM_ESTIMATE_MULTIPLIER, as OllamaSupportChecker)."""
         return round(download_gb * OLLAMA_RAM_ESTIMATE_MULTIPLIER, 1) if download_gb else 0.0
 
     async def list(self) -> list[dict]:
@@ -89,26 +78,19 @@ class ExtendedModelCatalog:
         await self._db.commit()
 
     async def add(self, repo_id: str, filename: str, proxy_url: str | None) -> dict:
-        """Verifies `filename` still exists in `repo_id` on Hugging Face (never trusts a caller's earlier
-        search/repo_files result), probes its real GGUF header for architecture/quantizations, and stores it.
-        Raises ValueError if the tag is already in the catalog (only checked when it isn't already installed —
-        see below) or the file is no longer offered.
+        """Verifies `filename` still exists in `repo_id` on Hugging Face (never trusting an earlier search), probes
+        its GGUF header for architecture/quantizations, and stores it. Raises ValueError if the tag is already
+        catalogued (checked only when not installed) or the file is no longer offered.
 
-        An already-installed tag still gets the same real lookup (confirmed live, 2026-09-22: skipping it
-        unconditionally left the entry with a generic engine-reported family like "Llama" forever, instead of
-        the real repo-derived name like "Llama-3.2-3B-Instruct" — a genuinely worse result than doing the same
-        lookup every other tag gets), but never lets a failed one block registering something that's already on
-        disk: a HuggingFaceLookupError (network down, repo gone, rate-limited) falls back to the old
-        no-internet-lookup shape below instead of propagating, so silencing the "not in catalog" badge for an
-        already-installed model never requires connectivity.
+        An installed tag gets the same lookup (skipping it left a generic family like "Llama" forever instead of
+        "Llama-3.2-3B-Instruct"), but a HuggingFaceLookupError (network down, repo gone, rate limit)
+        falls back to the no-lookup shape below, so silencing "not in catalog" never needs connectivity.
 
-        Every entry records `discovered_via_engine` (whichever engine is active right now), no exception for a
-        real admin-initiated Hugging Face search/add - real, confirmed gap (2026-09-30, two rounds: first for
-        auto-discovered entries (since removed), then again for a manually
-        searched-and-added one behaving no differently): this searchbox has to stay engine-specific the same
-        way the installed-models list above it already is, full stop - an entry an admin found and added while
-        Ollama was active has no business resurfacing as a fresh suggestion the moment Matricxon becomes
-        active, whether this app noticed it on disk or the admin searched for it by hand."""
+        Every entry records `discovered_via_engine` (the active engine), including admin searches and adds
+        (found in two rounds): the list is engine-specific like the installed-models list, so an entry
+        found under Ollama must not resurface as a suggestion when Matricxon becomes active, whether it was
+        noticed on disk or searched by hand.
+        """
         from app.services.image_model_service import ImageModelStore  # lazy: it imports this module
 
         tag = self.build_tag(repo_id, filename)
@@ -139,17 +121,17 @@ class ExtendedModelCatalog:
         return entry
 
     async def _probe_entry(self, repo_id: str, filename: str, proxy_url: str | None) -> dict | None:
-        """The real Hugging Face lookup + GGUF header probe behind add() — returns None if `filename` is no
-        longer listed in `repo_id` (the caller decides whether that's a hard error or an acceptable fallback).
-        `note` isn't set here — add() sets it based on install status, which this method has no view of."""
+        """The Hugging Face lookup + GGUF header probe behind add; None if `filename` is no longer in `repo_id`
+        (the caller decides if that's an error). `note` is set by add from install status.
+        """
         tag = self.build_tag(repo_id, filename)
         repo = await HuggingFaceCatalogSearch.repo_files(repo_id, proxy_url)
         matched = next((f for f in repo["files"] if f["filename"] == filename), None)
         if matched is None:
             return None
         if repo.get("is_image"):
-            # A diffusion model: no chat-engine GGUF header to probe — it installs into the image engine's own
-            # store (see ImageModelStore), whatever chat engine is active.
+            # A diffusion model: no chat-engine GGUF header; it installs into the image engine's store
+            # (ImageModelStore), whatever chat engine is active.
             return {
                 "tag": tag,
                 "kind": "image",
@@ -161,9 +143,8 @@ class ExtendedModelCatalog:
         probed = await HuggingFaceModelProbe.probe(repo_id, filename, proxy_url)
         architecture = probed["architecture"]
         is_projector = architecture == "clip" if architecture else matched.get("is_projector", False)
-        # "(vision projector)" used to be baked into `family` as plain text for is_projector - now a real
-        # badge instead (renderModelRow's is_projector check in settings.js, shared with the installed-catalog
-        # equivalent in installed_projector_catalog.py), so this is just the plain display name unconditionally.
+        # "(vision projector)" is now a badge (settings.js renderModelRow is_projector, shared with
+        # installed_projector_catalog.py), so this is just the plain display name.
         display_name = self._repo_display_name(repo_id)
         family = display_name
         parameter_size = None if is_projector else repo["parameter_size"]
@@ -173,8 +154,8 @@ class ExtendedModelCatalog:
             "parameter_size": parameter_size,
             "download_gb": matched["download_gb"],
             "is_projector": is_projector,
-            # Same "repo also ships an mmproj sidecar" signal the HF file picker's own +Vision badge uses (see
-            # HuggingFaceCatalogSearch.repo_files) — Ollama auto-pairs it on pull, Matricxon pulls it alongside.
+            # Same "repo ships an mmproj sidecar" signal as the HF file picker's +Vision badge
+            # (HuggingFaceCatalogSearch.repo_files); Ollama auto-pairs it on pull, Matricxon pulls it alongside.
             "vision": not is_projector and any(f.get("is_projector", False) for f in repo["files"]),
             "architecture": architecture,
             "quantizations": probed["quantizations"],
@@ -186,24 +167,22 @@ class ExtendedModelCatalog:
         await self._save(entries)
 
     async def clear(self) -> None:
-        """Empties the "Browse more models" suggestions — called on any engine change or Ollama/Matricxon mode
-        switch or restart. Auto-registered entries (ALREADY_INSTALLED_NOTE) are kept: they're never shown as
-        suggestions (see build), but they cache an installed model's real name/size, and dropping them made the
-        next Model tab load re-look-up every installed model on Hugging Face (~30s, confirmed live)."""
-        # Image-model entries are engine-independent (they install into the image engine), so they survive too.
+        """Empties the "Browse more models" suggestions on any engine change, mode switch or restart. Auto-registered
+        entries (ALREADY_INSTALLED_NOTE) stay: never shown as suggestions (see build), but they cache an installed
+        model's name/size, and dropping them made the next Model tab load re-query Hugging Face (~30s).
+        """
+        # Image-model entries are engine-independent, so they survive too.
         kept = [
             e for e in await self.list() if e.get("note") == self.ALREADY_INSTALLED_NOTE or e.get("kind") == "image"
         ]
         await self._save(kept)
 
     async def backfill_discovered_via_engine(self, tag: str, engine_name: str) -> None:
-        """Stamps `discovered_via_engine` onto an already-registered entry that predates this field entirely
-        (added before 2026-09-30, back when add() never recorded it at all) - called only while `tag` is
-        positively confirmed installed under `engine_name` right now (see ChatModelCatalogBuilder.build's own
-        auto-discovered loop), the one moment this app has real, live ground truth for which engine actually
-        has it; there's no way to recover that fact later, once it's uninstalled. A pre-2026-09-30 entry never
-        had this key at all - checked as real key *absence*, not `entry.get(...) is None`, since every entry
-        add() creates now always sets it to a real engine name, never None. A no-op once backfilled."""
+        """Stamps `discovered_via_engine` onto an entry registered before: while `tag` is confirmed
+        installed under `engine_name` (ChatModelCatalogBuilder.build's auto-discovered loop): the only moment the
+        engine is known; it can't be recovered once uninstalled. Checked as key *absence* (new entries always set
+        a real name). No-op once backfilled.
+        """
         entries = await self.list()
         changed = False
         for entry in entries:
@@ -214,19 +193,14 @@ class ExtendedModelCatalog:
             await self._save(entries)
 
     async def build(self, user: User) -> list[CatalogEntry]:
-        """Every admin-added entry not yet installed under the active engine and relevant to it, not hidden
-        from `user` — the extended-catalog analogue of ChatModelCatalogBuilder.build, and deliberately as
-        engine-specific as that one already is (both "not yet installed" and "relevant" below check only the
-        currently active engine, the same way the installed-models list above this searchbox always has).
+        """Admin-added entries not installed under the active engine, relevant to it and not hidden from `user`; the
+        engine-specific analogue of ChatModelCatalogBuilder.build.
 
-        Real, confirmed gap this closes (2026-09-30, two rounds): every entry now records which engine was
-        active when it was added (see add's own docstring) - a tag discovered installed under Matricxon, or
-        one an admin manually searched Hugging Face for and added while Ollama was active, must not resurface
-        as a fresh "Browse more models" suggestion the moment a *different* engine becomes active, even once
-        it's no longer installed anywhere at all - there's no live signal left to say otherwise once
-        uninstalled, so the engine it was added under is the only real answer left for "is this actually new
-        to this engine" (see backfill_discovered_via_engine for a pre-2026-09-30 entry missing this fact
-        entirely)."""
+        Closes a gap (two rounds): entries record the engine active when added (see add), so a tag
+        found installed under Matricxon, or added by hand while Ollama was active, doesn't resurface as a new
+        "Browse more models" suggestion under another engine, even once uninstalled everywhere: the recorded engine
+        is the only remaining answer to "is this new to this engine" (see backfill_discovered_via_engine).
+        """
         installed_models = await list_models()
         installed_tags = {m["name"] for m in installed_models}
         active_engine_name = registry.active().name
@@ -242,12 +216,12 @@ class ExtendedModelCatalog:
             if tag in hidden_tags and not is_admin:
                 continue
             if entry.get("kind") == "image":
-                continue  # shown in Settings > Model's own Diffusion models section instead (see ImageModelStore)
+                continue  # shown in Settings > Model's Diffusion models section instead (ImageModelStore)
             if tag in installed_tags:
                 continue
             if entry.get("note") == self.ALREADY_INSTALLED_NOTE:
-                # Registered only because it was installed (auto-discovery); once uninstalled it's not a
-                # suggestion, just a leftover.
+                # Registered only because it was installed (auto-discovery); once uninstalled it's a leftover, not a
+                # suggestion.
                 continue
             discovered_via_engine = entry.get("discovered_via_engine")
             if discovered_via_engine is not None and discovered_via_engine != active_engine_name:
@@ -267,9 +241,9 @@ class ExtendedModelCatalog:
                     family=entry.get("family") or "Other",
                     vendor=self._vendor_from_tag(tag),
                     tag=tag,
-                    # A real "?" for a genuinely-unknown non-projector parameter count (a probe re-run that
-                    # failed, see add()'s own fallback above) - never "?" for a projector though, which now
-                    # reads via its own badge instead of parameter_size (see _probe_entry's own comment).
+                    # "?" for an unknown non-projector parameter count (a failed probe re-run, see add's fallback);
+                    # projectors
+                    # use a badge instead (see _probe_entry).
                     parameter_size="" if is_projector else entry.get("parameter_size") or "?",
                     context_length=None,
                     download_gb=entry.get("download_gb"),
@@ -290,9 +264,9 @@ class ExtendedModelCatalog:
         return result
 
     async def find(self, tag: str) -> CuratedModel | None:
-        """Same shape app.model_catalog.CuratedCatalog.find returns, so a caller resolving a tag across both the
-        curated catalog and this admin-added one (see app/routers/settings.py's pull_model) can treat them
-        identically."""
+        """Same shape as CuratedCatalog.find, so callers resolving a tag across both catalogs (routers/settings.py
+        pull_model) treat them alike.
+        """
         entry = next((e for e in await self.list() if e["tag"] == tag), None)
         if entry is None:
             return None

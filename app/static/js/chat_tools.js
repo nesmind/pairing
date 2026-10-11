@@ -1,13 +1,8 @@
-/**
- * Chat page: MCP tool support. ToolBlocks shows the tool calls a reply made (a collapsible block at the
- * top of its bubble); ToolToggle is the composer's "Tools" switch that turns tools on for a conversation
- * (conversation.params.use_tools, switched from a popover that also lists the tools — see app/services/tool_loop_service.py). Uses api() from app.js.
- */
+/* Chat page MCP tool support. ToolBlocks shows a reply's tool calls (a collapsible block at the top of its bubble); ToolToggle is the composer's "Tools" switch (conversation.params.use_tools), turned on from a popover that also lists the tools (see app/services/tool_loop_service.py). Uses api from app.js. */
 class ToolBlocks {
   static RESULT_PREVIEW_CHARS = 2000;
 
-  /** Draws `bubble._toolEvents` as a block at the top of the bubble (replacing any earlier one). Called
-   * after every renderReplyBody, which rewrites the bubble's contents. */
+  /* Draws `bubble._toolEvents` as a block at the top of the bubble, replacing any earlier one. Called after every renderReplyBody, which rewrites the bubble. */
   static render(bubble) {
     bubble.querySelector(":scope > .tool-blocks")?.remove();
     const events = bubble._toolEvents;
@@ -39,7 +34,7 @@ class ToolBlocks {
     return entry;
   }
 
-  /** A live `tool` event for a bubble that is still streaming. */
+  /* A live `tool` event for a still-streaming bubble. */
   static add(bubble, event) {
     bubble._toolEvents = [...(bubble._toolEvents || []), event];
     ToolBlocks.render(bubble);
@@ -69,7 +64,7 @@ class ToolToggle {
     });
   }
 
-  /** Called when a conversation is opened: show the switch only if some MCP tool exists. */
+  /* Called when a conversation opens: show the switch only if some MCP tool exists. */
   async sync(conversationId, conversation, canManage) {
     this.conversationId = conversationId;
     this.params = conversation.params || {};
@@ -81,7 +76,7 @@ class ToolToggle {
     } catch (_) {
       /* no tools -> no switch */
     }
-    if (this.conversationId !== conversationId) return; // the user moved on while this loaded
+    if (this.conversationId !== conversationId) return;
     this.tools = info.tools;
     this.newTools = info.new_tools;
     this.button.classList.toggle("hidden", !info.enabled || info.tools.length === 0);
@@ -99,7 +94,7 @@ class ToolToggle {
     this.button.title = this.on ? "Tools are on for this chat" : "Tools are off for this chat";
   }
 
-  /** The popover: the on/off switch plus every tool the model would be offered. */
+  /* The popover: the on/off switch and every tool the model would be offered. */
   drawPopover(message = "") {
     const head = document.createElement("div");
     head.className = "flex items-center justify-between gap-2 text-slate-200 text-sm";
@@ -134,8 +129,7 @@ class ToolToggle {
     this.popover.replaceChildren(head, note, ...items, ...this.newToolsNotice());
   }
 
-  /** When an admin added tools after this chat started: suggest them, but only change the chat on request, since
-   * a new tool list makes the model re-read the whole chat once. */
+  /* If an admin added tools after this chat started, suggest them but change the chat only on request: a new tool list makes the model re-read the whole chat once. */
   newToolsNotice() {
     if (!this.newTools.length) return [];
     const box = document.createElement("div");
@@ -171,8 +165,8 @@ class ToolToggle {
   }
 
   async flip() {
-    // Tools sit at the start of the prompt: switching them on or off in a chat that already has messages makes the
-    // engine re-read all of it on the next reply. Say so and let the person choose.
+    // Tools sit at the start of the prompt, so switching them in a chat with messages makes the engine re-read it all
+    // on the next reply. Say so and let the person choose.
     const turningOn = !this.on;
     const rereads = typeof activeHasMessages !== "undefined" && activeHasMessages;
     if (rereads && !confirm(`Turning tools ${turningOn ? "on" : "off"} changes this chat's prompt, so its next reply will re-read the whole chat (slower). Continue?`)) {

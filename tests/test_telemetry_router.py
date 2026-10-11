@@ -1,11 +1,8 @@
-"""Unit test for app/routers/telemetry.py — called directly, not through
-a TestClient/ASGI app (see tests/test_instance_proxy_http.py's own
-docstring on why this project doesn't use that pattern). Real
-aggregation coverage lives in tests/test_telemetry_service.py; this file
-only proves the router is admin-only, same access-control decision as
-app/routers/stats.py (see that file's own test for why a direct
-require_admin call, not a router call with a plain `_user`, is what
-actually proves this)."""
+"""Test for routers/telemetry.py, called directly, not via TestClient/ASGI (see tests/test_instance_proxy_http.py).
+The aggregation is in tests/test_telemetry_service.py; this proves only that the router is admin-only, as
+routers/stats.py
+(see its test on why a direct require_admin call, not a router call with a plain `_user`, proves it).
+"""
 
 import pytest
 from fastapi import HTTPException

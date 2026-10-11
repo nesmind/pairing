@@ -1,6 +1,7 @@
-"""/settings (user level, for every account) and /admin-settings (admins only), the same template."""
+"""/settings (user level, every account) and /admin-settings (admins only), the same template."""
 
 import re
+from pathlib import Path
 
 import pytest
 from fastapi.responses import RedirectResponse
@@ -47,7 +48,7 @@ async def test_admin_settings_has_the_admin_tabs_and_the_admin_models_page(db, a
     assert _tabs(response) == ["model", "system", "external-servers", "mcp-servers", "users", "channels"]
     assert 'id="hf-search-input"' in html and 'id="mcp-panel"' in html
     assert "will not affect other users" not in html
-    # truly separate: none of the user-level panels or their controls are in this page at all
+    # truly separate: none of the user-level panels or controls are in this page
     for user_only in ("tab-behavior", "tab-knowledge", "tab-account", "save-bar", "rag-top-k", "account-timezone"):
         assert f'id="{user_only}"' not in html
 
@@ -57,3 +58,12 @@ async def test_a_regular_user_is_sent_back_from_admin_settings(db, user):
     response = await pages.admin_settings_page(_request(user.id), db=db)
 
     assert isinstance(response, RedirectResponse) and response.headers["location"] == "/settings"
+
+
+@pytest.mark.asyncio
+async def test_matricxon_form_has_the_cache_folder_field_and_the_script_keeps_cluster_role(db, admin_user):
+    html = (await pages.admin_settings_page(_request(admin_user.id), db=db)).body.decode()
+    assert 'data-field="prompt_cache_path"' in html
+    script = (Path(__file__).parent.parent / "app" / "static" / "js" / "settings.js").read_text()
+    assert "prompt_cache_path:" in script and "cluster_role: section.dataset.clusterRole" in script
+    assert 'getElementById("matricxon-cache-panel")' in script

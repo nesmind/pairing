@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-#
-# Restarts the pAIring app — stop.sh then start.sh. Needed after any backend (Python) change, since the
-# running server keeps the old code in memory.
+# Restarts the pAIring app (stop.sh then start.sh). Needed after any backend (Python) change, since the running server
+# keeps the old code in memory.
 #
 # Usage: bash scripts/restart.sh
 

@@ -2,7 +2,7 @@
 
 Revision ID: 7bbd7485d7d8
 Revises: 6d4212846f5c
-Create Date: 2026-09-09 12:28:08.622647
+Create Date: 12:28:08.622647
 
 """
 
@@ -10,7 +10,6 @@ import sqlalchemy as sa
 
 from alembic import op
 
-# revision identifiers, used by Alembic.
 revision = "7bbd7485d7d8"
 down_revision = "6d4212846f5c"
 branch_labels = None
@@ -44,13 +43,8 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("channel_id", "user_id", name="uq_channel_member_channel_user"),
     )
-    # batch mode (rather than plain op.add_column/create_unique_constraint/
-    # create_foreign_key): SQLite has no ALTER TABLE support for adding a
-    # constraint to an existing table — only batch mode's copy-and-move
-    # strategy can do it there. Explicit constraint names (rather than
-    # autogenerate's None) so downgrade() can drop them by name on every
-    # backend, including MySQL where an unnamed drop_constraint doesn't
-    # resolve on its own.
+    # batch mode: SQLite can only add constraints by copy-and-move. Explicit names let downgrade
+    # drop them on every backend (MySQL included).
     with op.batch_alter_table("conversations", schema=None) as batch_op:
         batch_op.add_column(sa.Column("channel_id", sa.String(length=32), nullable=True))
         batch_op.create_unique_constraint("uq_conversations_channel_id", ["channel_id"])

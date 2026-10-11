@@ -1,10 +1,5 @@
-"""
-Settings > External servers > ComfyUI admin endpoints: how to launch
-ComfyUI on this machine, and starting/stopping/observing the actual
-subprocess. See app/services/comfyui_service.py for the supervisor
-logic — mirrors app/routers/instances_admin.py's shape, and
-app/routers/ollama_admin.py's identical shape for Ollama's own half of
-the same "External servers" tab.
+"""Settings > External servers > ComfyUI admin: launch config and start/stop/status of its subprocess
+(app/services/comfyui_service.py). Same shape as instances_admin.py and ollama_admin.py.
 """
 
 import json
@@ -52,12 +47,9 @@ async def update_config(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),
 ):
-    """Persists the new config, applies it to this instance's own live
-    pool immediately, and best-effort propagates the same refresh to
-    every other local instance (see app.services.server_pool_broadcast —
-    each instance independently routes its own image-generation requests
-    through app.services.comfyui_pool, so every one of them needs this,
-    not just whichever received this request)."""
+    """Persists the config, applies it to this instance's pool and best-effort broadcasts it to the other local
+    instances (server_pool_broadcast; each routes image requests through comfyui_pool).
+    """
     await settings_service.set_comfyui_config(db, body)
     comfyui_pool.refresh_from_config(body)
     failures = await server_pool_broadcast.broadcast_refresh("/api/settings/comfyui/internal-refresh")
@@ -68,11 +60,9 @@ async def update_config(
 
 @router.post("/internal-refresh", response_model=OkResponse)
 async def internal_refresh(request: Request, db: AsyncSession = Depends(get_db)):
-    """Called only by another local instance's own
-    app.services.server_pool_broadcast.broadcast_refresh — see
-    app/routers/ollama_admin.py's identical endpoint for the full
-    reasoning (loopback-only, never proxied since this path already
-    falls under this router's own EXEMPT_PREFIXES entry)."""
+    """Called only by another local instance's server_pool_broadcast.broadcast_refresh; see ollama_admin.py's
+    identical endpoint (loopback-only, never proxied: path is in EXEMPT_PREFIXES).
+    """
     if request.client is None or request.client.host not in ("127.0.0.1", "::1"):
         raise HTTPException(status_code=403, detail="Internal endpoint — not reachable externally.")
     comfyui_pool.refresh_from_config(await settings_service.get_comfyui_config(db))
@@ -81,9 +71,7 @@ async def internal_refresh(request: Request, db: AsyncSession = Depends(get_db))
 
 @router.get("/check-host", response_model=HostHealthCheck)
 async def check_host(host: str, _admin: User = Depends(require_admin)):
-    """See app/routers/ollama_admin.py's identical endpoint — pings
-    `host` directly (app.services.comfyui_pool.check_host), not limited
-    to a host already saved to the live pool."""
+    """Pings `host` directly (comfyui_pool.check_host), even if not in the live pool. See ollama_admin.py."""
     return HostHealthCheck(host=host, healthy=await comfyui_pool.check_host(host))
 
 
@@ -110,26 +98,21 @@ async def stop(db: AsyncSession = Depends(get_db), _admin: User = Depends(requir
 
 @router.get("/install-defaults", response_model=InstallDefaults)
 async def install_defaults(_admin: User = Depends(require_admin)):
-    """The maintainer-picked repo/version app.services.comfyui_installer
-    falls back to when ComfyUIProcessConfig.install_repo/install_version
-    haven't been overridden — see app/routers/ollama_admin.py's identical
-    endpoint."""
+    """The repo/version comfyui_installer uses unless install_repo/install_version are overridden."""
     return InstallDefaults(repo=COMFYUI_GITHUB_REPO, version=COMFYUI_PINNED_VERSION)
 
 
 @router.get("/available-versions", response_model=AvailableVersions)
 async def available_versions(repo: str | None = None, _admin: User = Depends(require_admin)):
-    """See app/routers/ollama_admin.py's identical endpoint."""
+    """See ollama_admin.py's identical endpoint."""
     return AvailableVersions(versions=await github_releases.list_tags(repo or COMFYUI_GITHUB_REPO))
 
 
 @router.post("/install")
 async def install(db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)):
-    """Clones ComfyUI's pinned tag (or the admin's own install_repo/
-    install_version override, if set) and installs its dependencies,
-    streaming progress over SSE — same wire format as
-    /api/settings/pull-model. See app.services.comfyui_installer's own
-    docstring for exactly what it does and why."""
+    """Clones ComfyUI's pinned tag (or the admin's override) and installs dependencies, streaming progress over
+    SSE like /api/settings/pull-model (see comfyui_installer).
+    """
     config = await settings_service.get_comfyui_config(db)
     proxy_config = await http_proxy_service.get_http_proxy_config(db)
 

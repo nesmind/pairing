@@ -1,10 +1,7 @@
-"""Integration-ish tests for app/services/ollama_client.py's embed and
-chat_stream: confirms both are actually wired through the pool selector
-(app.services.ollama_pool) rather than a single hardcoded host — the
-pool's own routing/failover/cooldown logic is tested directly in
-tests/test_ollama_pool.py; this file only checks the wiring, since a
-refactor mistake here would silently drop pool routing back to a single
-host without any test noticing."""
+"""Integration-ish tests for services/ollama_client.py's embed and chat_stream: both are wired through the pool
+selector (ollama_pool), not a single host. Routing/failover/cooldown logic is in tests/test_ollama_pool.py;
+this checks only the wiring, since a refactor mistake would silently drop pool routing with no test noticing.
+"""
 
 import asyncio
 
@@ -20,11 +17,11 @@ from app.services import ollama_client, ollama_pool, ollama_telemetry
 
 @pytest.fixture
 def span_exporter(monkeypatch):
-    """Wires ollama_telemetry's tracer at a real (in-memory, synchronous)
-    SDK provider instead of the no-op default, so these tests can assert
-    on what chat_stream/embed actually recorded — see
-    app/services/ollama_telemetry.py's own docstring on why tests must
-    never touch the global opentelemetry.trace registry to get this."""
+    """Wires ollama_telemetry's tracer to a real in-memory synchronous SDK provider instead of the no-op default, so
+    tests can
+    assert what chat_stream/embed recorded (see ollama_telemetry on why tests must never touch the global
+    opentelemetry.trace registry).
+    """
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
@@ -44,8 +41,7 @@ class _FakeResponse:
 
 
 class _FakeAsyncClient:
-    """Stands in for httpx.AsyncClient: records the URL each call was
-    made against instead of hitting a real network."""
+    """Stands in for httpx.AsyncClient: records each call's URL instead of using a network."""
 
     def __init__(self, calls: list[str], json_body: dict):
         self._calls = calls
@@ -143,12 +139,10 @@ async def test_embed_records_an_error_span_after_every_attempt_fails(monkeypatch
 
 @pytest.mark.asyncio
 async def test_chat_stream_routes_the_actual_http_call_through_stream_with_failover(monkeypatch):
-    """chat_stream must hand its per-host request logic to
-    ollama_pool.stream_with_failover rather than posting to a fixed host
-    itself — verified here by making the *fake* stream_with_failover
-    call back into chat_stream's own per-host function with a host of
-    its choosing, and checking that host actually shows up in the
-    (fake) HTTP call chat_stream makes."""
+    """chat_stream must give its per-host logic to ollama_pool.stream_with_failover rather than posting to a fixed
+    host: the fake stream_with_failover calls back into chat_stream's per-host function with a host of its choosing,
+    which must appear in the fake HTTP call.
+    """
     seen_hosts: list[str] = []
 
     async def fake_stream_with_failover(make_stream):
@@ -218,8 +212,9 @@ def _chat_params():
 
 
 class _FakeDoneStreamCtx:
-    """A fake NDJSON stream ending with a real Ollama-shaped `done:true` line — so span attribute extraction
-    (gen_ai.usage.*, ollama.*_duration_ns) has real data to pull from."""
+    """A fake NDJSON stream ending with an Ollama-shaped `done:true` line, so span attribute extraction
+    (gen_ai.usage.*, ollama.*_duration_ns) has real data.
+    """
 
     def __init__(self, url):
         pass
@@ -281,7 +276,7 @@ async def test_chat_stream_records_a_successful_span_with_ollama_timing(monkeypa
 @pytest.mark.asyncio
 async def test_chat_stream_records_an_error_span_on_http_failure(monkeypatch, span_exporter):
     async def fake_stream_with_failover(make_stream):
-        # Every host tried, all failing — matches stream_with_failover's own "gives up" contract.
+        # Every host tried, all failing: stream_with_failover's "gives up" contract.
         async for _ in make_stream("http://chosen-by-pool:11434"):
             pass
         raise httpx.ConnectError("boom", request=httpx.Request("POST", "http://x/api/chat"))
@@ -304,12 +299,11 @@ async def test_chat_stream_records_an_error_span_on_http_failure(monkeypatch, sp
 
 @pytest.mark.asyncio
 async def test_chat_stream_does_not_mark_span_error_on_task_cancellation(monkeypatch, span_exporter):
-    """The real cancellation path (see reply_generation_service.py:180 — a detached task's own `async for
-    chunk in chat_stream(...)` cancelled via task.cancel()) throws CancelledError at the exact point that
-    task is suspended, in the *same* context — not a separate gen.aclose() call from a different context,
-    which is a distinct (and, with OTel's contextvars-based span tracking, less well-behaved) scenario. This
-    must not read as an "error" on the dashboard — see ollama_client.py's own comment on why
-    record_exception/set_status_on_exception are off."""
+    """The real cancellation path (reply_generation_service.py:180, a detached task's `async for chunk in
+    chat_stream(...)` cancelled via task.cancel) throws CancelledError where the task is suspended, in the *same*
+    context, not a gen.aclose from another context (a different scenario, less well-behaved with OTel's contextvars
+    span tracking). It must not read as an "error" (see ollama_client.py on record_exception/set_status_on_exception).
+    """
 
     chunk_yielded = asyncio.Event()
 
@@ -317,7 +311,7 @@ async def test_chat_stream_does_not_mark_span_error_on_task_cancellation(monkeyp
         async for chunk in make_stream("http://chosen-by-pool:11434"):
             yield chunk
             chunk_yielded.set()
-            await asyncio.sleep(999)  # never resumes on its own — only via cancellation
+            await asyncio.sleep(999)
 
     async def fake_model_supports_thinking(_model):
         return False
@@ -352,9 +346,8 @@ async def test_chat_stream_does_not_mark_span_error_on_task_cancellation(monkeyp
 
 
 class _RecordingPostClient:
-    """Stands in for httpx.AsyncClient for stop_model's plain POST calls
-    — records (url, json) pairs, optionally raising on a configured host
-    to test that a failure on one host doesn't stop the rest."""
+    """Stands in for httpx.AsyncClient for stop_model's POSTs: records (url, json) pairs, optionally raising on a
+    configured host."""
 
     def __init__(self, calls: list[tuple[str, dict]], fail_hosts: frozenset[str] = frozenset()):
         self._calls = calls
@@ -389,15 +382,13 @@ async def test_stop_model_sends_keep_alive_zero_to_every_configured_host(monkeyp
 
 @pytest.mark.asyncio
 async def test_stop_model_swallows_a_failure_on_one_host_and_still_tries_the_rest(monkeypatch):
-    """A cleanup nicety, not something that should ever raise and mask
-    the real termination reason a caller is already handling — see
-    stop_model's own docstring."""
+    """Cleanup must never raise and mask the real termination reason a caller handles (see stop_model)."""
     calls: list[tuple[str, dict]] = []
     monkeypatch.setattr(ollama_pool, "get_effective_hosts", lambda: ["http://unreachable:11434", "http://host-b:11434"])
     monkeypatch.setattr(
         httpx, "AsyncClient", lambda **_kw: _RecordingPostClient(calls, fail_hosts=frozenset(["http://unreachable"]))
     )
 
-    await ollama_client.stop_model("llava:latest")  # must not raise
+    await ollama_client.stop_model("llava:latest")
 
     assert [url for url, _ in calls] == ["http://unreachable:11434/api/chat", "http://host-b:11434/api/chat"]

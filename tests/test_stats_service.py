@@ -1,7 +1,6 @@
-"""Unit tests for app/services/stats_service.py — every number is a real
-SQL-level count/group_by, so these tests build a handful of rows
-directly and assert the aggregation, rather than exercising any other
-service's own creation logic."""
+"""Tests for services/stats_service.py: every number is a SQL-level count/group_by, so tests build rows directly
+and assert the aggregation, not other services' creation logic.
+"""
 
 from datetime import timedelta
 
@@ -46,9 +45,8 @@ async def test_conversation_stats_splits_personal_and_channel_and_groups_by_mode
     assert summary.conversations.total == 4
     assert summary.conversations.personal == 3
     assert summary.conversations.channel == 1
-    # Two conversations sharing a model aggregate into one entry with
-    # count 2, not two separate entries — and the never-started one
-    # (model=None) is excluded entirely rather than shown as a fake bucket.
+    # Two conversations sharing a model aggregate to one entry with count 2; the never-started one (model=None) is
+    # excluded, not a fake bucket.
     assert _by_key(summary.conversations.by_model, "llama3:latest") == 2
     assert _by_key(summary.conversations.by_model, "gemma:latest") == 1
     assert sum(entry.count for entry in summary.conversations.by_model) == 3
@@ -87,7 +85,7 @@ async def test_user_stats_counts_active_disabled_and_role(db, user, admin_user):
 
     summary = await stats_service.get_stats_summary(db)
 
-    # `user`/`admin_user` fixtures are both active by default.
+    # `user`/`admin_user` are both active by default.
     assert summary.users.total == 3
     assert summary.users.active == 2
     assert summary.users.disabled == 1
@@ -146,10 +144,9 @@ async def test_live_conversation_stats_distinguishes_streaming_and_recent_and_st
 
     summary = await stats_service.get_stats_summary(db)
 
-    # streaming_conv and recent_conv both have a message updated just now,
-    # so both land in recently_active — streaming_conv also counts toward
-    # streaming_now. stale_conv's message falls outside the window and
-    # isn't counted anywhere. total is the union, not the sum.
+    # streaming_conv and recent_conv have a message updated just now, so both are recently_active; streaming_conv also
+    # counts toward streaming_now. stale_conv's message is outside the window and counts nowhere. total is the union,
+    # not the sum.
     assert summary.live_conversations.streaming_now == 1
     assert summary.live_conversations.recently_active == 2
     assert summary.live_conversations.total == 2

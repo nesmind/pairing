@@ -1,4 +1,4 @@
-"""A disabled (hidden) model is refused for regular users, but not for admins."""
+"""A disabled (hidden) model is refused for regular users, not for admins."""
 
 from types import SimpleNamespace
 

@@ -1,5 +1,6 @@
 """Settings > Matricxon saved chat caches: the service fans out to every host through a mocked transport
-(no real Matricxon), and the router maps a service failure onto a 502."""
+(no real Matricxon) and the router maps a service failure to 502.
+"""
 
 import json
 
@@ -38,7 +39,7 @@ async def test_status_sums_files_and_bytes_across_hosts() -> None:
     )
     result = await service.status()
     assert (result.files, result.used_bytes, result.hosts) == (3, 350, 2)
-    assert result.enabled is False  # only on if every host has it on
+    assert result.enabled is False  # on only if every host has it on
     assert (result.budget_mb, result.ttl_hours, result.unreachable) == (4096, 168, [])
 
 
@@ -102,7 +103,7 @@ async def test_router_passes_the_update_through(db, monkeypatch: pytest.MonkeyPa
     await engine_service.set_active_engine(db, "matricxon")
     service, seen = _service(lambda r: httpx.Response(200, json=_state()), [A])
     monkeypatch.setattr(matricxon_cache_persistence.matricxon_pool, "get_effective_hosts", lambda: [A])
-    monkeypatch.setattr(matricxon_cache_admin, "MatricxonCachePersistenceService", lambda: service)
+    monkeypatch.setattr(matricxon_cache_admin, "MatricxonCachePersistenceService", lambda **_kw: service)
     result = await matricxon_cache_admin.update_cache_persistence(
         MatricxonCachePersistenceUpdate(enabled=False), db=db, _admin=None
     )
@@ -132,4 +133,33 @@ async def test_forget_chat_deletes_on_every_host_and_never_raises() -> None:
     assert [(r.method, r.url.path) for r in seen] == [("DELETE", "/api/cache/persistence/chats/conv-1")] * 2
 
     broken, _ = _service(lambda r: httpx.Response(500), [A])
-    await broken.forget_chat("conv-1")  # an unreachable/old host only gets logged
+    await broken.forget_chat("conv-1")  # an unreachable or old host is only logged
+
+
+@pytest.mark.asyncio
+async def test_a_shared_folder_is_counted_once_not_once_per_node() -> None:
+    """In a cluster every node reports the same saved-caches folder: two nodes, six files, still six."""
+    transport = httpx.MockTransport(lambda r: httpx.Response(200, json=_state(6, 149_710_506)))
+    shared = MatricxonCachePersistenceService([A, B], transport, shared_folder=True)
+    result = await shared.status()
+    assert (result.files, result.used_bytes, result.hosts) == (6, 149_710_506, 2)
+    apart = await MatricxonCachePersistenceService([A, B], transport).status()
+    assert (apart.files, apart.used_bytes) == (12, 299_421_012)
+
+
+@pytest.mark.asyncio
+async def test_nodes_that_say_they_share_a_folder_are_counted_once_even_outside_cluster_mode() -> None:
+    def state(folder: str, shared: bool) -> dict:
+        return {**_state(6, 1000), "folder": folder, "shared": shared}
+
+    answers = {A: state("/mnt/x/cache", True), B: state("/mnt/x/cache", True)}
+    transport = httpx.MockTransport(
+        lambda r: httpx.Response(200, json=answers[f"{r.url.scheme}://{r.url.host}:{r.url.port}"])
+    )
+    same = await MatricxonCachePersistenceService([A, B], transport).status()
+    assert (same.files, same.used_bytes) == (6, 1000)
+    answers[B] = state("/mnt/y/cache", True)
+    assert (await MatricxonCachePersistenceService([A, B], transport).status()).files == 12
+    answers[B] = state("/mnt/x/cache", False)
+    answers[A] = state("/mnt/x/cache", False)
+    assert (await MatricxonCachePersistenceService([A, B], transport).status()).files == 12

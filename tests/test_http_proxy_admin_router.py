@@ -1,6 +1,5 @@
-"""Unit tests for app/routers/http_proxy_admin.py — called directly, not
-through a TestClient/ASGI app (see tests/test_instance_proxy_http.py's
-own docstring on why this project doesn't use that pattern)."""
+"""Tests for routers/http_proxy_admin.py, called directly, not via TestClient/ASGI (see
+tests/test_instance_proxy_http.py)."""
 
 import pytest
 

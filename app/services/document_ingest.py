@@ -1,8 +1,5 @@
-"""
-Chunks one document's text and embeds every chunk, writing the resulting
-Document/Chunk rows. See app/services/document_extract.py for the text-
-to-chunks step this builds on, and app/services/document_sync.py for the
-folder-level orchestration that calls this once per new/changed file.
+"""Chunks one document's text, embeds every chunk and writes the Document/Chunk rows. Text step:
+document_extract.py; folder orchestration (once per new/changed file): document_sync.py.
 """
 
 from pathlib import Path
@@ -15,28 +12,19 @@ from app.models import Chunk, Document
 from app.services.document_extract import chunk_text, vector_to_bytes
 from app.services.inference_client import InferenceError, embed
 
-# How each user's documents stay private: everyone's private uploads
-# live in their own subfolder under KNOWLEDGE_DIR/users/, and only ever
-# get matched against that same user's chats (see
-# app/services/document_retrieval.py). Anything an admin puts in
-# KNOWLEDGE_DIR/global/ instead is visible to every user — the one
-# shared part of an otherwise per-user knowledge base (see
-# Document.owner_id: NULL there means "global").
+# Privacy: private uploads live in KNOWLEDGE_DIR/users/<id>/ and match only that user's chats
+# (document_retrieval.py). KNOWLEDGE_DIR/global/ (admin) is visible to everyone (Document.owner_id NULL = "global").
 GLOBAL_DIR = KNOWLEDGE_DIR / "global"
 USERS_DIR = KNOWLEDGE_DIR / "users"
 GLOBAL_DIR.mkdir(parents=True, exist_ok=True)
 USERS_DIR.mkdir(parents=True, exist_ok=True)
 
-# How many files a single upload request may contain (see
-# app/services/document_upload.py) — a small, deliberate cap so one
-# upload can't accidentally queue up a huge, slow embedding batch.
+# Max files per upload request (document_upload.py), so one upload can't queue a huge, slow embedding batch.
 MAX_UPLOAD_FILES = 5
 
 
 def user_folder(user_id: str) -> Path:
-    """The folder holding one user's own private documents, created on
-    first use — most users never upload anything, so there's no reason
-    to pre-create every registered user's folder up front."""
+    """One user's private documents folder, created on first use (most users never upload)."""
     path = USERS_DIR / user_id
     path.mkdir(parents=True, exist_ok=True)
     return path
@@ -52,35 +40,19 @@ async def ingest_document_stream(
     size_bytes: int,
     embedding_model: str,
 ):
-    """Chunks `text` and embeds every chunk, and only *then* writes
-    anything to the database — either replacing `existing`'s chunks or
-    creating a brand-new Document. Doing all the (slow, failure-prone)
-    embedding calls before any write means a mid-way ML engine failure
-    leaves the database exactly as it was, so the file is naturally
-    retried on the next sync rather than getting stuck in a half-
-    ingested state.
+    """Chunks `text`, embeds every chunk, and only *then* writes to the DB (replacing `existing`'s chunks or
+    creating a Document). Embedding is slow and failure-prone, so a mid-way engine failure leaves the DB as it
+    was and the file is retried at the next sync.
 
-    An async generator, not a plain function: it yields
-    `{"stage": "chunk_progress", "completed", "total"}` after every
-    single chunk's embedding call. Embedding one chunk can itself take
-    a noticeable moment on CPU-only hardware, and a real document can
-    easily be dozens of chunks — without this, a caller streaming
-    progress to a client (see document_sync.sync_folder_stream / the
-    upload endpoint) would have nothing to report for the file's
-    *entire* processing time, which looks exactly like the request
-    hanging. The final item yielded is always
-    `{"stage": "ingested", "skipped_chunks": int}`.
+    An async generator: it yields `{"stage": "chunk_progress", "completed", "total"}` after each chunk's
+    embedding. On CPU a chunk takes a noticeable moment and a document may have dozens, so a caller streaming
+    progress (document_sync.sync_folder_stream / the upload endpoint) would otherwise look hung. The last item
+    is `{"stage": "ingested", "skipped_chunks": int}`.
 
-    A chunk whose own embedding call fails is skipped rather than
-    failing the whole document — RAG_CHUNK_SIZE (app/config.py) leaves
-    real margin under the embedding model's context limit, but how many
-    tokens a chunk of a given length produces depends on the *script*
-    (Hebrew and other non-Latin text can run 3-4x more tokens per
-    character than English against a Latin-oriented tokenizer), so an
-    occasional chunk can still overflow it despite that margin. Without
-    this, one such chunk anywhere in a long document — even near the
-    very end — would discard every other chunk's already-successful
-    embedding work along with it.
+    A chunk whose embedding fails is skipped, not the whole document. RAG_CHUNK_SIZE (app/config.py) leaves
+    margin under the model's context limit, but tokens per character depend on script (Hebrew and other
+    non-Latin text can be 3-4x English), so a chunk can still overflow. Otherwise one such chunk, even near the
+    end, would discard all the other embeddings.
     """
     pieces = chunk_text(text)
     kept: list[tuple[str, list[float]]] = []
@@ -104,7 +76,7 @@ async def ingest_document_stream(
     else:
         document = Document(filename=filename, content_hash=content_hash, owner_id=owner_id)
         db.add(document)
-        await db.flush()  # assigns document.id without committing yet
+        await db.flush()  # assigns document.id without committing
 
     for piece, vector in kept:
         db.add(Chunk(document_id=document.id, text=piece, embedding=vector_to_bytes(vector)))

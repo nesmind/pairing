@@ -1,5 +1,4 @@
-"""GET/PUT shapes for the Connectors page (see app/routers/connectors.py and
-app.services.connectors for what a Connector actually is)."""
+"""GET/PUT shapes for the Connectors page (routers/connectors.py, services.connectors)."""
 
 from typing import Literal
 
@@ -9,8 +8,7 @@ from app.schemas.common import EngineName
 
 
 class ConnectorConfigFieldOut(BaseModel):
-    """Mirrors app.services.connectors.base.ConnectorConfigField — describes one
-    form field, never a saved value (see ConnectorOut.values for that)."""
+    """Mirrors connectors.base.ConnectorConfigField: one form field, never a saved value (see ConnectorOut.values)."""
 
     name: str
     label: str
@@ -21,10 +19,9 @@ class ConnectorConfigFieldOut(BaseModel):
 
 
 class ConnectorOut(BaseModel):
-    """One entry in GET /api/connectors: a connector's static definition plus its
-    live admin-configured state. `values` is whatever
-    app.services.connector_config_service.get_config_for_display returns — a secret
-    field appears as `has_<field>: bool`, never its real value."""
+    """One entry of GET /api/connectors: static definition plus admin state. `values` comes from
+    connector_config_service.get_config_for_display; secrets appear as `has_<field>: bool`.
+    """
 
     id: str
     engine_name: EngineName
@@ -35,9 +32,8 @@ class ConnectorOut(BaseModel):
     configured: bool
     enabled: bool
     ready: bool
-    # The last "Test connection" action's result against the *currently saved* config — False with no message
-    # means never tested, or the config has changed since (see connector_config_service.set_config's
-    # reset-on-save behavior).
+    # Result of the last "Test connection" on the saved config. False with no message = never tested or config
+    # changed since (connector_config_service.set_config resets on save).
     last_test_passed: bool = False
     last_test_message: str | None = None
 
@@ -47,9 +43,7 @@ class ConnectorsResponse(BaseModel):
 
 
 class ConnectorConfigUpdate(BaseModel):
-    """PUT /api/connectors/{id}/config body — field name to submitted value. A
-    missing/blank secret field means "keep the existing saved value" (see
-    connector_config_service.set_config)."""
+    """PUT /api/connectors/{id}/config body: field name to value. A missing/blank secret keeps the saved value."""
 
     values: dict[str, str]
 

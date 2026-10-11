@@ -1,19 +1,8 @@
-"""
-GET /health — a reverse-proxy-facing readiness check, not part of the
-app's own UI. Reports whether *this* instance can actually serve a real
-chat request right now: at least one of the currently *active* engine's
-effective host(s) reachable (see app.services.engines.registry, resolved
-via app.services.engine_service — local or remote per Settings >
-External servers), and the database reachable — not just "is the
-process alive," which a plain TCP/HTTP check to any other route would
-already tell you.
+"""GET /health: reverse-proxy readiness. Reports whether this instance can serve a chat now: at least one host
+of the active engine reachable (engines.registry, engine_service) and the database reachable.
 
-Deliberately unauthenticated (infrastructure polls this, not logged-in
-users) and cheap (a short-timeout GET per host, a plain `SELECT 1`), so
-it's safe for a proxy to hit every few seconds. Returns 200 when
-healthy, 503 otherwise — the status code a reverse proxy actually looks
-at to decide whether to keep routing here; the body is for a human
-debugging why.
+Unauthenticated and cheap (short-timeout GET per host, `SELECT 1`) so proxies can poll often.
+200 when healthy, 503 otherwise (what proxies act on); the body is for humans.
 """
 
 from fastapi import APIRouter, Depends

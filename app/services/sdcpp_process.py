@@ -1,5 +1,6 @@
-"""Process primitives for the stable-diffusion.cpp `sd-server` subprocess — tracking file + spawn. Liveness and
-termination are reused from comfyui_process (they only need a pid and a path that appears in its cmdline)."""
+"""Process primitives for the stable-diffusion.cpp `sd-server` subprocess: tracking file and spawn. Liveness and
+termination reuse comfyui_process (they need only a pid and a path in its cmdline).
+"""
 
 import json
 import logging
@@ -18,7 +19,7 @@ __all__ = ["is_alive", "terminate", "read_tracking", "write_tracking", "spawn", 
 logger = logging.getLogger("llama_chat")
 
 _TRACKING_FILE = DATA_DIR / "sdcpp.json"
-_STARTUP_WAIT_S = 30.0  # a big model can take a while to load before sd-server listens
+_STARTUP_WAIT_S = 30.0
 _POLL_S = 0.25
 _READY_MARKER = "listening on"
 # sd-server log lines meaning the model file itself isn't understood (not a setup problem)
@@ -68,8 +69,9 @@ _SPLIT_FLAGS = {"--llm", "--vae", "--t5xxl", "--clip_l", "--clip_g", "--clip_vis
 
 
 def build_argv(binary_path: str, model_path: str, extra_args: str | None) -> list[str]:
-    """Listens on SDCPP_HOST's port (loopback only unless extra_args overrides -l). Split models (separate
-    text encoder/VAE given) load via --diffusion-model: bare-named tensors need its name prefix to be detected."""
+    """Listens on SDCPP_HOST's port (loopback unless extra_args overrides -l). Split models (separate text
+    encoder/VAE) load via --diffusion-model: bare-named tensors need its name prefix to be detected.
+    """
     port = urlparse(SDCPP_HOST).port or 8189
     extra = shlex.split(extra_args or "")
     for flag, path in ImageCompanions.args(Path(model_path)).items():  # a known split model's encoder/VAE
@@ -89,9 +91,10 @@ def build_argv(binary_path: str, model_path: str, extra_args: str | None) -> lis
 
 
 def spawn(binary_path: str, model_path: str, extra_args: str | None) -> int | None:
-    """Detached launch, cwd = the binary's own dir (its shared libs sit beside it). Blocking: waits until
-    sd-server reports it is listening. None if it can't be launched; raises StartupError if it exits while
-    starting (bad/unsupported model, port in use) — details in data/logs/sdcpp.log."""
+    """Detached launch, cwd = the binary's dir (its shared libs sit beside it). Blocking: waits until sd-server
+    listens. None if it can't launch; StartupError if it exits while starting (bad/unsupported model, port in use),
+    with details in data/logs/sdcpp.log.
+    """
     log_dir = DATA_DIR / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / "sdcpp.log"

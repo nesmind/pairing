@@ -1,5 +1,6 @@
-"""Persistence for the image-engine settings: which engine serves the Images page, and the stable-diffusion.cpp
-config (see settings_service for ComfyUI's). Split out of settings_service to keep it under the file-size rule."""
+"""Persistence for image-engine settings: which engine serves the Images page, and the stable-diffusion.cpp
+config (ComfyUI's is in settings_service). Split from settings_service for the file-size rule.
+"""
 
 import os
 from pathlib import Path
@@ -11,8 +12,8 @@ from app.schemas import DEFAULT_IMAGE_ENGINE, ImageEngineName, SdCppConfig
 
 ACTIVE_IMAGE_ENGINE_KEY = "active_image_engine"
 SDCPP_CONFIG_KEY = "sdcpp_config"
-# Engines that may be selected/used. ComfyUI is switched off ahead of its removal: its code is still here, but it
-# can't be chosen, and an install that had saved it falls back to the default instead of staying stuck on it.
+# Selectable engines. ComfyUI is switched off ahead of removal: its code remains but can't be chosen, and a saved
+# selection falls back to the default.
 ENABLED_IMAGE_ENGINES: tuple[str, ...] = ("sdcpp",)
 
 
@@ -32,7 +33,7 @@ async def get_active_image_engine(db: AsyncSession) -> ImageEngineName:
 
 
 async def set_active_image_engine(db: AsyncSession, engine: ImageEngineName) -> None:
-    """ValueError (-> 400) for an engine that is switched off."""
+    """ValueError (-> 400) for a switched-off engine."""
     if engine not in ENABLED_IMAGE_ENGINES:
         raise ValueError(f"The {engine} image engine is no longer available.")
     await _put(db, ACTIVE_IMAGE_ENGINE_KEY, {"engine": engine})
@@ -67,8 +68,9 @@ async def images_root(db: AsyncSession, default: Path) -> Path:
 
 
 async def find_image(db: AsyncSession, default: Path, relative: str) -> Path | None:
-    """A saved image's file: under the configured root, else under `default` (images made before the folder was
-    changed stay where they were - changing it never moves them). None if neither has it."""
+    """A saved image's file: under the configured root, else `default` (images made before a folder change stay
+    put; it never moves them). None if neither has it.
+    """
     for root in (await images_root(db, default), default):
         if (root / relative).is_file():
             return root / relative

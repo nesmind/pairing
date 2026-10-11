@@ -1,7 +1,4 @@
-"""Conversation + Message models. Kept in one file since a Message never
-exists without its parent Conversation and the two are always reasoned
-about together (see app/services/chat_service.py,
-app/services/conversation_service.py)."""
+"""Conversation and Message models, together because a Message never exists without its Conversation."""
 
 from sqlalchemy import JSON, Column, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import relationship
@@ -12,52 +9,29 @@ from app.models._base import ID_LEN, new_id, utcnow
 
 
 class Conversation(Base):
-    """One chat session (what shows up as one entry in the sidebar)."""
+    """One chat session (one sidebar entry)."""
 
     __tablename__ = "conversations"
 
     id = Column(String(ID_LEN), primary_key=True, default=new_id)
-    # Whose chat this is — every conversation query in
-    # app/services/conversation_service.py and app/services/chat_service.py
-    # filters by this, so one user never sees another's chats. Nullable
-    # at the database level for two reasons: the one-time migration of
-    # conversations that existed before multi-user support (see
-    # app/database.py:init_db), and — the only ongoing case — a channel
-    # conversation (channel_id set below), which has no single owner.
-    # Exactly one of owner_id/channel_id is set for any row the
-    # application creates.
+    # Owner; every query in conversation_service.py / chat_service.py filters by it. Nullable for
+    # pre-multi-user data and channel conversations. Exactly one of owner_id/channel_id is set on new rows.
     owner_id = Column(String(ID_LEN), ForeignKey("users.id"), nullable=True)
-    # Set instead of owner_id when this is a channel's shared thread (see
-    # app/models/channel.py) — access is then gated by channel
-    # membership rather than ownership (see
-    # app.services.conversation_service.get_accessible_conversation_or_404).
-    # Nullable + unique: at most one conversation per channel.
+    # Set instead of owner_id for a channel's shared thread; access is by membership
+    # (conversation_service.get_accessible_conversation_or_404). Unique: one per channel.
     channel_id = Column(String(ID_LEN), ForeignKey("channels.id"), nullable=True, unique=True)
-    # Short auto-generated label shown in the sidebar (see
-    # app/services/chat_service.py: maybe_generate_title). Falls back to
-    # "New chat" until the first exchange completes.
+    # Auto-generated sidebar label (chat_service.maybe_generate_title); "New chat" until the first exchange.
     title = Column(String(255), default="New chat")
-    # Which model this conversation talks to. Stored per-
-    # conversation (not just globally) so old chats keep using the model
-    # they were started with even if the user's default changes later.
+    # Model for this conversation; stored per chat so old chats keep their model.
     model = Column(String(255), nullable=True)
-    # The full set of adjustable generation parameters (temperature,
-    # top_p, rag_top_k, ...) for this conversation,
-    # stored as a JSON blob. Starts as a copy of the global defaults and
-    # is overwritten wholesale whenever the user saves the Settings page
-    # for this conversation.
+    # Adjustable generation parameters (temperature, top_p, rag_top_k,...) as JSON: a copy of the
+    # defaults, overwritten when the Settings page is saved for this conversation.
     params = Column(JSON, default=lambda: dict(DEFAULT_GENERATION_PARAMS))
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
-    # One conversation has many messages. `cascade="all, delete-orphan"`
-    # means deleting a conversation also deletes its messages — no
-    # orphaned rows left behind. `lazy="selectin"` (rather than the
-    # default lazy-load-on-attribute-access) so `conversation.messages`
-    # is safe to read under the app's async session without a separate
-    # eager-load at every call site — see app/database.py's docstring on
-    # why this app defaults every commonly-accessed relationship to
-    # selectin loading.
+    # cascade="all, delete-orphan" removes messages with the conversation. lazy="selectin" makes
+    # `conversation.messages` safe under the async session (the app's default for accessed relationships).
     messages = relationship(
         "Message",
         back_populates="conversation",
@@ -65,117 +39,64 @@ class Conversation(Base):
         order_by="Message.created_at",
         lazy="selectin",
     )
-    # A conversation being deleted should take its pins with it — a
-    # NotePin without a live conversation is meaningless (see NotePin),
-    # so this cascades the same way messages does.
+    # Pins are deleted with the conversation (a NotePin without one is meaningless).
     note_pins = relationship(
         "NotePin",
         back_populates="conversation",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    # The channel this conversation belongs to, if any (see channel_id
-    # above). No cascade here — Channel.conversation (the other side of
-    # this relationship) already owns the delete-orphan cascade.
+    # The owning channel, if any. No cascade: Channel.conversation owns delete-orphan.
     channel = relationship("Channel", back_populates="conversation", lazy="selectin")
 
 
 class Message(Base):
-    """One turn in a conversation — either from the user or the model."""
+    """One turn in a conversation, from the user or the model."""
 
     __tablename__ = "messages"
 
     id = Column(String(ID_LEN), primary_key=True, default=new_id)
     conversation_id = Column(String(ID_LEN), ForeignKey("conversations.id"), nullable=False)
-    # "user", "assistant", or "system" — mirrors the ML engine's chat message
-    # roles directly so history can be forwarded to the ML engine unmodified.
+    # "user", "assistant" or "system", as the engine's roles, so history is forwarded unmodified.
     role = Column(String(20), nullable=False)
     content = Column(Text, nullable=False)
-    # Filenames of the documents whose chunks were injected into context
-    # for this reply, if RAG contributed to it (see
-    # app/services/document_service.py). Stored as a JSON list so the
-    # "Sources" note under a reply survives a page reload instead of
-    # only existing for the live stream. Empty/null for user messages
-    # and for assistant replies that didn't use RAG.
+    # Filenames of the documents whose chunks were injected for this reply (JSON list), so the "Sources"
+    # note survives a reload (app/services/document_service.py). Empty for non-RAG replies.
     sources = Column(JSON, nullable=True)
-    # Who actually typed a "user"-role message (see
-    # app.services.chat_service.build_reply_stream) — null for
-    # "assistant"/"system" messages, which have no human sender. Only
-    # meaningful in the UI for a channel's shared conversation, where
-    # more than one member can post — see app/routers/conversations.py's
-    # MessageOut.sender_display_name. A personal chat only ever has one
-    # human participant (its owner), so nothing there needs a per-
-    # message sender label.
+    # Who typed a "user" message (chat_service.build_reply_stream); null for assistant/system. Matters in
+    # channels (MessageOut.sender_display_name); a personal chat has one author.
     sender_id = Column(String(ID_LEN), ForeignKey("users.id"), nullable=True)
-    # The "user"-role Message this assistant reply was generated for —
-    # set once, when reply_generation_service.stream_reply creates the
-    # placeholder, and null for every "user"/"system" message (nothing
-    # points *from* those). The only consumer today is
-    # conversation_service.delete_message: deleting a user message whose
-    # reply is still "streaming" cancels and removes that reply too,
-    # found via this column rather than inferred from timestamps (fragile
-    # once a channel's other members can interleave their own plain
-    # messages — see build_reply_stream's ask_ai=False path — between a
-    # question and its still-generating answer).
+    # The "user" message this assistant reply answers, set when reply_generation_service.stream_reply
+    # creates the placeholder. conversation_service.delete_message uses it to cancel a still-streaming reply
+    # (timestamps are fragile when channel members interleave messages, see build_reply_stream's ask_ai=False).
     reply_to_message_id = Column(String(ID_LEN), ForeignKey("messages.id"), nullable=True)
-    # "streaming" while an assistant reply is still being generated in
-    # the background (see app.services.reply_generation_service, which
-    # sets this for a personal chat and a channel's shared conversation
-    # alike), "complete" once it's finished (the only value any message
-    # created before this column existed ever has), "error" if generation
-    # failed partway through (`content` still holds whatever was
-    # generated before the failure, not necessarily empty), or "deleted"
-    # if a channel admin/manager removed it (see
-    # app.services.conversation_service.delete_message) — soft-deleted
-    # rather than an actual row removal so an already-open poll can still
-    # see the transition and remove a bubble it already rendered; every
-    # other read of the history (app.services.conversation_service.visible_messages)
-    # filters these out entirely.
+    # "streaming" while generating in the background (reply_generation_service), "complete" when done (also
+    # for all older rows), "error" if it failed partway (`content` keeps what was generated), "deleted" if a
+    # channel admin/manager removed it (conversation_service.delete_message). Soft-deleted so open polls can
+    # remove the bubble; conversation_service.visible_messages filters them out.
     status = Column(String(20), nullable=False, default="complete")
-    # Tool calls the model made while writing this reply (MCP), in order, each
-    # {id, server, tool, arguments, result, is_error} — see app.services.tool_loop_service.
-    # Null for every reply that used no tools.
+    # MCP tool calls made while writing this reply, in order: {id, server, tool, arguments, result, is_error}
+    # (app.services.tool_loop_service). Null when no tools were used.
     tool_events = Column(JSON, nullable=True)
-    # Set only on a message shared into a channel from someone's private chat (see
-    # app.services.message_share_service): the role the original had there - "user" (the sharer's own
-    # question) or "assistant" (an AI answer they're passing on). The copy itself is always a plain "user"-role
-    # message from the sharer, so it never triggers an AI reply and reads as theirs in the channel history;
-    # this only drives the small "Shared from a private chat" remark in the UI. Deliberately no link back to
-    # the private conversation - the other members can't open it, and it must stay private.
+    # Set on a message shared into a channel from a private chat (app.services.message_share_service): the
+    # original role, "user" or "assistant". The copy is a plain "user" message from the sharer (never triggers
+    # an AI reply); this only drives the "Shared from a private chat" remark. No link back, to keep the chat private.
     shared_from = Column(String(20), nullable=True)
-    # The real reason a status="error" message failed (e.g. Matricxon's own "not enough memory to load ...: need
-    # ~12.9GB, only 10.9GB available" — see app.services.matricxon_client._error_detail_from_body) — set once, by
-    # app.services.reply_termination_service.mark_error, and null for every non-error message. Before this
-    # column existed, that text only ever reached whoever was watching the live SSE stream at the exact moment
-    # it happened (see reply_broadcast_service.publish_error) — reopening the conversation later, or any other
-    # viewer who wasn't actively watching, saw only chat.js's generic REPLY_FAILED_NOTICE with no way to learn
-    # what actually went wrong. MessageOut.error_message (from_attributes picks this up automatically) is what
-    # lets a reload show the same real detail the live view does.
+    # The real failure reason of a status="error" message (e.g. Matricxon's "not enough memory to load...",
+    # matricxon_client._error_detail_from_body), set by reply_termination_service.mark_error; null otherwise.
+    # Before this column the text reached only live SSE viewers (reply_broadcast_service.publish_error);
+    # MessageOut.error_message now lets a reload show it too.
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=utcnow)
-    # Bumped on every content update — unlike created_at, this changes
-    # again each time a streaming reply's content is flushed (see
-    # reply_generation_service), which is what lets
-    # conversation_service.get_messages_since tell a poller "this
-    # message changed" without needing a separate change-log table.
-    # Nullable at the database level (added via migration to existing
-    # rows with no backfilled value) but always populated by the ORM
-    # default/onupdate below for every row the app itself ever writes.
+    # Bumped on every content update, including streaming flushes (reply_generation_service); lets
+    # conversation_service.get_messages_since report changes without a change log. Nullable for migrated
+    # rows, always set by the ORM default/onupdate.
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
     conversation = relationship("Conversation", back_populates="messages")
-    # A "user"-role message can carry several files now — up to
-    # app.config.MAX_ATTACHMENT_DOCUMENTS documents and
-    # MAX_ATTACHMENT_IMAGES image, combined (see
-    # app.services.chat_attachment_service.save_attachments) — never
-    # populated for an "assistant"/"system" message. `lazy="selectin"`
-    # for the same reason as Conversation.messages above: safe to read
-    # under the async session with no extra query at every call site.
-    # `cascade="all, delete-orphan"` means deleting a Message (or its
-    # parent Conversation, which cascades to Message already) also
-    # deletes its attachment rows — the files themselves are removed
-    # separately by chat_attachment_service, which has no idea a DB
-    # cascade exists.
+    # Files on a "user" message: up to MAX_ATTACHMENT_DOCUMENTS documents and MAX_ATTACHMENT_IMAGES images
+    # (chat_attachment_service.save_attachments); never on assistant/system. selectin as in Conversation.messages.
+    # Cascade deletes the rows; chat_attachment_service removes the files separately.
     attachments = relationship(
         "MessageAttachment",
         back_populates="message",
@@ -183,23 +104,14 @@ class Message(Base):
         order_by="MessageAttachment.filename",
         lazy="selectin",
     )
-    # lazy="selectin" — see Conversation.messages above for why the app
-    # defaults accessed relationships to this under the async session;
-    # sender_display_name below reads message.sender.username/first_name/
-    # last_name directly.
+    # lazy="selectin" (see Conversation.messages); sender_display_name reads sender names.
     sender = relationship("User", lazy="selectin")
 
     @property
     def sender_display_name(self) -> str | None:
-        """Powers MessageOut.sender_display_name — the channel chat
-        sender label (see chat.js: bubbleFor): the sender's first/last
-        name (whichever are set, space-separated) with their username
-        after it in parentheses, e.g. "Alice Smith (asmith)" — or just
-        the bare username if neither name is set. Null for a message
-        with no sender_id. A plain Python property (not a mapped column)
-        since Pydantic's from_attributes mode reads it via getattr()
-        just like a real attribute, and this needs to combine several
-        fields rather than expose any one of them directly."""
+        """For MessageOut.sender_display_name (chat.js bubbleFor): "First Last (username)", or just the username.
+        Null without sender_id. A property (not a column) because it combines several fields.
+        """
         if not self.sender_id:
             return None
         full_name = " ".join(part for part in (self.sender.first_name, self.sender.last_name) if part)
@@ -207,51 +119,35 @@ class Message(Base):
 
     @property
     def sender_avatar_url(self) -> str | None:
-        """Powers MessageOut.sender_avatar_url — the small round avatar
-        chat.js renders beside every "user"-role bubble (personal chat
-        and channel alike, unlike sender_display_name's label which the
-        frontend only shows in a channel — see chat.js: bubbleFor). Null
-        with no sender, or when the sender has never uploaded a picture;
-        sender_initials below is always usable as the fallback in either
-        case."""
+        """For MessageOut.sender_avatar_url: the avatar chat.js shows beside every "user" bubble. Null without a
+        sender or uploaded picture; sender_initials is the fallback.
+        """
         return self.sender.avatar_url if self.sender_id else None
 
     @property
     def sender_initials(self) -> str | None:
-        """Powers MessageOut.sender_initials — see sender_avatar_url's
-        own docstring for when the frontend actually renders this (any
-        "user"-role message, not just a channel one). Null only when
-        there's no sender at all (an "assistant"/"system" message); see
-        User.initials for the actual fallback text."""
+        """For MessageOut.sender_initials, the avatar fallback (see User.initials). Null only for assistant/system."""
         return self.sender.initials if self.sender_id else None
 
 
 class MessageAttachment(Base):
-    """One file attached to a "user"-role message — a message can carry
-    several now (see app.config.MAX_ATTACHMENT_DOCUMENTS/
-    MAX_ATTACHMENT_IMAGES and app.services.chat_attachment_service's own
-    per-type caps)."""
+    """One file attached to a "user" message (caps: app.config.MAX_ATTACHMENT_*, chat_attachment_service)."""
 
     __tablename__ = "message_attachments"
 
     id = Column(String(ID_LEN), primary_key=True, default=new_id)
     message_id = Column(String(ID_LEN), ForeignKey("messages.id"), nullable=False)
-    # Relative to app.config.ATTACHMENTS_DIR, never served directly (see
-    # app/routers/chat.py's GET /attachments/{attachment_id}, the only
-    # reader of it).
+    # Relative to ATTACHMENTS_DIR; served only by app/routers/chat.py GET /attachments/{attachment_id}.
     path = Column(String(500), nullable=False)
-    # The original, sanitized name for display.
+    # Sanitized original name, for display.
     filename = Column(String(255), nullable=False)
-    # "image" (sent to a vision model as part of the request) or "text"
-    # (its extracted content folded into the system prompt instead — see
-    # document_extract.extract_text).
+    # "image" (sent to a vision model) or "text" (extracted into the system prompt, document_extract.extract_text).
     type = Column(String(20), nullable=False)
 
     message = relationship("Message", back_populates="attachments")
 
     @property
     def url(self) -> str:
-        """Powers AttachmentOut.url — the only URL the frontend ever
-        needs to fetch this file (see app/routers/chat.py's GET
+        """For AttachmentOut.url: where the frontend fetches this file (app/routers/chat.py GET
         /attachments/{attachment_id})."""
         return f"/api/chat/attachments/{self.id}"

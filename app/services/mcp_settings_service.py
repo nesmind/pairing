@@ -1,6 +1,6 @@
-"""The admin's global MCP on/off switch and tool-round cap (Settings > System). Off means no chat offers
-tools to a model, whatever each chat's Tools switch says. Read fresh from the database on every call,
-so it applies at once on every instance."""
+"""The admin's global MCP on/off switch and tool-round cap (Settings > System). Off means no chat offers tools,
+whatever each chat's switch says. Read from the DB on every call, so it applies at once on every instance.
+"""
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,7 +28,7 @@ async def set_enabled(db: AsyncSession, enabled: bool) -> None:
 
 
 async def get_limits(db: AsyncSession) -> McpLimits:
-    """Tool rounds per reply and characters of a tool result the model reads (every MCP server alike)."""
+    """Tool rounds per reply and characters of a tool result the model reads (all MCP servers alike)."""
     row = await db.get(AppSetting, (SYSTEM_OWNER_ID, LIMITS_KEY))
     value = row.value if row else {}
     rounds, chars = value.get("rounds"), value.get("result_chars")

@@ -1,7 +1,7 @@
-"""Unit tests for app/services/engines/registry.py — duplicate/unknown-name handling, and the parity check that
-stops EngineName (the Pydantic Literal request validation needs) from drifting from the registry's own real
-engine set the way app.services.engine_service.DEFAULT_ENGINE and schemas.common.ActiveEngineConfig's default
-already had (see that fix)."""
+"""Tests for engines/registry.py: duplicate/unknown names, and the parity check stopping EngineName (the Pydantic
+Literal request validation needs) drifting from the registry's real engine set, as engine_service.DEFAULT_ENGINE
+and schemas.common.ActiveEngineConfig's default once did.
+"""
 
 from typing import get_args
 

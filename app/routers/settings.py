@@ -1,18 +1,9 @@
-"""
-Endpoints backing the Settings page: which models the ML engine has installed,
-whether RAG is usable, and the per-user default generation params/model
-that new conversations start from. See
-app/services/model_catalog_service.py and app/services/settings_service.py
-for the actual business logic, app/routers/theme.py for the app-wide UI
-theme, app/routers/model_catalog_admin.py for the admin-managed
-"browse more models" catalog (both separate files — see each one's own
-docstring for why), and app/routers/users.py for account management (a
-separate file since it's a big enough topic on its own).
+"""Endpoints for the Settings page: installed models, RAG availability, and per-user default generation
+params/model for new conversations. Logic: services/model_catalog_service.py, settings_service.py.
+Related: routers/theme.py (UI theme), model_catalog_admin.py ("browse more models"), users.py (accounts).
 
-Per-conversation params (what you're actually editing 90% of the time)
-are read/written through PATCH /api/conversations/{id} in
-app/routers/conversations.py instead — this file is only the "global
-defaults" and "environment info" half of the page.
+Per-conversation params go through PATCH /api/conversations/{id} (routers/conversations.py); this file
+holds the global defaults and environment info.
 """
 
 import json
@@ -63,10 +54,7 @@ async def get_model_catalog(user: User = Depends(get_current_user), db: AsyncSes
 
 @router.get("/installed-models", response_model=InstalledModelsResponse)
 async def get_installed_models(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Installed chat-capable model tags, for the chat page's "switch
-    model" picker on an existing conversation — a plain name list, none
-    of get_model_catalog's hardware/download info, since there's nothing
-    to install here."""
+    """Installed chat-capable model tags for the chat page's model switcher: a plain name list."""
     try:
         models = await ChatModelCatalogBuilder(db, user).installed_tags()
     except InferenceError as exc:
@@ -80,8 +68,9 @@ async def hide_model(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),
 ):
-    """Disables (hidden=True) or enables one model tag for regular users: left out of their picker and
-    refused in their chats (admins are unaffected). Admin-only; doesn't uninstall anything."""
+    """Disables (hidden=True) or enables a model tag for regular users: left out of their picker and refused in
+    their chats (admins unaffected). Admin-only; uninstalls nothing.
+    """
     hidden_tags = HiddenModelTags(db)
     tags = await hidden_tags.get()
     if body.hidden:
@@ -94,12 +83,10 @@ async def hide_model(
 
 @router.post("/pull-model")
 async def pull_model(body: PullModelRequest, db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)):
-    """Downloads a model into the ML engine, streaming progress over SSE (same wire format as the chat stream in
-    app/routers/chat.py). Admin-only: pulling is a system-wide, potentially huge (many-GB) download that affects
-    every user, not a per-conversation preference. Refuses anything not in either catalog (the default one in
-    app/model_catalog.py, or the admin-managed extended one in
-    app.services.extended_model_catalog_service — checked in that order) or not hardware-compatible, even if a
-    client bypasses the UI's own checks."""
+    """Downloads a model into the engine, streaming SSE like the chat stream (routers/chat.py). Admin-only: a
+    system-wide, possibly many-GB download. Refuses tags missing from both catalogs (app/model_catalog.py,
+    then the extended one) or hardware-incompatible, even if the UI is bypassed.
+    """
     entry = (
         model_catalog.CATALOG.find(body.tag)
         or await ExtendedModelCatalog(db).find(body.tag)
@@ -152,11 +139,9 @@ async def pull_model(body: PullModelRequest, db: AsyncSession = Depends(get_db),
 async def delete_model_endpoint(
     body: PullModelRequest, db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)
 ):
-    """Removes a pulled model from the ML engine, freeing its disk space. Admin-only for the same reason pulling is:
-    it's a system-wide action affecting every user, not a per-conversation preference. Deleting a model someone's
-    conversation is still set to isn't blocked here — that conversation just gets a normal "model not found" chat
-    error (handled gracefully in app/services/chat_service.py) until its user picks a different one, same as if it
-    had never been installed."""
+    """Removes a pulled model, freeing disk. Admin-only (system-wide). Deleting a model a conversation uses is
+    allowed: its chat gets a normal "model not found" error (chat_service.py) until another is picked.
+    """
     try:
         await delete_model(body.tag)
     except InferenceError as exc:
@@ -167,17 +152,13 @@ async def delete_model_endpoint(
 
 @router.get("/rag-availability", response_model=RagAvailability)
 async def rag_availability(db: AsyncSession = Depends(get_db), _user: User = Depends(get_current_user)):
-    """Whether RAG is admin-enabled at all, the active engine can serve embeddings, and the embedding model
-    the knowledge base needs is actually installed — in that order, so the Settings page can explain itself
-    instead of the knowledge base just silently doing nothing.
+    """Whether RAG is usable, checked in order: admin-enabled, the active engine can serve embeddings, the
+    embedding model is installed; so the Settings page can explain itself.
 
-    The admin on/off switch (RagLimits.enabled, Settings > System) is a system-wide override independent of
-    engine/model state — checked first since it's the most deliberate, most final answer: an admin who's
-    turned this off doesn't want users poking at the knowledge base regardless of what's technically
-    possible right now. Engine capability comes next since a connector like RunPod (capabilities.embeddings
-    False) makes "is a model installed" the wrong question entirely — no embedding model would ever help
-    there, so that's the more useful, more accurate reason to surface before falling back to the plain
-    "nothing configured yet" case."""
+    The admin switch (RagLimits.enabled) is a system-wide override, checked first as the most deliberate
+    answer. Engine capability comes next: for a connector like RunPod (capabilities.embeddings False) an
+    installed model is irrelevant, and that is the more accurate reason.
+    """
     limits = await settings_service.get_rag_limits(db)
     if not limits.enabled:
         return RagAvailability(available=False, reason="RAG is not enabled on this system, ask admin")
@@ -195,16 +176,15 @@ async def rag_availability(db: AsyncSession = Depends(get_db), _user: User = Dep
 
 @router.get("/embedding-model-catalog", response_model=EmbeddingModelCatalogResponse)
 async def get_embedding_model_catalog(db: AsyncSession = Depends(get_db), _user: User = Depends(get_current_user)):
-    """The embedding models app/model_catalog.py's EMBEDDING_CATALOG knows about, each with install status —
-    the embedding-model analogue of GET /api/settings/model-catalog above, which never includes these (see
-    EMBEDDING_CATALOG's own docstring for why they're kept separate)."""
+    """Embedding models from EMBEDDING_CATALOG with install status (the embedding analogue of GET
+    /api/settings/model-catalog)."""
     return await EmbeddingModelCatalogService(db).build()
 
 
 @router.get("/rag-limits", response_model=RagLimits)
 async def get_rag_limits_endpoint(db: AsyncSession = Depends(get_db), _user: User = Depends(get_current_user)):
-    """Current upload caps — open to any logged-in user (not admin-only) since the Knowledge tab's upload box
-    needs these to show/enforce them client-side; only *changing* them is admin-only, below."""
+    """Current upload caps; open to all users since the Knowledge tab enforces them client-side. Only changing is
+    admin-only."""
     return await settings_service.get_rag_limits(db)
 
 
@@ -214,16 +194,16 @@ async def set_rag_limits_endpoint(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),
 ):
-    """Sets the admin-configured RAG upload caps from Settings > System. Takes effect immediately for the next
-    upload — existing documents already over a newly-lowered limit are left alone rather than retroactively
-    deleted."""
+    """Sets the RAG upload caps (Settings > System). Applies to the next upload; existing documents over a
+    lowered limit stay.
+    """
     await settings_service.set_rag_limits(db, body)
     return body
 
 
 @router.get("/defaults", response_model=GenerationParams)
 async def get_defaults(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    """The current user's own defaults new conversations are created with."""
+    """The user's own defaults for new conversations."""
     return await settings_service.get_default_params(db, user)
 
 
@@ -233,7 +213,7 @@ async def set_defaults(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Saves the current user's own defaults — never affects any other user's defaults, including admin's."""
+    """Saves the user's own defaults; never affects others, admin included."""
     value = params.model_dump()
     await settings_service.set_default_params(db, user.id, value)
     return value
@@ -241,8 +221,7 @@ async def set_defaults(
 
 @router.get("/default-model", response_model=DefaultModel)
 async def get_default_model_endpoint(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    """The model a brand-new conversation of the current user's starts with — shown/settable from Settings'
-    "Defaults for new chats" view."""
+    """The model new conversations start with, for Settings' "Defaults for new chats"."""
     return DefaultModel(model=await settings_service.get_default_model(db, user))
 
 
@@ -252,7 +231,7 @@ async def set_default_model(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Saves the current user's own default model — never affects any other user's default, including admin's."""
+    """Saves the user's own default model; never affects others, admin included."""
     await settings_service.set_default_model(db, user.id, body.model)
     return body
 
@@ -263,10 +242,7 @@ async def change_password(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Lets any logged-in user change their own password — self-service, unlike PATCH /users/{username}
-    (admin-only, no current-password check, can touch anyone's account). Requires the current password as proof
-    of ownership, same as changing a password on virtually any other site, rather than letting a bare active
-    session silently take over the account's credentials."""
+    """Self-service password change, unlike admin-only PATCH /users/{username}. Requires the current password."""
     if not verify_password(body.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Current password is incorrect.")
     user.password_hash = hash_password(body.new_password)
@@ -276,12 +252,9 @@ async def change_password(
 
 @router.get("/system-info", response_model=SystemInfo)
 def system_info(_admin: User = Depends(require_admin)):
-    """Admin-only snapshot for the Settings page's System tab: this
-    machine's hardware and the app's own version. (Which ML engine/ComfyUI
-    host the app is talking to now lives on the External servers tab
-    instead — see app/routers/ollama_admin.py/comfyui_admin.py — since
-    that's admin-configurable now, not a fixed environment fact. The
-    user list is its own endpoint — see app/routers/users.py.)"""
+    """Admin snapshot for the System tab: hardware and app version. (Engine/ComfyUI hosts are on the External
+    servers tab, users in routers/users.py.)
+    """
     return SystemInfo(
         hardware=hardware.hardware_summary(),
         app_version=APP_VERSION,

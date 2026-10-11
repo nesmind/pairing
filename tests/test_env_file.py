@@ -1,6 +1,4 @@
-"""Unit tests for app/services/env_file.py — the generic .env upsert
-helper both app/services/db_config_url.py and app/services/
-ollama_process.py build on."""
+"""Tests for services/env_file.py, the .env upsert helper behind db_config_url.py and ollama_process.py."""
 
 from app.services import env_file
 
@@ -70,10 +68,10 @@ def test_write_env_values_never_writes_a_bare_key_for_a_none_value_not_already_p
 
 
 def test_write_env_value_and_read_env_value_accept_an_explicit_path(tmp_path):
-    """The path parameter — not just the module-level ENV_PATH default — is what
-    app.services.matricxon_process needs to write into a *different* project's own .env file."""
+    """The path parameter (not just the ENV_PATH default) is what matricxon_process needs to write into another
+    project's.env."""
     other_path = tmp_path / "other" / ".env"
     other_path.parent.mkdir()
     env_file.write_env_value("KEY", "value", path=other_path)
     assert env_file.read_env_value("KEY", path=other_path) == "value"
-    assert not (tmp_path / ".env").exists()  # never touched the default ENV_PATH
+    assert not (tmp_path / ".env").exists()

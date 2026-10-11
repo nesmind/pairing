@@ -1,20 +1,6 @@
-/**
- * Tiny shared helpers used by both chat.js and settings.js. Kept as
- * plain global functions (no bundler/framework) since the whole
- * frontend is just a handful of static files served directly by
- * FastAPI — see app/main.py's StaticFiles mount.
- */
+/* Small helpers shared by chat.js and settings.js: plain globals (no bundler), served as static files by FastAPI (see app/main.py's StaticFiles mount). */
 
-/**
- * Turns a FastAPI error response's `detail` into a plain, readable
- * string. Most of this app's own HTTPException(detail=...) calls already
- * send a plain string, which passes through unchanged — this exists for
- * FastAPI/Pydantic's own 422 validation errors, where `detail` is
- * instead a *list* of {loc, msg, ...} objects. Without this,
- * `new Error(detail)` on that list coerces it through
- * Object.prototype.toString and shows the user a literal "[object
- * Object]" instead of the actual validation message.
- */
+/* Turns a FastAPI error `detail` into a readable string. HTTPException details are already strings and pass through; this handles Pydantic's 422 `detail`, a list of {loc, msg,...} objects that `new Error(detail)` would show as "[object Object]". */
 function formatErrorDetail(detail) {
   if (typeof detail === "string") return detail;
   if (Array.isArray(detail)) {
@@ -32,21 +18,14 @@ function formatErrorDetail(detail) {
   return String(detail);
 }
 
-/**
- * Wraps `fetch` for our JSON API: adds the right headers, parses the
- * response body as JSON, and throws a readable Error if the server
- * responded with a non-2xx status (FastAPI puts the message in
- * `detail`). Every API call in the frontend goes through this so error
- * handling only needs to be written once.
- */
+/* Wraps `fetch` for the JSON API: sets headers, parses JSON, and throws a readable Error on a non-2xx status (FastAPI puts the message in `detail`). All frontend API calls go through it. */
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
   if (response.status === 401) {
-    // Session expired/missing — bounce to the login page rather than
-    // surfacing a confusing "Not authenticated" error inline.
+    // Session expired or missing: go to the login page instead of showing "Not authenticated".
     window.location.href = "/login";
     throw new Error("Not authenticated");
   }
@@ -56,31 +35,24 @@ async function api(path, options = {}) {
       const body = await response.json();
       if (body.detail !== undefined && body.detail !== null) detail = formatErrorDetail(body.detail);
     } catch (_) {
-      /* response wasn't JSON — fall back to statusText above */
+      /* not JSON: fall back to statusText above */
     }
-    throw new Error(detail);
+    const error = new Error(detail);
+    error.status = response.status;
+    throw error;
   }
   if (response.status === 204) return null;
   return response.json();
 }
 
-/** Escapes text that will be inserted as HTML outside of markdown
- * rendering (e.g. titles, filenames) to prevent it being interpreted as
- * markup. Message content itself goes through a different path —
- * `marked.parse()` followed by `DOMPurify.sanitize()`, see chat.js's
- * renderMessageContent — since marked performs no sanitization on its own. */
+/* Escapes text inserted as HTML outside markdown rendering (titles, filenames). Message content goes through `marked.parse` then `DOMPurify.sanitize` (chat.js renderMessageContent), as marked does not sanitize. */
 function escapeHtml(value) {
   const div = document.createElement("div");
   div.textContent = value;
   return div.innerHTML;
 }
 
-/** Fills `container` with a small round avatar: the real picture (an <img>) when `avatarUrl` is set, otherwise a
- * plain-color circle showing `initials` — the same fallback both chat.js (a message's sender, beside every
- * "user"-role bubble) and settings.js (Settings > Account's own profile preview) need, so the rendering rule lives
- * once here rather than twice. `container` is expected to already carry sizing/shape classes (e.g. "h-8 w-8
- * rounded-full overflow-hidden") — this only ever sets its content, never its own size, so both call sites can pick
- * whatever size fits their own layout. */
+/* Fills `container` with a small round avatar: the picture (<img>) when `avatarUrl` is set, else a colored circle with `initials`. Shared by chat.js (sender beside "user" bubbles) and settings.js (Account preview). `container` should already carry size/shape classes; this sets only its content. */
 function renderAvatar(container, avatarUrl, initials) {
   container.innerHTML = "";
   if (avatarUrl) {
@@ -97,41 +69,24 @@ function renderAvatar(container, avatarUrl, initials) {
   container.appendChild(span);
 }
 
-/** Formats a byte-ish/relative timestamp as a short, human time. */
+/* Formats a timestamp as a short, human time. */
 function formatTime(isoString) {
   return new Date(isoString).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-// Key used to hand a short confirmation message from one page load to
-// the next (see queueSystemMessage/showQueuedSystemMessage below).
+// Key for handing a short confirmation from one page load to the next (queueSystemMessage/showQueuedSystemMessage).
 const SYSTEM_MESSAGE_KEY = "pairing:systemMessage";
 
-/**
- * Queues a short message to show once, on whichever page loads next —
- * for an action that redirects before the user could otherwise see its
- * own result (Settings saving something and immediately sending the
- * user back to chat, say). Showing a status message and then racing a
- * redirect against it on the *same* page means either cutting the
- * message off early or making the user wait through an artificial
- * delay just so they have time to read it; showing it fresh on the
- * destination page, at a fixed spot near the top, needs neither.
- */
+/* Queues a short message to show once on the next page load, for actions that redirect before the user could read the result (e.g. Settings saving, then returning to chat). Showing it on the destination page avoids cutting it off or adding a delay. */
 function queueSystemMessage(text) {
   try {
     sessionStorage.setItem(SYSTEM_MESSAGE_KEY, text);
   } catch (_) {
-    /* sessionStorage unavailable (private browsing, etc.) — the
-       redirect itself still works, the destination page just won't
-       have a message queued to show. */
+    /* sessionStorage unavailable: the redirect still works, with no message queued. */
   }
 }
 
-/**
- * Displays (and consumes) whatever message queueSystemMessage() left
- * behind, if this page has a #system-banner element — safe to call
- * unconditionally on every page load, including ones with no banner
- * element (settings.html) or nothing queued (the common case).
- */
+/* Shows (and consumes) the message queueSystemMessage left, if the page has #system-banner. Safe to call on every page load. */
 function showQueuedSystemMessage() {
   const bannerEl = document.getElementById("system-banner");
   if (!bannerEl) return;
@@ -150,55 +105,31 @@ function showQueuedSystemMessage() {
   setTimeout(() => bannerEl.classList.add("hidden"), 4000);
 }
 
-// Matches any Hebrew or Arabic-script letter — the two RTL scripts a
-// local chat model is realistically going to produce. Written with
-// explicit \uXXXX escapes (Hebrew U+0591-U+05F4, Arabic U+0600-U+06FF,
-// plus the Arabic Presentation Forms blocks) rather than pasting the
-// literal characters, since bidi source text has a way of getting
-// visually reordered by editors/terminals and silently corrupted.
+// Matches Hebrew or Arabic-script letters (the RTL scripts a local chat model is likely to produce). Uses \uXXXX
+// escapes (Hebrew U+0591-U+05F4, Arabic U+0600-U+06FF, plus Arabic Presentation Forms) because bidi source text gets
+// visually reordered by editors.
 const RTL_LETTER_RE = /[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\uFB1D-\uFDFF\uFE70-\uFEFF]/;
 const STRONG_LETTER_RE = /[A-Za-z\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\uFB1D-\uFDFF\uFE70-\uFEFF]/;
 
-/**
- * Picks "rtl" or "ltr" for a whole block of text by finding the *first
- * actual letter* (Latin or Hebrew/Arabic) and using its script, rather
- * than trusting HTML's built-in `dir="auto"` or a whole-string majority
- * vote — both get mixed Hebrew/English sentences wrong, in opposite ways:
- *
- * - `dir="auto"` looks at the very first strong-directional *character*,
- *   full stop — a message that opens with a digit, punctuation, or
- *   markdown syntax before any real letter throws it off, guessing "ltr"
- *   for a mostly-Hebrew message and mirroring neutral characters like
- *   "?" or "!" to the wrong side.
- * - Counting letters across the *whole* string (this function's previous
- *   approach) has the opposite failure: "שלום world" is one short Hebrew
- *   word followed by one longer English word, so English letters win the
- *   count and the whole line renders under an "ltr" base direction —
- *   which, per the Unicode bidi algorithm, plants the *first* logical
- *   word (Hebrew) on the left and the *second* (English) to its right:
- *   backwards from the Hebrew-first reading order a Hebrew speaker
- *   expects, and backwards from what `dir="rtl"` would have produced.
- *
- * Skipping straight to the first actual *letter* — ignoring digits,
- * punctuation, and markdown syntax along the way — reproduces what the
- * Unicode bidi algorithm's own paragraph-direction rule is supposed to
- * do (decide direction from the first strong character) without the
- * digit/punctuation/markdown-prefix trap that makes native `dir="auto"`
- * unreliable here.
+/*
+ * Picks "rtl" or "ltr" for a block of text from its first actual letter (Latin or Hebrew/Arabic), not HTML's
+ * `dir="auto"` or a whole-string majority vote; both misjudge mixed Hebrew/English text:
+ * 
+ * - `dir="auto"` uses the first strong character, so a message opening with a digit, punctuation or markdown guesses
+ * "ltr" for mostly-Hebrew text and mirrors "?" or "!".
+ * - Counting letters over the whole string lets a longer English word outvote a short Hebrew one ("שלום world"), giving
+ * an "ltr" base that puts the Hebrew word on the left, the reverse of Hebrew reading order.
+ * 
+ * Skipping digits, punctuation and markdown to the first letter matches the Unicode bidi paragraph rule without those
+ * traps.
  */
 function detectTextDirection(text) {
   const match = text.match(STRONG_LETTER_RE);
-  if (!match) return "auto"; // no letters yet (digits/emoji/empty) — nothing to decide
+  if (!match) return "auto";
   return RTL_LETTER_RE.test(match[0]) ? "rtl" : "ltr";
 }
 
-/**
- * Cross-tab UI theme sync: when ThemeManager.save() (see app/static/js/theme.js) writes the new theme to
- * localStorage on the tab where it was saved, every *other* open tab gets a native `storage` event (fired only
- * in tabs other than the one that wrote it) and reloads itself onto it. Upgrades the code-block theme picker's
- * existing "other tabs need a manual refresh" precedent to self-refreshing, since a UI theme is worth reflecting
- * everywhere immediately rather than leaving other tabs visibly mismatched until their next navigation.
- */
+/* Cross-tab UI theme sync: when ThemeManager.save (theme.js) writes the theme to localStorage, every other open tab gets a `storage` event and reloads onto it, so tabs aren't left mismatched. */
 window.addEventListener("storage", (event) => {
   if (event.key === "pairing:uiTheme" && event.newValue) {
     window.location.reload();

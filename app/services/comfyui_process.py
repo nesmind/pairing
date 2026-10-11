@@ -1,11 +1,6 @@
-"""
-Process-level primitives for supervising a real ComfyUI subprocess —
-spawning/terminating/liveness-checking it and persisting its PID. Mirrors
-app/services/instance_process.py's split (pure process primitives here,
-async orchestration/locking in app/services/comfyui_service.py), but for
-a genuinely different executable this app doesn't own the source of,
-unlike instance_process.py's own sibling-copies-of-run.py case — see
-is_alive's own docstring for exactly where that difference matters.
+"""Process primitives for supervising a ComfyUI subprocess: spawn, terminate, liveness and PID persistence.
+Like instance_process.py (primitives here, orchestration and locking in comfyui_service.py), but for an
+executable whose source this app doesn't own; see is_alive for where that matters.
 """
 
 import json
@@ -26,10 +21,9 @@ _TERMINATE_GRACE_SECONDS = 5.0
 
 
 def read_tracking() -> dict | None:
-    """Returns {"pid": int} for the ComfyUI process this app most
-    recently started, or None if it's never been started (or the
-    tracking file is missing/corrupt) — same tolerant-of-missing-file
-    stance as instance_process.read_tracking."""
+    """{"pid": int} for the ComfyUI this app last started, or None if never started or the tracking file is
+    missing/corrupt (tolerant like instance_process.read_tracking).
+    """
     if not _TRACKING_FILE.exists():
         return None
     try:
@@ -47,21 +41,13 @@ def write_tracking(info: dict | None) -> None:
 
 
 def is_alive(pid: int, main_py_path: str) -> bool:
-    """True iff `pid` is still running *and* still looks like the
-    ComfyUI process this app started at `main_py_path` — never a bare
-    os.kill(pid, 0), for the same reason instance_process.is_alive isn't
-    one either.
+    """True iff `pid` runs *and* still looks like the ComfyUI started at `main_py_path`; never a bare
+    os.kill(pid, 0) (as instance_process.is_alive).
 
-    Unlike instance_process.is_alive, this reads /proc/{pid}/cmdline, not
-    comm: ComfyUI's own comm is just "python"/"python3" (kernel-truncated,
-    indistinguishable from any other Python process on the box), so comm-
-    matching can't identify it at all. cmdline works here specifically
-    because this app controls the exact invocation (see spawn below) and
-    ComfyUI itself never calls setproctitle to rewrite its own argv memory
-    the way this app's own run.py does — that rewrite is exactly why
-    instance_process.is_alive had to fall back to comm instead of cmdline
-    for *that* process. Do not "fix" this to match instance_process.py's
-    approach; the two processes have opposite constraints.
+    Reads /proc/{pid}/cmdline, not comm: ComfyUI's comm is just "python"/"python3", indistinguishable from
+    other Python processes. cmdline works because this app controls the invocation (see spawn) and ComfyUI
+    doesn't call setproctitle, which this app's run.py does (hence instance_process.is_alive uses comm).
+    Do not "fix" this to match instance_process.py; the constraints are opposite.
     """
     try:
         reaped_pid, _status = os.waitpid(pid, os.WNOHANG)
@@ -82,16 +68,11 @@ def is_alive(pid: int, main_py_path: str) -> bool:
 
 
 def spawn(python_path: str, main_py_path: str, extra_args: str | None) -> int | None:
-    """Launches ComfyUI as a detached subprocess, cwd'd to its own
-    install directory (unlike instance_process.spawn_sibling, which
-    shares this app's own BASE_DIR — ComfyUI expects to run from its own
-    root to find its own relative asset paths). `extra_args` is one raw
-    string (e.g. "--listen 0.0.0.0 --port 8188") rather than a modeled
-    set of flags — this app only needs to launch ComfyUI, not understand
-    its CLI. start_new_session=True detaches it the same way
-    spawn_sibling's does, so it survives this app process dying
-    uncleanly. Returns None (and logs) if it appears to exit immediately
-    — e.g. a bad path or the port already in use."""
+    """Launches ComfyUI detached, in its own install directory (it needs its own root for relative asset
+    paths, unlike instance_process.spawn_sibling). `extra_args` is one raw string
+    (e.g. "--listen 0.0.0.0 --port 8188"); this app doesn't model its CLI. start_new_session=True lets it
+    survive an unclean exit of this app. Returns None (and logs) if it exits immediately (bad path, port in use).
+    """
     log_dir = DATA_DIR / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / "comfyui.log"
@@ -106,12 +87,8 @@ def spawn(python_path: str, main_py_path: str, extra_args: str | None) -> int | 
             start_new_session=True,
         )
     except OSError as exc:
-        # A nonexistent python_path/main_py_path (a real, likely admin
-        # typo) raises straight out of Popen itself, before there's ever
-        # a process to poll() below — same "return None, log it, no
-        # exception surfaces to the caller" contract as the immediate-
-        # exit case, so a bad path degrades to a clean "not running"
-        # instead of a raw 500.
+        # A nonexistent python_path/main_py_path (likely a typo) raises from Popen before any poll; handle it
+        # like an immediate exit (return None, log) so the result is "not running", not a 500.
         logger.warning("Could not launch ComfyUI (%s) — check the configured paths.", exc)
         return None
     time.sleep(1.0)
@@ -123,11 +100,9 @@ def spawn(python_path: str, main_py_path: str, extra_args: str | None) -> int | 
 
 
 def terminate(pid: int, main_py_path: str) -> None:
-    """SIGTERM, then a grace period, then SIGKILL if still around — same
-    shape as instance_process.terminate_sibling. A longer grace period
-    than siblings get (5s vs 3s): ComfyUI may be mid-generation and
-    benefits from a real chance to shut down cleanly rather than being
-    killed while writing a file."""
+    """SIGTERM, a grace period, then SIGKILL (like instance_process.terminate_sibling). Grace is 5s vs 3s:
+    ComfyUI may be mid-generation or writing a file.
+    """
     try:
         os.kill(pid, signal.SIGTERM)
     except ProcessLookupError:

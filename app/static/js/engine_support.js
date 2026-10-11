@@ -1,12 +1,10 @@
-/**
- * Stats page's "Supported architectures" view — every model architecture and quantization (dequant) type the
- * active engine can load, from GET /api/stats/engine-support (see app.services.engine_support_service).
- * Matricxon-only: Ollama has no API listing what it can load, so this view's sidebar button stays hidden unless
- * /health reports Matricxon as the active engine (see initEngineSupportNav below).
- *
- * The raw names come live from Matricxon's own registries — the friendly labels below are display-only, and any
- * name missing from them still renders (just with its raw name), so a newly supported architecture or quant type
- * shows up here the moment Matricxon adds it, with no change needed on this side.
+/*
+ * Stats page's "Supported architectures" view: the architectures and quantization (dequant) types the active engine can
+ * load, from GET /api/stats/engine-support (app.services.engine_support_service). Matricxon-only (Ollama has no such
+ * API), so the sidebar button stays hidden unless /health reports Matricxon (initEngineSupportNav).
+ * 
+ * Raw names come live from Matricxon's registries; the friendly labels are display-only and unknown names still render
+ * raw, so new architectures/quant types appear with no change here.
  */
 
 const ARCHITECTURE_LABELS = {
@@ -25,10 +23,10 @@ const ARCHITECTURE_LABELS = {
   "nomic-bert": "Nomic BERT",
 };
 
-// Encoder-only architectures — embeddings for document search (RAG), not chat.
+// Encoder-only architectures: embeddings for document search (RAG), not chat.
 const EMBEDDING_ARCHITECTURES = new Set(["bert", "nomic-bert"]);
 
-// Checked in order — the first matching group wins; anything unmatched lands in "Other".
+// First matching group wins; unmatched go to "Other".
 const QUANT_GROUPS = [
   { title: "Full / half precision", hint: "Unquantized weights — largest files, reference quality.", test: (q) => /^(F32|F16|BF16)$/.test(q) },
   { title: "K-quants", hint: "Q4_K_M/Q5_K_M/Q6_K files use these — the usual best size/quality balance.", test: (q) => /^Q\d_K$/.test(q) },
@@ -111,14 +109,13 @@ async function loadEngineSupport() {
   }
 }
 
-/** Reveals this view's sidebar button only when Matricxon is the active engine — same /health endpoint
- * telemetry.js reads its own "Currently on" note from. Left hidden on any /health failure. */
+/* Shows the sidebar button only when Matricxon is the active engine (the /health endpoint telemetry.js uses for "Currently on"); stays hidden if /health fails. */
 async function initEngineSupportNav() {
   try {
     const { active_engine: activeEngine } = await api("/health");
     document.getElementById("stats-nav-architectures").classList.toggle("hidden", activeEngine !== "matricxon");
   } catch (_err) {
-    // Best-effort — the rest of the Stats page works regardless.
+    // Best-effort: the rest of the Stats page works regardless.
   }
 }
 

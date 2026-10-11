@@ -1,18 +1,9 @@
-"""
-Whether a given engine can actually run a specific model — the generic shape every
-engine's own support-checking follows, extracted from
-app.services.matricxon_support_checker.MatricxonSupportChecker (Matricxon is still
-the only engine with real, checkable support data; see that module for the concrete
-subclass). Ollama has no equivalent check at all — it "runs every catalog entry
-regardless" — so AlwaysSupportedChecker below is the trivial default every other
-engine (including a future serverless one, unless it turns out to need its own real
-check) gets for free.
+"""Whether an engine can run a specific model: the generic shape of matricxon_support_checker.MatricxonSupportChecker
+(the only engine with real checkable data). Ollama "runs every catalog entry", so AlwaysSupportedChecker is
+the trivial default for any other engine, including future serverless ones.
 
-One checker instance is built once per catalog build (see EngineSupportSet.load
-below) and its verdict_for/estimated_ram_gb reused for every entry in that catalog —
-the same "fetch once, reuse for every model" contract
-app.services.model_catalog_service.ChatModelCatalogBuilder and its sibling catalog
-builders already kept before this class existed.
+One checker is built per catalog build (EngineSupportSet.load) and its verdict_for/estimated_ram_gb reused
+for every entry ("fetch once", as ChatModelCatalogBuilder and sibling builders already did).
 """
 
 from abc import ABC, abstractmethod
@@ -24,46 +15,38 @@ from app.schemas import EngineName
 if TYPE_CHECKING:
     from app.schemas.model_catalog import EngineModelSupport
 
-# Ollama's own rule-of-thumb per-model RAM multiplier (it exposes no better number of
-# its own) — the single copy of a formula that used to be duplicated three times
-# (app.services.model_catalog_service, app.services.embedding_model_catalog_service,
-# and, as a hardcoded literal to dodge a circular import, app.services.
-# extended_model_catalog_service._min_ram_gb).
+# Ollama's rule-of-thumb per-model RAM multiplier (it exposes no better number); the single copy of a formula
+# once duplicated in model_catalog_service, embedding_model_catalog_service and, as a literal to avoid a
+# circular import, extended_model_catalog_service._min_ram_gb.
 OLLAMA_RAM_ESTIMATE_MULTIPLIER = 1.25
 
 
 @dataclass(frozen=True)
 class SupportVerdict:
-    """`.supported`/`.reason` mirror the engine's own entry in
-    CatalogEntry.engine_support (see app/schemas/model_catalog.py's
-    EngineModelSupport) — `.reason` is always None when supported."""
+    """`.supported`/`.reason` mirror the engine's entry in CatalogEntry.engine_support (EngineModelSupport);
+    `.reason` is None when supported.
+    """
 
     supported: bool
     reason: str | None = None
 
 
 class EngineSupportChecker(ABC):
-    """One per engine. `load()` does whatever real I/O this engine's own support
-    check needs (Matricxon: a GET /api/health round trip); `unloaded()` is the
-    zero-I/O instance used for every engine that ISN'T currently active — asking a
-    non-active engine (possibly a paid remote API) about its support surface on
-    every catalog load would be a real, unwanted cost for no benefit, since nothing
-    is routing traffic there right now anyway (see EngineSupportSet.load, which
-    enforces this rule for every engine uniformly)."""
+    """One per engine. `load` does the engine's real I/O (Matricxon: a GET /api/health round trip);
+    `unloaded` is the zero-I/O instance for inactive engines, so a non-active (possibly paid remote) engine
+    isn't queried on every catalog load (enforced by EngineSupportSet.load).
+    """
 
     @classmethod
     @abstractmethod
     async def load(cls, installed_models: list[dict] | None = None) -> Self:
-        """`installed_models` — the caller's own already-fetched list_models()
-        result, if it has one, to skip a redundant round trip for the same data
-        (see MatricxonSupportChecker.load's own docstring for the real, confirmed
-        latency bug this avoids)."""
+        """`installed_models`: the caller's already-fetched list_models result, to skip a redundant round trip
+        (a latency bug, see MatricxonSupportChecker.load).
+        """
 
     @classmethod
     def unloaded(cls) -> Self:
-        """The engine isn't active right now — no real check was made. Default
-        implementation assumes a no-arg constructor; override if a subclass's
-        __init__ needs more."""
+        """For an inactive engine: no real check made. Assumes a no-arg constructor; override if __init__ needs more."""
         return cls()
 
     def verdict_for(
@@ -73,9 +56,7 @@ class EngineSupportChecker(ABC):
         *,
         is_projector: bool = False,
     ) -> SupportVerdict:
-        """Default: everything is supported (Ollama's own behavior — it runs every
-        catalog entry regardless, with no architecture/quantization registry of its
-        own to check against)."""
+        """Default: everything supported (Ollama runs every entry; no architecture/quantization registry)."""
         return SupportVerdict(True)
 
     def estimated_ram_gb(
@@ -85,17 +66,14 @@ class EngineSupportChecker(ABC):
         download_gb: float | None = None,
         fallback_min_ram_gb: float = 0.0,
     ) -> float | None:
-        """This engine's own real per-model RAM estimate for `tag`, or None when
-        unknown/not applicable. Default: unknown — a subclass overrides this only
-        when it actually has a way to estimate (Ollama: download_gb * a fixed
-        multiplier; Matricxon: a real per-tag figure read off the installed GGUF's
-        own tensor shapes)."""
+        """This engine's per-model RAM estimate for `tag`, or None if unknown. Default: unknown; subclasses override
+        (Ollama: download_gb * a multiplier; Matricxon: from the installed GGUF's tensor shapes).
+        """
         return None
 
 
 class AlwaysSupportedChecker(EngineSupportChecker):
-    """The trivial default for any engine with no real support-checking of its own
-    (InferenceEngine.support_checker's own default) — no I/O, no state."""
+    """The default for engines with no support checking (InferenceEngine.support_checker): no I/O, no state."""
 
     @classmethod
     async def load(cls, installed_models: list[dict] | None = None) -> "AlwaysSupportedChecker":
@@ -103,9 +81,7 @@ class AlwaysSupportedChecker(EngineSupportChecker):
 
 
 class OllamaSupportChecker(AlwaysSupportedChecker):
-    """Still "always supported" (Ollama has no support registry to check against),
-    but knows how to estimate RAM from a model's download size — the one thing
-    Ollama's own API can't report directly."""
+    """Still "always supported", but estimates RAM from download size, which Ollama's API can't report."""
 
     def estimated_ram_gb(
         self,
@@ -118,24 +94,18 @@ class OllamaSupportChecker(AlwaysSupportedChecker):
 
 
 class EngineSupportSet:
-    """Every registered engine's own checker, loaded once per catalog build (see
-    ChatModelCatalogBuilder.build and its sibling catalog builders) — the active
-    engine's checker actually does its real check; every other engine gets its
-    zero-I/O `unloaded()` instance, so a future paid/remote engine's checker is never
-    queried while it isn't the one serving traffic (the same rule
-    MatricxonSupportChecker.load already enforced for itself alone, now shared by
-    every engine uniformly)."""
+    """Every registered engine's checker, loaded once per catalog build (ChatModelCatalogBuilder.build and
+    siblings). The active engine does its real check; others get a zero-I/O `unloaded` instance, so a
+    paid/remote engine isn't queried while inactive (the rule MatricxonSupportChecker.load enforced alone).
+    """
 
     def __init__(self, checkers: dict[EngineName, EngineSupportChecker]) -> None:
         self._checkers = checkers
 
     @classmethod
     async def load(cls, installed_models: list[dict] | None = None) -> "EngineSupportSet":
-        # Imported here, not at module level: app.services.engines.registry itself
-        # imports app.services.engine_support_checker (for the EngineSupportChecker/
-        # AlwaysSupportedChecker names InferenceEngine.support_checker is typed
-        # against) — importing the registry back from here at module load time would
-        # be circular.
+        # Imported here to avoid a cycle: engines.registry imports engine_support_checker (for the checker names
+        # InferenceEngine.support_checker uses).
         import asyncio
 
         from app.services import engine_service
@@ -156,11 +126,9 @@ class EngineSupportSet:
         return list(self._checkers)
 
     def checker_for(self, engine_name: EngineName) -> EngineSupportChecker:
-        """Direct access to one engine's own checker — for a caller that needs finer control than support_for's
-        "verdict_for + estimated_ram_gb, bundled" convenience gives (see
-        app.services.installed_projector_catalog.InstalledProjectorCatalog.entries, which wants a real RAM
-        estimate but a fixed, always-True supported verdict regardless of what verdict_for(is_projector=True)
-        would say — see that call site's own comment)."""
+        """One engine's checker, for finer control than support_for (e.g. InstalledProjectorCatalog.entries wants a
+        real RAM estimate but an always-True verdict regardless of verdict_for(is_projector=True)).
+        """
         return self._checkers[engine_name]
 
     def support_for(
@@ -173,9 +141,9 @@ class EngineSupportSet:
         download_gb: float | None = None,
         min_ram_gb: float = 0.0,
     ) -> dict[EngineName, "EngineModelSupport"]:
-        """One EngineModelSupport per registered engine for this one model — the
-        shape CatalogEntry.engine_support/EmbeddingCatalogEntry.engine_support store
-        directly (see app/schemas/model_catalog.py)."""
+        """One EngineModelSupport per registered engine for this model; stored directly in
+        CatalogEntry/EmbeddingCatalogEntry.engine_support (schemas/model_catalog.py).
+        """
         from app.schemas.model_catalog import EngineModelSupport
 
         result = {}

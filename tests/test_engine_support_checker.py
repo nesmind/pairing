@@ -1,7 +1,7 @@
-"""Unit tests for app/services/engine_support_checker.py — the generic AlwaysSupportedChecker/
-OllamaSupportChecker defaults, and EngineSupportSet (the "only the active engine's checker does real I/O" rule
-that used to live inside MatricxonSupportChecker.load itself — see that module's own test file for the parts of
-its behavior that are still checker-specific)."""
+"""Tests for services/engine_support_checker.py: the AlwaysSupportedChecker/OllamaSupportChecker defaults, and
+EngineSupportSet ("only the active engine's checker does real I/O", once inside MatricxonSupportChecker.load;
+its own test file covers the checker-specific parts).
+"""
 
 import pytest
 
@@ -33,7 +33,7 @@ def test_always_supported_checker_estimates_no_ram():
 
 def test_ollama_checker_estimates_ram_from_download_size():
     checker = OllamaSupportChecker()
-    assert checker.estimated_ram_gb("tag", download_gb=4.0) == 5.0  # 4.0 * 1.25
+    assert checker.estimated_ram_gb("tag", download_gb=4.0) == 5.0
 
 
 def test_ollama_checker_falls_back_when_download_size_is_unknown():
@@ -43,9 +43,9 @@ def test_ollama_checker_falls_back_when_download_size_is_unknown():
 
 @pytest.mark.asyncio
 async def test_engine_support_set_only_gives_the_active_engine_a_real_load(monkeypatch):
-    """The real bug class this guards against: asking a non-active engine (possibly a paid remote API) about
-    its support surface on every catalog load — the rule MatricxonSupportChecker.load used to enforce on
-    itself, now shared by every engine uniformly."""
+    """Guards asking a non-active engine (possibly a paid remote API) about its support surface on every catalog
+    load: the rule MatricxonSupportChecker.load enforced alone, now shared by all engines.
+    """
     engine_service._cached_engine = "ollama"
 
     async def _fail_if_called():

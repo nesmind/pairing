@@ -1,12 +1,10 @@
-"""
-Thin async wrapper around Ollama's local HTTP API.
+"""Thin async wrapper around Ollama's local HTTP API.
 
-Nothing in this file knows about FastAPI, SQLite, or the web UI — it only knows how to talk to Ollama. Keeping that
-boundary clean means Ollama could be swapped for another local-inference server later by rewriting just this one
-file (see ROADMAP.md). Every real call is wrapped in an OpenTelemetry span for the Telemetry page — attribute-shaping
-logic lives in app.services.ollama_telemetry, not here, to keep this file focused on Ollama's own HTTP shape.
+Knows nothing of FastAPI, SQLite or the web UI, so Ollama could be swapped for another local server by
+rewriting this file. Every real call is an OpenTelemetry span for the Telemetry page; attribute
+shaping lives in ollama_telemetry.
 
-Ollama's own docs: https://github.com/ollama/ollama/blob/main/docs/api.md
+Ollama's docs: https://github.com/ollama/ollama/blob/main/docs/api.md
 """
 
 import json
@@ -25,21 +23,18 @@ logger = logging.getLogger("llama_chat")
 
 # For a quick, non-generation call (list/embed).
 _REQUEST_TIMEOUT = httpx.Timeout(120.0, connect=5.0)
-# chat_stream's own — unbounded; sharing _REQUEST_TIMEOUT used to silently undercut reply_generation_service's timeout.
+# chat_stream's own, unbounded; sharing _REQUEST_TIMEOUT silently undercut reply_generation_service's timeout.
 _CHAT_TIMEOUT = httpx.Timeout(None, connect=5.0)
 
 
 class OllamaError(Exception):
-    """Raised when Ollama is unreachable or returns an error, so routers can turn it into a clean HTTP error
-    instead of a raw stack trace."""
+    """Raised when Ollama is unreachable or errors, for clean HTTP errors instead of stack traces."""
 
 
 async def list_models() -> list[dict]:
-    """Returns the list of models currently pulled into Ollama (what `ollama list` shows), used to populate the
-    model picker in Settings. Picks a host from the pool the same way chat/embed calls do (see
-    app.services.ollama_pool) — in "remote" mode with more than one host configured, this doesn't guarantee every
-    host has the same catalog; matches app.services.ollama_admin's own documented pull/delete limitation for the
-    same reason."""
+    """Models pulled into Ollama (`ollama list`), for the Settings picker. Picks a host like chat/embed
+    (ollama_pool); in remote mode with several hosts the catalogs may differ (as in ollama_admin's pull/delete).
+    """
     host = ollama_pool.pick_host()
     async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
         try:
@@ -50,28 +45,25 @@ async def list_models() -> list[dict]:
     return resp.json().get("models", [])
 
 
-# One retry for a failed embedding call. In practice, the *first* embedding request after the model has been idle
-# long enough for Ollama to unload it (OLLAMA_KEEP_ALIVE, 5 minutes by default) reliably fails with a 500 — Ollama
-# dispatches it before llama-server is actually ready — and every request after that succeeds normally once the
-# model is warm. Retrying once transparently absorbs that cold-start hiccup instead of surfacing it as an error.
+# One retry for a failed embedding. The *first* request after the model idled out (OLLAMA_KEEP_ALIVE, default
+# 5 minutes) reliably fails with a 500 (Ollama dispatches before llama-server is ready); later ones succeed.
+# One retry absorbs that cold start.
 _EMBED_MAX_ATTEMPTS = 2
 
 
 async def embed(text: str, model: str) -> list[float]:
-    """Turns a piece of text into an embedding vector using `model` (the admin's configured default — see
-    app.services.model_catalog_service.get_default_embedding_model, resolved by every caller before this is
-    reached). Used both when ingesting documents (app/services/document_ingest.py) and when embedding the user's
-    live question to find matching chunks (app/services/document_retrieval.py).
+    """Embeds `text` with `model` (the admin default, resolved by callers via
+    model_catalog_service.get_default_embedding_model).
+    Used for document ingest (document_ingest.py) and the live question (document_retrieval.py).
 
-    Picks a host from the pool (see app/services/ollama_pool.py) once per call, then retries the *same* host up to
-    _EMBED_MAX_ATTEMPTS times — that retry is for the cold-start hiccup documented below, a per-model/per-host
-    warm-up cost, not a "this host is down" signal, so it doesn't fail over to a different host mid-call the way
-    chat_stream does. A host is only marked failed (and put in cooldown for future calls) once every attempt
-    against it has failed."""
+    Picks a host once (ollama_pool), then retries the *same* host up to _EMBED_MAX_ATTEMPTS times for the cold
+    start (a warm-up cost, not "host down"), so it doesn't fail over mid-call like chat_stream. A host is marked
+    failed (cooldown) only after every attempt fails.
+    """
     host = ollama_pool.pick_host()
     last_error: Exception | None = None
     tracer = ollama_telemetry.get_tracer()
-    # record_exception/set_status_on_exception off — see chat_stream's own comment below on why.
+    # record_exception/set_status_on_exception off; see chat_stream.
     with tracer.start_as_current_span(
         "ollama.embed", kind=SpanKind.CLIENT, record_exception=False, set_status_on_exception=False
     ) as span:
@@ -112,18 +104,15 @@ async def chat_stream(
     messages: list[dict],
     params: dict,
 ) -> AsyncGenerator[str, None]:
-    """Streams a chat completion from Ollama, yielding text chunks as they're generated (not whole words/sentences —
-    Ollama streams sub-word tokens, so chunks are joined back-to-back on the frontend).
+    """Streams a chat completion as text chunks (sub-word tokens, joined back-to-back on the frontend).
 
-    `messages` is a list of {"role": ..., "content": ...} dicts, oldest first — the same shape Message rows are
-    stored in, so callers can forward conversation history with no reshaping.
+    `messages` is oldest-first {"role", "content"} dicts (the Message row shape, so history forwards as is).
 
-    `params` is a GenerationParams-shaped dict (see app/schemas.py); it's passed straight through to Ollama's
-    `options` field, which is where Ollama expects temperature/top_p/top_k/etc to live.
+    `params` is a GenerationParams-shaped dict (app/schemas.py) passed to Ollama's `options`
+    (temperature/top_p/top_k/...).
 
-    A "thinking"-capable model's raw reasoning (see app.services.ollama_thinking's model_supports_thinking/
-    strip_inline_thinking) is always filtered out of what this yields — never surfaced as an option, since there's
-    no situation where a caller actually wants a reply prefixed with the model's internal monologue.
+    A "thinking" model's reasoning (ollama_thinking model_supports_thinking/strip_inline_thinking) is always
+    filtered out: no caller wants the inner monologue in a reply.
     """
     options = {
         "temperature": params["temperature"],
@@ -133,8 +122,7 @@ async def chat_stream(
         "num_ctx": params["num_ctx"],
         "num_predict": params["num_predict"],
     }
-    # A seed of -1 means "random every time" in our own schema; Ollama
-    # instead expects the key simply omitted for that behavior.
+    # A seed of -1 means "random" in our schema; Ollama wants the key omitted.
     if params.get("seed", -1) != -1:
         options["seed"] = params["seed"]
 
@@ -147,23 +135,20 @@ async def chat_stream(
     add_tools_to_payload(payload, params)
     sink = sink_from(params)
 
-    # Populated by _raw_content_chunks_from below (overwritten on every attempt, since stream_with_failover can call
-    # it more than once) and read back once the stream finishes, to attach telemetry to the span _content_stream
-    # opens — that span has to start lazily, on first pull, not at chat_stream()'s own call time, which is why it
-    # can't just wrap this whole outer call instead.
+    # Filled by _raw_content_chunks_from (overwritten each attempt; stream_with_failover may call it more than once)
+    # and read when the stream ends to attach telemetry to the span _content_stream opens. That span starts lazily
+    # on first pull, not at chat_stream's call, so it can't wrap this outer call.
     call_state: dict = {"attempts": 0}
 
     async def _raw_content_chunks_from(host: str) -> AsyncGenerator[str, None]:
-        # No try/except here on purpose: an httpx.HTTPError raised here propagates up through
-        # ollama_pool.stream_with_failover, which is what actually decides whether it's safe to retry on a
-        # different host (only before any chunk below has been yielded) — see that function's own docstring.
+        # No try/except on purpose: an httpx.HTTPError propagates to ollama_pool.stream_with_failover, which decides
+        # whether a retry on another host is safe (only before any chunk is yielded).
         call_state["host"] = host
         call_state["attempts"] += 1
         async with httpx.AsyncClient(timeout=_CHAT_TIMEOUT) as client:
             async with client.stream("POST", f"{host}/api/chat", json=payload) as resp:
                 resp.raise_for_status()
-                # Ollama streams one JSON object per line (NDJSON), each
-                # containing the next chunk of the assistant's reply.
+                # Ollama streams NDJSON: one JSON object per line with the next chunk of the reply.
                 async for line in resp.aiter_lines():
                     if not line:
                         continue
@@ -171,8 +156,8 @@ async def chat_stream(
                     if sink:
                         sink.add_from_chunk(data)
                     if data.get("done"):
-                        # Ollama's own server-side timing/token counts, only ever present on this final line — see
-                        # app.services.telemetry_exporter for how these become a TelemetryEvent row.
+                        # Ollama's server-side timing/token counts, only on this final line (telemetry_exporter ->
+                        # TelemetryEvent row).
                         call_state["done_payload"] = data
                         break
                     chunk = data.get("message", {}).get("content", "")
@@ -180,9 +165,8 @@ async def chat_stream(
                         yield chunk
 
     async def _content_stream() -> AsyncGenerator[str, None]:
-        # record_exception/set_status_on_exception off: their defaults would auto-mark this span ERROR on *any*
-        # propagating exception, including asyncio.CancelledError from a user clicking "stop" — a normal, common
-        # path, not an error. Status is only ever set explicitly, in the except block below.
+        # record_exception/set_status_on_exception off: defaults would mark the span ERROR on any exception, including
+        # asyncio.CancelledError from "stop" (normal). Status is set explicitly in the except block below.
         with ollama_telemetry.get_tracer().start_as_current_span(
             "ollama.chat", kind=SpanKind.CLIENT, record_exception=False, set_status_on_exception=False
         ) as span:
@@ -207,10 +191,10 @@ async def chat_stream(
 
 
 async def chat_once(model: str, messages: list[dict], params: dict | None = None) -> str:
-    """Non-streaming helper for one-off internal calls (e.g. "smart" mode conversation-title generation — see
-    app.services.chat_service._maybe_generate_title_with_model) where we just want the final text, not a
-    live-typing effect. Built on chat_stream, so a "thinking"-capable model's raw reasoning is filtered out here
-    too, the same as any other caller."""
+    """Non-streaming helper for one-off internal calls (e.g. "smart" title generation,
+    chat_service._maybe_generate_title_with_model) wanting final text only. Built on chat_stream, so "thinking" is
+    filtered too.
+    """
     params = params or {
         "temperature": 0.3,
         "top_p": 0.9,
@@ -227,18 +211,16 @@ async def chat_once(model: str, messages: list[dict], params: dict | None = None
 
 
 async def stop_model(model: str) -> None:
-    """Forces Ollama to unload `model` right now (`keep_alive: 0` with no messages — the same effect as running
-    `ollama stop <model>` from the CLI) — belt-and-suspenders cleanup called after this app has already given up on
-    a generation (a reply timeout, or a cancelled task — see reply_generation_service/reply_termination_service),
-    since closing our own HTTP connection to Ollama doesn't reliably interrupt an in-progress llama.cpp compute
-    phase (prompt/image processing especially doesn't appear to check for client disconnection at all).
+    """Forces Ollama to unload `model` now (`keep_alive: 0`, no messages; like `ollama stop <model>`): cleanup after
+    this app gave up on a generation (reply timeout or cancel; reply_generation_service/reply_termination_service),
+    since closing our connection doesn't reliably interrupt llama.cpp compute (prompt/image processing seemingly
+    ignores disconnects).
 
-    Sent to every configured host, not just whichever one actually served this request (stream_with_failover above
-    never exposes that back to a caller) — a harmless no-op on any host not currently running this model, and an
-    accepted best-effort limitation for a genuinely multi-host deployment, consistent with this codebase's other
-    documented multi-instance limitations. Failures are swallowed on purpose — this is a cleanup nicety, never
-    something that should mask the real termination reason a caller is already handling. Not instrumented with a
-    telemetry span itself — it's cleanup fan-out, not a request whose latency/outcome belongs on the dashboard."""
+    Sent to every configured host, not just the one that served the request (stream_with_failover doesn't expose
+    it): a no-op where the model isn't running, and an accepted best-effort limit for multi-host setups. Failures
+    are swallowed: cleanup must not mask the real termination reason. No telemetry span: a cleanup fan-out, not
+    a request for the dashboard.
+    """
     for host in ollama_pool.get_effective_hosts():
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=2.0)) as client:

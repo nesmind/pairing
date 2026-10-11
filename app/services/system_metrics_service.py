@@ -1,12 +1,7 @@
-"""Aggregation behind GET /api/system-metrics/summary — the Stats
-page's "System" view (see app/routers/system_metrics.py and
-app/services/system_metrics_poller.py for how the underlying rows get
-written). Unlike telemetry_service.py, there's no SQL-portability
-concern here worth working around: the only queries are "give me the
-newest row" and "give me a bounded, already-ordered range of rows" —
-both fully portable ORDER BY + LIMIT, no percentiles or date-bucketing
-needed, since the frontend chart draws every point directly rather than
-pre-aggregating into buckets.
+"""Aggregation behind GET /api/system-metrics/summary, the Stats "System" view (routers/system_metrics.py;
+rows written by system_metrics_poller.py). Unlike telemetry_service.py there's no SQL-portability issue: just
+"newest row" and "a bounded, ordered range", portable ORDER BY + LIMIT, with no percentiles or date bucketing
+(the frontend charts every point).
 """
 
 from datetime import timedelta
@@ -21,8 +16,8 @@ from app.schemas import GpuHistoryPoint, GpuStat, SystemMetricPoint, SystemMetri
 
 _HISTORY_WINDOW = timedelta(hours=1)
 _MAX_HISTORY_POINTS = 500
-# Several GPUs each contribute a row per poll (unlike the single CPU/RAM row above), so this cap is scaled up to
-# comfortably cover a handful of GPUs over the full history window without truncating in the common case.
+# Several GPUs add a row per poll (unlike the single CPU/RAM row), so this cap is scaled to cover a handful of
+# GPUs over the full history without truncating in the common case.
 _MAX_GPU_HISTORY_POINTS = 2000
 
 
@@ -31,10 +26,10 @@ def _mem_percent(snapshot: SystemMetricSnapshot) -> float:
 
 
 async def _latest_gpu_stats(db: AsyncSession) -> list[GpuStat]:
-    """Every GPU row from one poll cycle shares the exact same polled_at (see
-    app.services.system_metrics_poller._sample_gpus_sync) — so "the latest full GPU list" is simply every row at
-    the newest polled_at value, not a per-gpu_index dedupe the way app.services.ollama_snapshot_service needs
-    (Ollama's loaded-model set isn't guaranteed to be sampled in one atomic pass the way this is)."""
+    """All GPU rows of one poll share the same polled_at (system_metrics_poller._sample_gpus_sync), so the latest
+    full GPU list is every row at the newest polled_at, not a per-gpu_index dedupe like ollama_snapshot_service
+    (Ollama's loaded-model set isn't sampled in one atomic pass).
+    """
     latest_polled_at = (await db.execute(select(func.max(GpuMetricSnapshot.polled_at)))).scalar_one_or_none()
     if latest_polled_at is None:
         return []
@@ -86,10 +81,9 @@ async def _gpu_history(db: AsyncSession) -> list[GpuHistoryPoint]:
 async def get_system_metrics_summary(db: AsyncSession) -> SystemMetricsSummary:
     cpu_count = psutil.cpu_count() or 0
 
-    # A separate query for "latest" rather than just taking the last element of the history list below: if a
-    # deployment ever polls faster or keeps a longer window than _MAX_HISTORY_POINTS covers, that list's own
-    # LIMIT would silently truncate off the newest rows (it's ordered oldest-first, for the chart) — the current
-    # values shown above the chart must always be the real latest sample regardless of that cap.
+    # A separate "latest" query rather than the history list's last element: if a deployment polls faster or keeps
+    # a longer window than _MAX_HISTORY_POINTS, that list's LIMIT (oldest-first, for the chart) would truncate the
+    # newest rows, yet the values above the chart must be the real latest sample.
     latest = (
         await db.execute(select(SystemMetricSnapshot).order_by(SystemMetricSnapshot.polled_at.desc()).limit(1))
     ).scalar_one_or_none()
@@ -111,8 +105,8 @@ async def get_system_metrics_summary(db: AsyncSession) -> SystemMetricsSummary:
         SystemMetricPoint(polled_at=r.polled_at, cpu_percent=r.cpu_percent, mem_percent=_mem_percent(r)) for r in rows
     ]
 
-    # Computed regardless of whether a CPU/RAM snapshot exists yet — both are written in the same poll cycle in
-    # practice, but there's no reason to make the GPU data depend on the other table having a row.
+    # Computed whether or not a CPU/RAM snapshot exists: both are written in one poll, but GPU data needn't depend on
+    # the other table.
     gpus = await _latest_gpu_stats(db)
     gpu_history = await _gpu_history(db)
 

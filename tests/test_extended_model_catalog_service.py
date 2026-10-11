@@ -1,8 +1,7 @@
-"""Unit tests for app/services/extended_model_catalog_service.py. Every network-touching dependency
-(list_models, HuggingFaceCatalogSearch.repo_files) is monkeypatched on this module's own imported binding, or
-(for repo_files, a staticmethod) directly on the shared class object (not their origin modules — see the
-"module-split import-binding gotcha" this codebase already tracks), so no real Ollama or Hugging Face call
-happens here."""
+"""Tests for services/extended_model_catalog_service.py. Network dependencies (list_models,
+HuggingFaceCatalogSearch.repo_files) are patched on this module's binding, or (repo_files, a staticmethod)
+on the shared class, not origin modules (module-split gotcha), so no real Ollama or Hugging Face call.
+"""
 
 import pytest
 
@@ -42,14 +41,11 @@ def _stub_repo_files(monkeypatch, repo: dict) -> None:
 
 @pytest.fixture(autouse=True)
 def _stub_gguf_probe(monkeypatch):
-    """Every test here gets a "couldn't reach Hugging Face" GGUF header probe by default — same None
-    gguf_probe.probe_metadata itself returns on a genuine network failure, so add() falls back to its own
-    repo-level-metadata/filename heuristics exactly as it did before this probe existed. Patched at its real
-    origin module (see this file's own docstring on the import-binding gotcha) since
-    extended_model_catalog_enrichment.HuggingFaceModelProbe.probe calls it via `gguf_probe.probe_metadata(...)`,
-    a plain module attribute lookup at call time — real, still-pure quantization guessing (filename-only, no
-    network) keeps running normally either way. Tests that specifically want real-probe behavior override this
-    themselves."""
+    """Every test gets a "couldn't reach Hugging Face" GGUF probe by default (the None probe_metadata returns on a
+    network failure), so add falls back to repo-level metadata and filename heuristics. Patched at the origin
+    module since HuggingFaceModelProbe.probe calls `gguf_probe.probe_metadata(...)` at call time; filename-only
+    quantization guessing still runs. Tests wanting real-probe behavior override it.
+    """
 
     async def fake_probe_metadata(_repo_id, _filename, _proxy_url):
         return None
@@ -67,8 +63,8 @@ def test_build_tag_uses_the_full_filename_minus_extension():
     [
         ("Qwen/Qwen2.5-14B-Instruct-GGUF", "Qwen2.5-14B-Instruct"),
         ("nvidia/NVIDIA-Nemotron-3-Nano-4B-GGUF", "NVIDIA-Nemotron-3-Nano-4B"),
-        ("moondream/moondream-2b-2025-04-14-4bit", "moondream-2b-2025-04-14-4bit"),  # no -GGUF suffix to strip
-        ("org/GGUF", "GGUF"),  # stripping the whole name bare would leave nothing to show — keep it instead
+        ("moondream/moondream-2b-2025-04-14-4bit", "moondream-2b-2025-04-14-4bit"),
+        ("org/GGUF", "GGUF"),  # stripping the whole name would leave nothing to show: keep it
     ],
 )
 def test_repo_display_name_strips_the_noisy_gguf_suffix(repo_id, expected):
@@ -91,24 +87,20 @@ async def test_add_verifies_and_stores_a_new_entry(db, monkeypatch):
 
     assert entry == {
         "tag": "hf.co/Qwen/Qwen2.5-14B-Instruct-GGUF:qwen2.5-14b-instruct-q4_k_m",
-        # The repo's own name (trailing "-GGUF" stripped — see _repo_display_name), not repo["family"]
-        # ("qwen2") — real in-file metadata is only ever used for the live Matricxon-support check now, never
-        # for display (see add's own docstring on why: confirmed live that trusting it for display can be
-        # actively unhelpful).
+        # The repo's name (trailing "-GGUF" stripped, _repo_display_name), not repo["family"] ("qwen2"): in-file
+        # metadata now serves only the live Matricxon-support check, not display (it can mislead; see add).
         "family": "Qwen2.5-14B-Instruct",
         "parameter_size": "14.0B",
         "download_gb": 9.0,
         "is_projector": False,
         "vision": False,
-        # None: the (stubbed) GGUF header probe "failed", same as a real network hiccup — quantizations is
-        # still real, pure, filename-only guessing (see
-        # extended_model_catalog_enrichment.HuggingFaceModelProbe.guess_quantizations_from_filename) —
-        # unaffected by the stub, since it never touches the network at all.
+        # None: the stubbed header probe "failed" like a network hiccup. quantizations is pure filename-only guessing
+        # (HuggingFaceModelProbe.guess_quantizations_from_filename), unaffected by the stub.
         "architecture": None,
         "quantizations": ["Q4_K"],
         "note": None,
-        # Whichever engine was active at add() time (see its own docstring) - every entry gets this now,
-        # including a real admin-initiated Hugging Face search/add like this one, not just an auto-discovery.
+        # Whichever engine was active at add time: every entry gets this, including a real admin search/add like this
+        # one.
         "discovered_via_engine": "ollama",
     }
     assert await catalog.list() == [entry]
@@ -116,11 +108,11 @@ async def test_add_verifies_and_stores_a_new_entry(db, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_add_labels_a_projector_file_with_the_repo_name_instead_of_inheriting_the_repo_family(db, monkeypatch):
-    """Confirmed live twice: (1) a "moondream2" mmproj file was added with its sibling text model's own
-    repo-level "phi2"/"1.4B" (HuggingFaceCatalogSearch.repo_files' family/parameter_size describe one file per
-    repo, not the one actually picked — see that method's own docstring), showing as if the projector itself
-    were a 1.4B Phi-2 chat model; (2) a bare "Vision projector" label fixing that was just as unidentifiable
-    once there was more than one admin-added projector — the repo's own name has to be in it."""
+    """Confirmed live twice: (1) a "moondream2" mmproj was added with its sibling text model's repo-level "phi2"/"1.4B"
+    (repo_files' family/parameter_size describe one file per repo), looking like a 1.4B Phi-2 chat model; (2) a
+    bare "Vision projector" label was just as unidentifiable with several admin-added projectors: the repo name has to
+    be in it.
+    """
     repo = {
         **_REPO,
         "repo_id": "moondream/moondream-2b-2025-04-14-4bit",
@@ -133,9 +125,8 @@ async def test_add_labels_a_projector_file_with_the_repo_name_instead_of_inherit
 
     entry = await ExtendedModelCatalog(db).add(repo["repo_id"], "mmproj-f16.gguf", proxy_url=None)
 
-    # No more "(vision projector)" text suffix - that's a real badge now (renderModelRow's is_projector
-    # check in settings.js) - but the repo's own name is still what identifies *which* projector this is
-    # among several, exactly the real lesson this test's own docstring already documents.
+    # No "(vision projector)" suffix any more (a badge: renderModelRow's is_projector in settings.js), but the repo name
+    # still identifies *which* projector.
     assert entry["family"] == "moondream-2b-2025-04-14-4bit"
     assert entry["parameter_size"] is None
     assert entry["download_gb"] == 0.9
@@ -175,12 +166,11 @@ async def test_add_raises_when_the_filename_is_no_longer_in_the_repo(db, monkeyp
 
 @pytest.mark.asyncio
 async def test_add_still_enriches_an_already_installed_tag_when_the_lookup_succeeds(db, monkeypatch):
-    """Real bug found live (2026-09-22): an already-installed tag used to always skip the Hugging Face lookup
-    entirely, leaving it stuck with null family/parameter_size forever — falling back, once displayed, to
-    Matricxon's own generic engine-reported family (e.g. "Llama") instead of the real repo-derived name (e.g.
-    "Llama-3.2-3B-Instruct"), even though the real data was one lookup away. Now it gets the same real lookup
-    every other tag gets; `note` still marks it as already-installed (no download happens), but the rest of the
-    entry is real, not null."""
+    """Bug: an already-installed tag skipped the Hugging Face lookup, leaving null
+    family/parameter_size
+    and, once displayed, Matricxon's generic family (e.g. "Llama") instead of "Llama-3.2-3B-Instruct". It now gets
+    the same lookup as any tag; `note` still marks it already-installed (no download), the rest is real.
+    """
     tag = ExtendedModelCatalog.build_tag(_REPO["repo_id"], _REPO["files"][0]["filename"])
     monkeypatch.setattr(svc, "list_models", lambda: _async_return([{"name": tag}]))
     _stub_repo_files(monkeypatch, _REPO)
@@ -198,10 +188,10 @@ async def test_add_still_enriches_an_already_installed_tag_when_the_lookup_succe
 async def test_add_falls_back_to_the_no_internet_lookup_shape_when_already_installed_and_the_lookup_fails(
     db, monkeypatch
 ):
-    """The safety net the old unconditional skip existed for in the first place: silencing the "not in
-    catalog" badge for something already on disk must never require connectivity — a HuggingFaceLookupError
-    (network down, repo gone, rate-limited) falls back to the old null-data-plus-note shape instead of
-    propagating and blocking the add outright."""
+    """The safety net the old skip existed for: silencing "not in catalog" for something on disk must never need
+    connectivity. A HuggingFaceLookupError (network down, repo gone, rate limit) falls back to the null-data-plus-note
+    shape.
+    """
     tag = ExtendedModelCatalog.build_tag(_REPO["repo_id"], _REPO["files"][0]["filename"])
     monkeypatch.setattr(svc, "list_models", lambda: _async_return([{"name": tag}]))
 
@@ -220,12 +210,11 @@ async def test_add_falls_back_to_the_no_internet_lookup_shape_when_already_insta
 
 @pytest.mark.asyncio
 async def test_add_re_adding_an_already_installed_tag_is_a_harmless_no_op(db, monkeypatch):
-    """Confirmed live: re-searching a repo already both installed *and* catalogued (e.g. to double-check a pull
-    "took", or just out of habit) used to dead-end on "already in the catalog" — with no way to see or remove
-    the stale entry first, since build() already hides any installed tag regardless (see its own docstring).
-    Re-adding must succeed instead, and (now that an already-installed tag gets the same real lookup as any
-    other, see test_add_still_enriches_an_already_installed_tag_when_the_lookup_succeeds above) also self-heals
-    a stale/wrong entry to fresh real data rather than leaving whatever the first add happened to store."""
+    """Confirmed live: re-searching a repo both installed and catalogued used to dead-end on "already in the catalog"
+    with no way to see or remove the stale entry (build hides installed tags). Re-adding must succeed and, as an
+    installed tag gets the real lookup (test_add_still_enriches_an_already_installed_tag_when_the_lookup_succeeds),
+    refresh a stale entry.
+    """
     tag = ExtendedModelCatalog.build_tag(_REPO["repo_id"], _REPO["files"][0]["filename"])
     monkeypatch.setattr(svc, "list_models", lambda: _async_return([]))
     _stub_repo_files(monkeypatch, _REPO)
@@ -233,15 +222,15 @@ async def test_add_re_adding_an_already_installed_tag_is_a_harmless_no_op(db, mo
     await catalog.add(_REPO["repo_id"], _REPO["files"][0]["filename"], proxy_url=None)
 
     monkeypatch.setattr(svc, "list_models", lambda: _async_return([{"name": tag}]))
-    updated_repo = {**_REPO, "parameter_size": "14.2B"}  # a slightly different real value than the first add
+    updated_repo = {**_REPO, "parameter_size": "14.2B"}
     _stub_repo_files(monkeypatch, updated_repo)
 
     entry = await catalog.add(_REPO["repo_id"], _REPO["files"][0]["filename"], proxy_url=None)
 
     assert entry["note"] == ExtendedModelCatalog.ALREADY_INSTALLED_NOTE
     stored = await catalog.list()
-    assert [e["tag"] for e in stored] == [tag]  # replaced in place, not duplicated
-    assert stored[0]["parameter_size"] == "14.2B"  # refreshed, not left at the first add's stale value
+    assert [e["tag"] for e in stored] == [tag]
+    assert stored[0]["parameter_size"] == "14.2B"
 
 
 @pytest.mark.asyncio
@@ -310,7 +299,7 @@ async def test_find_returns_a_pull_model_compatible_shape(db, monkeypatch):
     entry = await catalog.find(tag)
 
     assert entry.locally_runnable is True
-    assert entry.min_ram_gb == pytest.approx(12.5)  # 10.0 * 1.25, same heuristic as app/model_catalog.py
+    assert entry.min_ram_gb == pytest.approx(12.5)
     assert entry.unavailable_reason is None
 
 
@@ -329,15 +318,15 @@ async def test_build_marks_hardware_gated_entries(db, user, monkeypatch):
     assert len(entries) == 1
     assert entries[0].tag == ExtendedModelCatalog.build_tag("org/big", "x.gguf")
     assert entries[0].installed is False
-    assert entries[0].hardware_ok is False  # 40GB * 1.25 = 50GB needed, only 16GB available
+    assert entries[0].hardware_ok is False
     assert entries[0].is_auto_discovered is True
 
 
 @pytest.mark.asyncio
 async def test_build_gives_a_projector_its_own_accurate_unsupported_reason(db, user, monkeypatch):
-    """A vision projector was never a standalone chat model to begin with, so the generic "architecture
-    unknown, not verified yet" reason every other admin-added entry gets is actively misleading here — it
-    implies verification might someday say True, which never happens for a file like this."""
+    """A vision projector was never a standalone chat model, so the generic "architecture unknown, not verified yet"
+    reason of other admin-added entries misleads: it implies verification might say True, which never happens here.
+    """
     monkeypatch.setattr(svc, "list_models", lambda: _async_return([]))
     _stub_repo_files(
         monkeypatch, {**_REPO, "files": [{"filename": "mmproj.gguf", "download_gb": 0.9, "is_projector": True}]}
@@ -349,8 +338,8 @@ async def test_build_gives_a_projector_its_own_accurate_unsupported_reason(db, u
 
     assert entries[0].matricxon_supported is False
     assert "never run as a chat model" in entries[0].matricxon_unsupported_reason
-    # Lets the frontend skip the "Not supported" badge outright for this one — see CatalogEntry.is_projector's
-    # own docstring on why matricxon_supported=False alone reads as backwards for a file like this.
+    # Lets the frontend skip the "Not supported" badge for this one (see CatalogEntry.is_projector:
+    # matricxon_supported=False alone reads backwards).
     assert entries[0].is_projector is True
 
 
@@ -370,36 +359,33 @@ async def test_build_marks_a_not_installed_entry_removable_for_admin_only(db, us
 
 @pytest.mark.asyncio
 async def test_build_omits_an_installed_entry_entirely(db, admin_user, monkeypatch):
-    """An installed extended-catalog entry is left out of this response entirely (not shown with installed=True)
-    — app.services.model_catalog_service.ChatModelCatalogBuilder's own "installed but not in the static
-    catalog" branch already surfaces it in the *default* list once pulled, so showing it here too would
-    duplicate the same row across both lists (see build's own docstring)."""
+    """An installed extended entry is omitted entirely (not shown installed=True): ChatModelCatalogBuilder's
+    "installed but not in the static catalog" branch already lists it in the default list, and showing it here
+    would duplicate the row (see build).
+    """
     tag = ExtendedModelCatalog.build_tag("org/a", "x.gguf")
     installed = [{"name": tag, "capabilities": ["completion"]}]
     monkeypatch.setattr(svc, "list_models", lambda: _async_return(installed))
     catalog = ExtendedModelCatalog(db)
 
     _stub_repo_files(monkeypatch, {**_REPO, "repo_id": "org/a", "files": [{"filename": "x.gguf", "download_gb": 1.0}]})
-    await catalog.add("org/a", "x.gguf", proxy_url=None)  # already installed at add time too
+    await catalog.add("org/a", "x.gguf", proxy_url=None)
 
     entries = await catalog.build(admin_user)
 
     assert entries == []
-    # Still stored, though — uninstalling later would make it reappear here (not exercised in this unit test,
-    # since that only depends on list_models()'s live result at read time, already covered by the "not
-    # installed" tests above).
+    # Still stored, though: uninstalling later would make it reappear here (not exercised; it depends on list_models
+    # at read time, covered by the "not installed" tests).
     assert [e["tag"] for e in await catalog.list()] == [tag]
 
 
 @pytest.mark.asyncio
 async def test_build_omits_an_installed_entry_with_no_completion_capability(db, admin_user, monkeypatch):
-    """Confirmed live: a vision mmproj/projector file (or any other non-"completion" install, e.g. an
-    embedding-only one) pulled via "Browse more models" never appears in ChatModelCatalogBuilder's own
-    chat-model list (it correctly has no "completion" capability) — but it must still disappear from *this*
-    list once installed, the same as a real chat model would. Before this fix, the exclusion check below only
-    looked at "completion"-capable installs, so a tag like this stayed stuck here forever, still showing
-    whatever repo-level family/parameter_size Hugging Face reported for the repo's main (different) GGUF file,
-    plus the hardcoded matricxon_supported=False every not-yet-installed entry gets."""
+    """Confirmed live: a vision mmproj file (or any non-"completion" install, e.g. embedding-only) pulled via
+    "Browse more models" never appears in ChatModelCatalogBuilder's chat list (no "completion" capability), but must
+    still leave *this* list once installed. The exclusion only looked at "completion"-capable installs, so such a
+    tag stayed here forever with the repo's main-file family/parameter_size and the hardcoded matricxon_supported=False.
+    """
     tag = ExtendedModelCatalog.build_tag("org/a", "mmproj.gguf")
     installed = [{"name": tag, "capabilities": []}]
     monkeypatch.setattr(svc, "list_models", lambda: _async_return(installed))
@@ -417,16 +403,15 @@ async def test_build_omits_an_installed_entry_with_no_completion_capability(db, 
 
 @pytest.mark.asyncio
 async def test_build_omits_an_entry_added_while_a_different_engine_was_active(db, admin_user, monkeypatch):
-    """Every entry (self-registered or a real manual Hugging Face search/add - add() no longer treats those
-    two differently, see its own docstring) records which engine was active when it was added. A tag added
-    while Matricxon was active must not resurface as a fresh "Browse more models" suggestion once Ollama
-    becomes active - real, confirmed live bug, 2026-09-30, reported twice: once for an auto-discovered
-    install, once for a model an admin had manually searched for and added."""
+    """Every entry (self-registered or admin-added by search; add treats them alike) records the engine active
+    when added. A tag added under Matricxon must not resurface as a "Browse more models" suggestion once Ollama is
+    active (confirmed, reported twice: an auto-discovered install and a manually searched add).
+    """
     monkeypatch.setattr(svc, "list_models", lambda: _async_return([]))
     engine_service._cached_engine = "matricxon"
     _stub_repo_files(monkeypatch, {**_REPO, "repo_id": "org/a", "files": [{"filename": "x.gguf", "download_gb": 1.0}]})
     catalog = ExtendedModelCatalog(db)
-    await catalog.add("org/a", "x.gguf", proxy_url=None)  # discovered_via_engine="matricxon"
+    await catalog.add("org/a", "x.gguf", proxy_url=None)
 
     engine_service._cached_engine = "ollama"
     entries = await catalog.build(admin_user)
@@ -441,9 +426,9 @@ async def test_build_keeps_an_entry_once_the_engine_that_added_it_is_active_agai
     engine_service._cached_engine = "matricxon"
     _stub_repo_files(monkeypatch, {**_REPO, "repo_id": "org/a", "files": [{"filename": "x.gguf", "download_gb": 1.0}]})
     catalog = ExtendedModelCatalog(db)
-    await catalog.add("org/a", "x.gguf", proxy_url=None)  # discovered_via_engine="matricxon"
+    await catalog.add("org/a", "x.gguf", proxy_url=None)
 
-    entries = await catalog.build(admin_user)  # still matricxon - never switched away in this test
+    entries = await catalog.build(admin_user)
 
     assert [e.tag for e in entries] == [tag]
 
@@ -467,8 +452,10 @@ async def test_build_hides_admin_hidden_tags_from_a_regular_user(db, user, admin
 
 @pytest.mark.asyncio
 async def test_build_skips_an_auto_registered_entry_once_it_is_no_longer_installed(db, admin_user, monkeypatch):
-    """Auto-discovery registers an installed model with ALREADY_INSTALLED_NOTE; after an uninstall it must not
-    resurface as a "Browse more models" suggestion (the long stale list on an empty engine)."""
+    """Auto-discovery registers an installed model with ALREADY_INSTALLED_NOTE; after uninstall it must not resurface as
+    a
+    "Browse more models" suggestion (the long stale list on an empty engine).
+    """
     tag = ExtendedModelCatalog.build_tag("org/a", "x.gguf")
     monkeypatch.setattr(svc, "list_models", lambda: _async_return([{"name": tag}]))
     _stub_repo_files(monkeypatch, {**_REPO, "repo_id": "org/a", "files": [{"filename": "x.gguf", "download_gb": 1.0}]})
@@ -487,10 +474,10 @@ async def test_clear_drops_manual_entries_but_keeps_the_installed_model_metadata
     monkeypatch.setattr(svc, "list_models", lambda: _async_return([{"name": installed}]))
     _stub_repo_files(monkeypatch, {**_REPO, "repo_id": "org/a", "files": [{"filename": "x.gguf", "download_gb": 1.0}]})
     catalog = ExtendedModelCatalog(db)
-    await catalog.add("org/a", "x.gguf", proxy_url=None)  # auto-registered (installed)
+    await catalog.add("org/a", "x.gguf", proxy_url=None)
     monkeypatch.setattr(svc, "list_models", lambda: _async_return([]))
     _stub_repo_files(monkeypatch, {**_REPO, "repo_id": "org/b", "files": [{"filename": "y.gguf", "download_gb": 1.0}]})
-    await catalog.add("org/b", "y.gguf", proxy_url=None)  # manual suggestion
+    await catalog.add("org/b", "y.gguf", proxy_url=None)
 
     await catalog.clear()
 

@@ -1,8 +1,6 @@
-"""
-Every embedding model in app/model_catalog.py's CATALOG.embedding_models, cross-referenced with what's actually
-pulled into the ML engine — the embedding-model analogue of app.services.model_catalog_service.ChatModelCatalogBuilder,
-kept in its own file (both for CLAUDE.md's file-size rule and because embedding_models is deliberately a
-disjoint list — see CuratedCatalog's own docstring) since it has no hidden-tags/per-user logic worth sharing.
+"""Embedding models from CATALOG.embedding_models cross-referenced with what the engine has pulled; the
+analogue of model_catalog_service.ChatModelCatalogBuilder. Own file for the file-size rule and because
+embedding_models is a disjoint list (CuratedCatalog) with no hidden-tags/per-user logic to share.
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,8 +16,8 @@ from app.services.model_catalog_service import ChatModelCatalogBuilder
 
 
 class EmbeddingModelCatalogService:
-    """Open to any logged-in user, same visibility as GET /api/settings/rag-availability — installed status
-    isn't admin-secret, only pulling is."""
+    """Open to any logged-in user, like GET /api/settings/rag-availability: install state isn't secret, only pulling
+    is."""
 
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
@@ -34,11 +32,9 @@ class EmbeddingModelCatalogService:
         for entry in CATALOG.embedding_models:
             installed_model = installed_by_tag.get(entry.tag)
             installed = installed_model is not None
-            # Once installed, the active engine's own live report is the only source of truth for architecture —
-            # not a merge/fallback with the curated static guess. Same principle as
-            # ChatModelCatalogBuilder._catalog_entry's identical fix (see that method's own comment): a curated
-            # entry's architecture is only ever a pre-install estimate, and trusting it once the engine disagrees
-            # (or reports nothing) would let a stale/wrong static value outrank what's actually running.
+            # Once installed, the engine's live report is the only source of architecture, with no fallback to the
+            # curated guess (same as ChatModelCatalogBuilder._catalog_entry): the static value is a pre-install
+            # estimate and must not outrank what is running.
             architecture = (
                 ChatModelCatalogBuilder._clean_engine_reported(installed_model.get("details", {}).get("family"))
                 if installed_model is not None
@@ -63,14 +59,13 @@ class EmbeddingModelCatalogService:
                     min_ram_gb=entry.min_ram_gb,
                     engine_support=engine_support,
                     installed=installed,
-                    hardware_ok=installed or capacity_gb >= entry.min_ram_gb,  # same exemption as above
+                    hardware_ok=installed or capacity_gb >= entry.min_ram_gb,
                     unavailable_reason=entry.unavailable_reason,
                 )
             )
 
-        # The admin's actual configured choice when there is one installed to point at; falls back to the
-        # app's own built-in default tag otherwise, purely so the "Default" badge still guides a fresh install
-        # toward *something* worth pulling before anything's been configured or installed yet.
+        # The admin's choice if installed; otherwise the built-in default tag, so the "Default" badge points a
+        # fresh install at something to pull.
         default_tag = (await DefaultModelSettings(self._db).embedding()) or EMBEDDING_MODEL
 
         return EmbeddingModelCatalogResponse(

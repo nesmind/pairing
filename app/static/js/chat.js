@@ -1,14 +1,6 @@
-/**
- * Chat page controller: loads the conversation list into the sidebar,
- * switches between conversations, and sends new messages — streaming the
- * model's reply into the page as it arrives.
- *
- * State is intentionally kept in a few plain variables rather than a
- * framework store; the page is small enough that this stays readable.
- */
+/* Chat page controller: loads the conversation list into the sidebar, switches conversations, and sends messages, streaming the reply into the page as it arrives. State lives in a few plain variables, not a framework store. */
 
-// id of the conversation currently shown in the main pane, or null
-// before any conversation has been created/selected.
+// id of the conversation in the main pane, or null before one is created/selected.
 let activeConversationId = null;
 
 const messagesEl = document.getElementById("messages");
@@ -26,9 +18,8 @@ const attachBtn = document.getElementById("attach-btn");
 const attachmentInput = document.getElementById("attachment-input");
 const attachmentPreviewEl = document.getElementById("attachment-preview");
 
-// Emoji picker (see chat.html: #emoji-btn/#emoji-picker) — 50 common, simple, kid-friendly emoji (faces, hand
-// gestures, hearts) picked for being widely recognized and inoffensive, not an exhaustive/exact "most used"
-// ranking. Grid order below is the display order, 8 per row.
+// Emoji picker (chat.html: #emoji-btn/#emoji-picker): 50 common, simple, kid-friendly emoji (faces, gestures, hearts),
+// 8 per row in display order.
 const EMOJI_CHOICES = [
   "😀", "😃", "😄", "😁", "😆", "😊", "🙂", "😉", "😍", "🥰",
   "😘", "🤗", "🤔", "😴", "😋", "😜", "🤩", "😎", "🥳", "😇",
@@ -51,21 +42,18 @@ const emojiPickerEl = document.getElementById("emoji-picker");
   }
 
   function insertEmoji(emoji) {
-    // Inserted at the cursor (not just appended) so picking one mid-sentence doesn't jumble the message —
-    // selectionStart/End collapse to the same point when nothing's selected, so this also just works as "insert
-    // at cursor" for the common case.
+    // Inserted at the cursor, not appended (selectionStart/End coincide when nothing is selected).
     const start = chatInput.selectionStart ?? chatInput.value.length;
     const end = chatInput.selectionEnd ?? chatInput.value.length;
     chatInput.value = chatInput.value.slice(0, start) + emoji + chatInput.value.slice(end);
     const cursor = start + emoji.length;
     chatInput.focus();
     chatInput.setSelectionRange(cursor, cursor);
-    // Picker stays open — same "pick several in a row" convention as every mainstream chat app's emoji picker;
-    // it only closes on outside click, Escape, or clicking the emoji button again (below).
+    // Picker stays open to pick several in a row; it closes on outside click, Escape, or the emoji button again.
   }
 
   emojiBtn.addEventListener("click", (event) => {
-    event.stopPropagation(); // otherwise the document-level listener below would immediately close this same click
+    event.stopPropagation();
     emojiPickerEl.classList.toggle("hidden");
   });
   document.addEventListener("click", (event) => {
@@ -80,10 +68,8 @@ const emojiPickerEl = document.getElementById("emoji-picker");
   });
 })();
 
-// One-time "🎨 New: UI themes" sidebar announcement (see chat.html) — shown until dismissed, then never again on
-// this browser. localStorage rather than a server-side per-user flag: this is a one-off UI announcement, not
-// state worth a DB round trip or syncing across devices — same reasoning as theme.js's own cross-tab sync key,
-// just for a simpler "seen it" flag instead of a value that matters.
+// One-time "🎨 New: UI themes" sidebar announcement (chat.html), shown until dismissed. In localStorage rather than a
+// per-user server flag: a one-off announcement isn't worth a DB round trip or cross-device sync.
 const WHATS_NEW_THEMES_KEY = "pairing:whatsNewThemesDismissed";
 const whatsNewThemesEl = document.getElementById("whats-new-themes");
 (function initWhatsNewThemes() {
@@ -91,7 +77,7 @@ const whatsNewThemesEl = document.getElementById("whats-new-themes");
   try {
     dismissed = localStorage.getItem(WHATS_NEW_THEMES_KEY) === "1";
   } catch (_) {
-    /* private-browsing/storage-disabled — falls back to always showing it, not fatal */
+    /* storage disabled: always show it */
   }
   whatsNewThemesEl.classList.toggle("hidden", dismissed);
 })();
@@ -100,34 +86,26 @@ document.getElementById("whats-new-themes-dismiss").addEventListener("click", ()
   try {
     localStorage.setItem(WHATS_NEW_THEMES_KEY, "1");
   } catch (_) {
-    /* private-browsing/storage-disabled — reappears next load, not fatal */
+    /* storage disabled: reappears next load */
   }
 });
-// Same sessionStorage tab-handoff account_panel.js's own "Go to Settings" link uses (settings.js's
-// SETTINGS_TAB_STORAGE_KEY reads this back and clears it on load) — without this, the link just landed on
-// Settings' own default tab (Model), not Account, since a plain href has no way to say which tab to open.
+// Same sessionStorage tab handoff as account_panel.js's "Go to Settings" link (settings.js's SETTINGS_TAB_STORAGE_KEY
+// reads and clears it); a plain href can't pick a tab and would land on Model.
 document.getElementById("whats-new-themes-settings-link").addEventListener("click", () => {
   try {
     sessionStorage.setItem("pairingSettingsActiveTab", "account");
   } catch (_err) {
-    // Private-browsing/storage-blocked — settings.js falls back to its own default tab, same as if this had
-    // never run.
+    // Storage blocked: settings.js falls back to its default tab.
   }
 });
 
-// Per-message caps — kept in sync by hand with app.config.
-// MAX_ATTACHMENT_DOCUMENTS/MAX_ATTACHMENT_IMAGES. Purely a same-values
-// client-side nicety (an early, friendlier rejection); the server is the
-// real authority and re-checks this regardless (see
-// chat_attachment_service.save_attachments).
+// Per-message caps, kept in sync by hand with app.config MAX_ATTACHMENT_DOCUMENTS/MAX_ATTACHMENT_IMAGES. A client-side
+// early rejection; the server re-checks (chat_attachment_service.save_attachments).
 const MAX_ATTACHMENT_DOCUMENTS = 5;
 const MAX_ATTACHMENT_IMAGES = 1;
 
-// The File objects picked via #attachment-input — sent as FormData's
-// repeated "attachments" field on the next send, then cleared (see
-// sendMessage/clearPendingAttachment below). Module-level rather than
-// read fresh from the <input> at send time so clearPendingAttachment can
-// reset both the input and this in one place.
+// Files picked via #attachment-input, sent as FormData's repeated "attachments" field on the next send, then cleared
+// (sendMessage/clearPendingAttachment). Module-level so clearPendingAttachment resets the input and this together.
 let pendingAttachments = [];
 
 function clearPendingAttachment() {
@@ -142,8 +120,7 @@ function removePendingAttachment(file) {
   renderAttachmentPreview();
 }
 
-/** Rebuilds the pre-send preview chip row from `pendingAttachments` —
- * one small chip per file, each with its own "×" to drop just that one. */
+/* Rebuilds the pre-send preview chips from `pendingAttachments`, each with an "×" to drop that file. */
 function renderAttachmentPreview() {
   attachmentPreviewEl.replaceChildren();
   attachmentPreviewEl.classList.toggle("hidden", pendingAttachments.length === 0);
@@ -166,16 +143,10 @@ function renderAttachmentPreview() {
 
 attachBtn.addEventListener("click", () => attachmentInput.click());
 attachmentInput.addEventListener("change", () => {
-  // Merged onto whatever was already picked in an earlier dialog open —
-  // <input multiple> only ever reports *this* dialog's own selection via
-  // .files, so replacing pendingAttachments wholesale here (rather than
-  // combining) would silently drop every earlier pick the moment the
-  // user attaches files one at a time across several clicks of
-  // #attach-btn instead of selecting them all in one go.
+  // Merged with earlier picks: <input multiple> reports only this dialog's selection, so replacing the list would drop
+  // files attached one at a time.
   const picked = [...pendingAttachments, ...Array.from(attachmentInput.files || [])];
-  // Cleared so the same underlying <input> can be reused for the next
-  // pick — pendingAttachments (not attachmentInput.files) is the single
-  // source of truth for what's actually queued to send.
+  // Cleared so the input can be reused; pendingAttachments is the source of truth for what is queued.
   attachmentInput.value = "";
   const images = picked.filter((f) => f.type.startsWith("image/"));
   const documents = picked.filter((f) => !f.type.startsWith("image/"));
@@ -186,128 +157,74 @@ attachmentInput.addEventListener("change", () => {
   renderAttachmentPreview();
 });
 
-// Whether the logged-in user is an admin — set server-side as a data
-// attribute on <body> (see app/templates/base.html and settings.js'
-// identical use of it). Combined with a channel's own is_manager flag
-// (see channelsByConversationId below) to decide, client-side, whether
-// the active chat's model/persona/rules/skill controls should act as
-// editable or read-only — the server enforces the real rule regardless
-// (see app.services.channel_service.can_manage_channel_conversation),
-// this only avoids showing a control that would just 403 if used.
+// Whether the user is an admin (data attribute on <body>, see base.html and settings.js). With a channel's is_manager
+// flag (channelsByConversationId) it decides whether the active chat's model/persona/rules/skill controls are editable
+// or read-only. The server enforces the rule (channel_service.can_manage_channel_conversation); this only avoids
+// showing a control that would 403.
 const isAdmin = document.body.dataset.isAdmin === "true";
-// The logged-in user's own id — lets the optimistic "user" bubble
-// sendMessage renders (in a channel) be clickable to open its own
-// profile modal immediately, the same way currentAvatarUrl below lets
-// it show the right picture without a round trip.
+// The user's own id, so the optimistic "user" bubble in a channel can open their profile modal at once.
 const currentUserId = document.body.dataset.userId || null;
-// The logged-in user's own username — same data attribute settings.js
-// already reads (see app/templates/base.html).
+// The user's own username (same data attribute as settings.js; see base.html).
 const currentUsername = document.body.dataset.username || "";
-// First/last name (whichever are set) with username in parentheses,
-// matching app/models/conversation.py's Message.sender_display_name
-// exactly — used to label a just-sent message with the sender's own
-// name in a channel chat, right away, without waiting on a round trip
-// to learn what the server would compute for "you".
+// First/last name (whichever are set) with the username in parentheses, matching Message.sender_display_name
+// (app/models/conversation.py); labels a just-sent channel message without a round trip.
 const currentFullName = [document.body.dataset.firstName, document.body.dataset.lastName]
   .filter(Boolean)
   .join(" ");
 const currentDisplayName = currentFullName ? `${currentFullName} (${currentUsername})` : currentUsername;
-// Same immediate-availability reasoning as currentFullName above, for
-// the small round avatar beside the optimistic "user" bubble sendMessage
-// renders before any round trip — mirrors app.models.user.User's own
-// avatar_url/initials pair exactly (see app/templates/base.html).
+// Avatar URL and initials for the optimistic "user" bubble, mirroring User's avatar_url/initials (see base.html).
 const currentAvatarUrl = document.body.dataset.avatarUrl || null;
 const currentInitials = (() => {
   const letters = [document.body.dataset.firstName, document.body.dataset.lastName].filter(Boolean).map((n) => n[0]);
   return (letters.length ? letters.join("") : currentUsername[0] || "?").toUpperCase();
 })();
 
-// Maps a channel's shared conversation id -> the ChannelSummary it came
-// from (see GET /api/channels), so selectConversation() can tell a
-// channel conversation apart from a personal one — and, for a channel
-// one, whether *this* viewer can manage it — without a second request
-// per conversation. Populated by loadChannelList().
+// Maps a channel's shared conversation id to its ChannelSummary (GET /api/channels), so selectConversation can tell
+// channel from personal chats and whether this viewer can manage it. Filled by loadChannelList.
 let channelsByConversationId = {};
 
-// Whether the active conversation's model/persona/rules/skill can be
-// changed by this viewer. Always true for a personal chat (its owner
-// always has full rights); for a channel chat, only an admin or that
-// channel's manager. Read fresh (not captured in a closure) by the
-// model-badge and pinned-badge click handlers below, since it changes
-// every time selectConversation() runs.
+// Whether this viewer can change the active conversation's model/persona/rules/skill: always for a personal chat, only
+// admins or the channel's manager in a channel. Read fresh by the badge click handlers, as it changes on each
+// selectConversation.
 let canManageActive = true;
 
-// How other channel members find out about an in-progress/finished
-// reply while sitting in that chat — "cheap" (poll) or "real" (pushed
-// live) — see app.services.chat_settings_service.get_channel_delivery_mode.
-// Fetched once in init() below; "cheap" is the safe default until that
-// resolves, matching the server's own default.
+// How other channel members see an in-progress or finished reply: "cheap" (poll) or "real" (pushed live); see
+// chat_settings_service.get_channel_delivery_mode. Fetched in init; "cheap" is the default until then.
 let channelDeliveryMode = "cheap";
 
-// message_ids this tab is itself driving via streamAssistantReply (the
-// sender's own live typing effect) — the reply-watch/poll paths below
-// must never touch these, or they'd fight the sender's own smoother,
-// immediate rendering with a slower, catch-up-only one. Reset on every
-// conversation switch (see selectConversation).
+// message_ids this tab drives itself via streamAssistantReply. The reply-watch/poll paths must skip them, or they'd
+// fight the sender's smoother rendering. Reset on each conversation switch (selectConversation).
 let liveMessageIds = new Set();
-// True for exactly the duration of this tab's own chatForm submit
-// handler below — a channel conversation's own reply-watch connection
-// (see startReplyWatch) stays open while sitting in the chat, *before*
-// activeConversationId's owner ever sends anything, so when they do
-// send, that pre-existing watch and their new POST /stream request both
-// end up subscribed to the exact same broadcast topic and can each
-// receive its very first event before the other has had a chance to tag
-// liveMessageIds — a genuine race, not just a timing nicety, and
-// unlike later chunks (where the loser only sees an already-tagged id
-// and skips cleanly), the *first* event racing this way creates a
-// second, orphaned bubble that never updates again. Most visible on an
-// instant failure, which has no earlier chunk to have already settled
-// the race — see handleReplyLiveEvent's own check of this flag. Cheap
-// mode's poll doesn't need the same guard: its ~3s tick interval is
-// always slower than this tab's own stream tagging liveMessageIds.
+// True for the duration of this tab's chatForm submit handler. A channel's reply-watch connection (startReplyWatch) is
+// already open before the owner sends, so the watch and the new POST /stream request both receive the first event on
+// the same topic before either tags liveMessageIds, and the first event can create a second, orphaned bubble. Most
+// visible on an instant failure (see handleReplyLiveEvent). Cheap-mode polling doesn't need this: its ~3s tick is
+// slower than the stream tagging liveMessageIds.
 let ownSendInFlight = false;
-// Accumulated text for a reply this tab is watching live but did NOT
-// send itself (a channel's "real" mode, or a personal chat's own owner
-// reconnecting mid-reply), keyed by message_id — the source of truth
-// for what's rendered in that bubble, independent of the DOM (see
-// handleReplyLiveEvent), since a backstop reconcile can replace the DOM
-// node from under an in-flight chunk sequence.
+// Accumulated text per message_id for a reply watched live but not sent by this tab (channel "real" mode, or a personal
+// chat reconnecting mid-reply). It is the source of truth for the bubble, not the DOM (handleReplyLiveEvent), since a
+// reconcile can replace the node mid-sequence.
 let replyLiveContent = new Map();
-// The open live-updates connection/timer for the conversation currently
-// on screen, if any — exactly one of these two is ever active at a
-// time, closed and cleared on every conversation switch by
-// stopReplyWatch() below.
-// This tab's own in-flight POST /stream request, if any — aborted
-// whenever the user leaves the conversation it belongs to (see
-// selectConversation/clearMainPane), so that leaving actually closes
-// the connection instead of leaving it running unseen in the
-// background. What that disconnect then means server-side depends on
-// conversation type (see app.services.reply_generation_service.stream_reply's
-// cancel_on_disconnect): a channel's shared conversation keeps
-// generating regardless; a personal chat's reply is cancelled, since
-// only its owner could ever have been watching.
+// The open live-updates connection/timer for the on-screen conversation; only one of the two is active, cleared on each
+// switch by stopReplyWatch.
+// This tab's in-flight POST /stream request, aborted when the user leaves its conversation
+// (selectConversation/clearMainPane) so the connection actually closes. Server side
+// (reply_generation_service.stream_reply's cancel_on_disconnect): a channel conversation keeps generating; a personal
+// chat's reply is cancelled, since only its owner was watching.
 let activeStreamAbortController = null;
 
 let replySubscribeSource = null;
-// Whether the open replySubscribeSource should close itself the moment
-// the one reply it's watching settles (a personal chat's reconnect
-// watch — see selectConversation/startReplyWatch) or stay open
-// indefinitely (a channel's "real" delivery mode).
+// Whether the open replySubscribeSource closes once its one reply settles (a personal chat's reconnect watch) or stays
+// open (a channel's "real" mode).
 let replyWatchIsOneShot = false;
 let channelPollTimeoutId = null;
-// The `server_time` echoed back by the last poll tick — the next
-// tick's `since`, so each request only asks for what's actually new.
+// The `server_time` from the last poll tick, used as the next tick's `since` so requests fetch only what's new.
 let channelPollSince = null;
 
-// Best-effort, proactive-only mirror of the backend's real guard (see
-// conversation_service.has_active_reply, enforced in
-// app/routers/chat.py's stream_reply) — disables #ask-ai-btn while this
-// tab believes some member's reply is already in progress in the active
-// channel. Never itself the source of truth: the backend still rejects
-// with 409 if this has drifted stale (see sendMessage's catch handler),
-// and every checkpoint below (renderMessageList, handleReplyLiveEvent,
-// runChannelPoll) re-syncs it from the latest known message state, so
-// any drift self-heals on the next render/poll/live-tick.
+// Client-side mirror of the backend guard (conversation_service.has_active_reply, enforced in routers/chat.py
+// stream_reply): disables #ask-ai-btn while some member's reply is in progress in the channel. Not authoritative: the
+// backend answers 409 if this drifts (sendMessage's catch), and renderMessageList, handleReplyLiveEvent and
+// runChannelPoll re-sync it.
 let channelReplyInFlight = false;
 
 function updateAskAiButtonState() {
@@ -317,64 +234,43 @@ function updateAskAiButtonState() {
     : "";
 }
 
-// Show any message a redirecting page (e.g. Settings, after saving)
-// queued for us — as early as possible, not gated behind the
-// conversation-list fetch below, since it's independent of that data.
+// Show any message a redirecting page (e.g. Settings after saving) queued, early and independent of the
+// conversation-list fetch below.
 showQueuedSystemMessage();
 
-// marked.js is configured once here so every place that renders model
-// output (renderMessageContent below) gets consistent behavior: GitHub-
-// flavored line breaks, and syntax highlighting via highlight.js for
-// fenced code blocks. Syntax highlighting needs a custom `code` renderer
-// rather than the old `highlight` setOptions key — marked dropped that
-// key in v5 (this app is on v15), and it's silently ignored rather than
-// erroring, so code blocks rendered as plain unstyled text with no
-// warning until this was wired up properly.
+// marked.js is configured once so all model output (renderMessageContent) renders alike: GitHub-flavored line breaks
+// and highlight.js for fenced code. Highlighting needs a custom `code` renderer: marked v5+ (this app uses v15)
+// silently ignores the old `highlight` option.
 marked.use({
   renderer: {
     code({ text, lang }) {
-      // Only trust `lang` as an actual language name (guards against it
-      // holding something unexpected before it ever reaches an HTML
-      // class attribute) and only when highlight.js actually knows it —
-      // hljs.getLanguage() is undefined for a lang hint it doesn't
-      // recognize, e.g. a model inventing "pseudocode".
+      // Trust `lang` only if it is a real language name (it reaches an HTML class attribute) and highlight.js knows it;
+      // hljs.getLanguage is undefined for hints like a model-invented "pseudocode".
       const language = lang && /^[\w+-]+$/.test(lang) && hljs.getLanguage(lang) ? lang : null;
       const highlighted = language
         ? hljs.highlight(text, { language }).value
         : hljs.highlightAuto(text).value;
       const langClass = language ? ` language-${language}` : "";
-      // The "hljs" class is what every vendored theme's CSS actually
-      // targets (see app/static/vendor/highlightjs/styles/*.css) — the
-      // color scheme silently has no effect without it.
+      // Every vendored theme's CSS targets the "hljs" class (app/static/vendor/highlightjs/styles/*.css); without it
+      // the color scheme has no effect.
       return `<pre><code class="hljs${langClass}">${highlighted}</code></pre>`;
     },
   },
 });
 marked.setOptions({ breaks: true });
 
-// Matches $$...$$ and \[...\] (display/block math) or \(...\) (inline math) — deliberately NOT bare
-// $...$: a single dollar sign is common in ordinary prose ("$5 and $10"), and treating every pair of
-// them as math would corrupt normal currency text far more often than it would ever help. Extraction
-// happens on the *raw* model text, before marked.parse() ever sees it — marked's own CommonMark
-// backslash-escape rule (a backslash before any ASCII punctuation, including "(", ")", "[", "]", is an
-// escaped literal character, and the backslash is silently dropped) would otherwise eat exactly the
-// delimiters math relies on, long before KaTeX ever got a chance to render them.
+// Matches $$...$$ and \[...\] (display math) or \(...\) (inline math), deliberately not bare $...$: a single dollar
+// sign is common in prose ("$5 and $10"). Extraction runs on the raw model text before marked.parse, whose CommonMark
+// backslash-escape rule would drop the backslash from the delimiters before KaTeX saw them.
 const MATH_SPAN_RE = /\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)/g;
 
 function mathPlaceholder(index) {
-  // Plain letters/digits/"@" — none of which marked.js treats as markdown syntax or HTML-escapes — so
-  // this survives marked.parse() and DOMPurify.sanitize() completely unchanged, as literal text, ready
-  // to be swapped back out for the real (trusted, KaTeX-generated, never raw-model-supplied) HTML below.
+  // Plain letters/digits/"@", which marked and DOMPurify leave unchanged, to be swapped back for the trusted
+  // KaTeX-generated HTML below.
   return `@@KATEX_MATH_${index}@@`;
 }
 
-/** Pulls every math span out of `text` before markdown parsing, rendering each with KaTeX up front and
- * replacing it with a placeholder token — see MATH_SPAN_RE's own comment for why this has to happen
- * before, not after, marked.parse(). Returns the placeholder-substituted text plus the rendered HTML for
- * each placeholder, in order, for renderMessageContent to splice back in once sanitization is done. A
- * span midway through streaming in (an opening \[ with no closing \] yet) simply doesn't match yet and is
- * left as plain text until it completes — the same "incomplete syntax renders literally for now" behavior
- * any partial markdown already has. */
+/* Pulls math spans out of `text` before markdown parsing (see MATH_SPAN_RE), renders each with KaTeX, and leaves a placeholder. Returns the substituted text plus the rendered HTML per placeholder, for renderMessageContent to splice back after sanitization. A span still streaming in (opening \[ with no closing \]) stays plain text until it completes. */
 function extractMathSpans(text) {
   const mathHtml = [];
   const placeholderText = text.replace(MATH_SPAN_RE, (match, dollarBlock, bracketBlock, parenInline) => {
@@ -382,11 +278,10 @@ function extractMathSpans(text) {
     const tex = dollarBlock ?? bracketBlock ?? parenInline;
     let html;
     try {
-      // throwOnError: false renders a parse error as visible red text inline instead of throwing —
-      // a malformed \[...\] from the model degrades gracefully instead of breaking the whole reply.
+      // throwOnError: false shows a parse error as inline red text, so a malformed \[...\] doesn't break the reply.
       html = katex.renderToString(tex, { throwOnError: false, displayMode });
     } catch (_err) {
-      return match; // katex itself unavailable/threw anyway — fall back to the original literal text.
+      return match;
     }
     const index = mathHtml.length;
     mathHtml.push(html);
@@ -398,28 +293,18 @@ function extractMathSpans(text) {
 function renderMessageContent(container, text) {
   const { placeholderText, mathHtml } = extractMathSpans(text || "");
   let html = DOMPurify.sanitize(marked.parse(placeholderText));
-  // Substituted after sanitization, not before: this HTML comes from KaTeX's own renderer (a controlled,
-  // trusted source), not from the model's raw text, so it never needs to pass through DOMPurify's
-  // HTML-only allowlist — which doesn't know about the MathML tags (<math>, <mrow>, <annotation>, ...)
-  // KaTeX's own output includes alongside its visible HTML rendering, and would otherwise strip them.
+  // Substituted after sanitization: this HTML comes from KaTeX (trusted, not raw model text) and includes MathML tags
+  // (<math>, <mrow>, <annotation>,...) that DOMPurify's HTML allowlist would strip.
   mathHtml.forEach((rendered, index) => {
     html = html.split(mathPlaceholder(index)).join(rendered);
   });
   container.innerHTML = html;
-  // Re-derive direction from the actual (possibly still-growing, mid-
-  // stream) text every time — see app.js:detectTextDirection for why
-  // this is more reliable than the browser's own dir="auto" heuristic
-  // for Hebrew/Arabic text mixed with punctuation, numbers, or markdown.
+  // Direction is re-derived from the current (possibly still-streaming) text on each render; see app.js
+  // detectTextDirection for why this beats `dir="auto"` on mixed Hebrew/Arabic text.
   container.dir = detectTextDirection(text || "");
 }
 
-/** Appends a small "Sources: a.txt, b.pdf" line under a reply that used
- * RAG (see app/rag.py / app/routers/chat.py) — lets the user see which
- * uploaded documents contributed to that specific answer. Only appears
- * when RAG actually contributed (sources is empty otherwise), so its
- * presence itself is useful signal. Safe to call only once a bubble's
- * final text is set, since it doesn't survive a later
- * renderMessageContent() call (which replaces the whole innerHTML). */
+/* Appends a "Sources: a.txt, b.pdf" line under a reply that used RAG (app/rag.py, app/routers/chat.py), showing which documents contributed. Call it after the bubble's final text is set: a later renderMessageContent replaces the innerHTML. */
 function appendSourcesFooter(bubble, sources) {
   if (!sources || sources.length === 0) return;
   const footer = document.createElement("div");
@@ -428,34 +313,23 @@ function appendSourcesFooter(bubble, sources) {
   bubble.appendChild(footer);
 }
 
-/** `senderLabel`, when given, renders a small "who sent this" line above
- * the bubble — only ever passed for a channel's shared conversation
- * (see selectConversation/the chat-send handler below), never for a
- * personal chat: with only one human participant, a label there would
- * be pure noise. Channel messages need it precisely because more than
- * one member can post in the same thread.
- *
- * `avatarUrl`/`initials` are used for every "user"-role message, personal
- * chat included — a message's own sender always has a picture-or-initials
- * to show (see app.models.conversation.Message.sender_avatar_url/
- * sender_initials). Never rendered for "assistant"/"system" — no picture
- * concept for the AI in this app.
- *
- * `senderId`, unlike avatarUrl/initials, follows senderLabel's own
- * channel-only gating (always undefined/null for a personal chat's call
- * site) — it's what makes the avatar clickable to open the "enlarged
- * picture + basic details" modal (see openUserProfileModal), which only
- * makes sense where there's more than one possible sender to look up. */
+/*
+ * `senderLabel`, when given, renders a "who sent this" line above the bubble; passed only for a channel's shared
+ * conversation (selectConversation, chat-send handler), where several members can post.
+ * 
+ * `avatarUrl`/`initials` apply to every "user"-role message, personal chats included
+ * (Message.sender_avatar_url/sender_initials); never to "assistant"/"system".
+ * 
+ * `senderId` follows senderLabel's channel-only gating and makes the avatar clickable to open the profile modal
+ * (openUserProfileModal).
+ */
 function bubbleFor(role, senderLabel, avatarUrl, initials, senderId) {
   const wrapper = document.createElement("div");
   wrapper.className = "flex flex-col " + (role === "user" ? "items-end" : "items-start");
 
   if (senderLabel) {
-    // A dedicated row (not just a bare <span>) so attachDeleteButtonIfEligible
-    // below has somewhere to put a delete affordance next to the label —
-    // "message-label-row" is what it looks for, and its presence at all
-    // is also how it recognizes "this is a channel message" (a personal
-    // chat's bubble never gets a label, or this row, in the first place).
+    // A dedicated row so attachDeleteButtonIfEligible can put a delete control beside the label; its presence also
+    // marks "this is a channel message".
     const labelRow = document.createElement("div");
     labelRow.className = "message-label-row mb-1 flex items-center gap-1.5 px-1";
     const label = document.createElement("span");
@@ -471,16 +345,11 @@ function bubbleFor(role, senderLabel, avatarUrl, initials, senderId) {
     (role === "user"
       ? "bg-brand-600 text-white rounded-br-sm"
       : "bg-slate-800 text-slate-100 rounded-bl-sm");
-  // Text direction (rtl for Hebrew/Arabic, ltr otherwise) is set by
-  // renderMessageContent() below, per render — not here, since it
-  // depends on the actual message text, which doesn't exist yet at
-  // bubble-creation time. This only affects text flow *inside* the
-  // bubble — which side of the chat it sits on (user vs. assistant) is
-  // controlled separately by the wrapper's items-end/items-start.
+  // Text direction is set per render by renderMessageContent (it depends on the text). This affects text flow inside
+  // the bubble; the side of the chat is set by the wrapper's items-end/items-start.
 
   if (role === "user") {
-    // Bubble + avatar side by side, avatar last so it lands on the same
-    // side as the text (right, matching items-end above).
+    // Bubble and avatar side by side, avatar last so it sits on the text's side (right, matching items-end).
     const row = document.createElement("div");
     row.className = "flex items-end gap-2";
     const avatar = document.createElement("div");
@@ -495,8 +364,8 @@ function bubbleFor(role, senderLabel, avatarUrl, initials, senderId) {
   } else {
     wrapper.appendChild(bubble);
   }
-  // Starts at "now" (right for a just-sent/streaming bubble); setBubbleTime overwrites it with the stored
-  // created_at wherever a persisted message is being rendered.
+  // Starts at "now" (right for a just-sent bubble); setBubbleTime overwrites it with the stored created_at for
+  // persisted messages.
   const time = document.createElement("span");
   time.className = "message-time mt-0.5 px-1 text-[10px] text-slate-500";
   time.textContent = formatShortDateTime();
@@ -504,22 +373,13 @@ function bubbleFor(role, senderLabel, avatarUrl, initials, senderId) {
   return { wrapper, bubble };
 }
 
-/** Sets a bubble's timestamp from a message's server `created_at` (no-op when unknown). */
+/* Sets a bubble's timestamp from the message's server `created_at` (no-op if unknown). */
 function setBubbleTime(wrapper, createdAt) {
   const time = wrapper && wrapper.querySelector(".message-time");
   if (time && createdAt) time.textContent = formatShortDateTime(createdAt);
 }
 
-/** Adds a small delete affordance to `wrapper`'s label row for a viewer
- * who can manage this channel (see canManageActive) — lets a channel
- * admin/manager remove any message, live if it's still generating (see
- * deleteChannelMessage below). No-op if there's nowhere to put it (a
- * personal chat's bubble never gets a label row at all — see bubbleFor)
- * or the viewer can't manage this channel. Safe to call more than once
- * for the same wrapper: a poll/live-watch bubble is often created before
- * its real id is known, so this runs again once it is (see
- * findOrCreateBubbleForMessage/readAssistantReplyStream below), and
- * button-already-present is checked for rather than assumed. */
+/* Adds a delete control to `wrapper`'s label row for viewers who can manage the channel (canManageActive), so an admin/manager can remove any message, even a generating one (deleteChannelMessage). No-op without a label row (personal chats) or without rights. Safe to call repeatedly: poll/live-watch bubbles are created before their id is known and rerun this (findOrCreateBubbleForMessage/readAssistantReplyStream), and an existing button is detected. */
 function attachDeleteButtonIfEligible(wrapper, messageId) {
   if (!canManageActive) return;
   const labelRow = wrapper.querySelector(".message-label-row");
@@ -528,9 +388,7 @@ function attachDeleteButtonIfEligible(wrapper, messageId) {
   btn.type = "button";
   btn.className = "delete-message-btn ms-auto shrink-0 text-slate-600 hover:text-red-400 transition-colors";
   btn.title = "Delete this message";
-  // Same trash-can icon as the sidebar's own "delete chat" button (see
-  // renderConversationListItem below) rather than an emoji, for visual
-  // consistency across the app's delete affordances.
+  // Same trash-can icon as the sidebar's "delete chat" button (renderConversationListItem), for consistency.
   btn.innerHTML =
     '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" ' +
     'stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16Z"/></svg>';
@@ -538,14 +396,7 @@ function attachDeleteButtonIfEligible(wrapper, messageId) {
   labelRow.appendChild(btn);
 }
 
-/** Deletes a channel message for good — channel admins/managers only
- * (see app/routers/conversations.py's delete_message, the only enforcer
- * that actually matters; attachDeleteButtonIfEligible above is just the
- * UI-side reflection of the same rule). Removes `wrapper` from this tab
- * immediately on success rather than waiting for the next poll/live-
- * watch tick to notice the status="deleted" transition — other members
- * still learn about it that way (see runChannelPoll/handleReplyLiveEvent),
- * just not this tab, which already knows. */
+/* Deletes a channel message for good (channel admins/managers only; enforced in routers/conversations.py delete_message, which this UI mirrors). Removes `wrapper` at once; other members see the status="deleted" change via runChannelPoll/handleReplyLiveEvent. */
 async function deleteChannelMessage(messageId, wrapper) {
   if (!confirm("Delete this message? This can't be undone.")) return;
   let deletedMessageIds;
@@ -558,52 +409,33 @@ async function deleteChannelMessage(messageId, wrapper) {
     alert(err.message || "Failed to delete message.");
     return;
   }
-  // Deleting a "user" message whose reply is still generating (see
-  // conversation_service.delete_message) takes that reply down too —
-  // the response names every id actually removed (one or two), not just
-  // `messageId`, so its bubble disappears from this tab right away
-  // instead of waiting for the next poll/live-watch tick to notice.
+  // Deleting a "user" message whose reply is still generating also removes that reply
+  // (conversation_service.delete_message); the response lists every removed id so both bubbles go now.
   for (const id of deletedMessageIds) {
     const el = id === messageId ? wrapper : messagesEl.querySelector(`[data-message-id="${id}"]`);
     if (el) el.remove();
-    // *Adds* to liveMessageIds — not a typo for .delete(): a "cheap"
-    // mode poll request already in flight when this DELETE was clicked
-    // can still resolve afterward, reflecting whatever status the row
-    // had *before* this delete committed (e.g. still "streaming") —
-    // without this, runChannelPoll's own liveMessageIds check (see
-    // below) wouldn't recognize that stale response as one to ignore,
-    // and would recreate the exact bubble just removed here. A real,
-    // shipped bug: the message reappeared until the whole conversation
-    // was reloaded, which is the only path that re-reads from
-    // conversation_service.visible_messages and so never shows it again.
+    //.add, not.delete: a "cheap" poll in flight at click time can resolve with the pre-delete status (e.g.
+    // "streaming"), and without this runChannelPoll's liveMessageIds check would recreate the bubble, reappearing until
+    // a full reload (a shipped bug).
     liveMessageIds.add(id);
   }
   if (messagesEl.children.length === 0) showEmptyState(true);
 }
 
-// Shown in place of a failed/interrupted reply's content — see
-// renderReplyBody below. A reply that got partway before failing still
-// shows that partial content above this, rather than losing it.
+// Shown in place of a failed or interrupted reply's content (renderReplyBody); partial content stays above it.
 const REPLY_FAILED_NOTICE = "⚠️ This reply didn't finish — generation failed or was interrupted.";
 
-/** Renders an assistant reply's body against its current known
- * content/status/sources (see Message.status in
- * app/models/conversation.py) — the one place that decides between
- * "still thinking" (typing dots — status is "streaming" and nothing has
- * come through yet), the reply text itself (streaming with partial
- * content, or complete), and a failure notice (status "error", any
- * partial content kept above it). Used for every render of an
- * assistant bubble: the initial history load, "cheap" mode's poll, and
- * "real" mode / personal-chat reconnect's live events — so a reply's
- * in-progress or failed state reads the same whether you watched it
- * happen or you're only just opening the conversation now. `status`
- * undefined/"complete" (a plain user message, or any pre-existing
- * caller that never passes one) just renders `content` as-is.
- * `errorText`, only meaningful with status "error", overrides the generic REPLY_FAILED_NOTICE with the real
- * failure reason whenever one is known — Message.error_message/MessageOut.error_message for the history-load/
- * poll paths (null for a row written before that field existed, or one that genuinely never started at all —
- * see sendMessage's own catch handler), or payload.error directly for a live SSE event, the exact same text
- * either way. Falls back to the generic notice only when nothing more specific is available. */
+/*
+ * Renders an assistant reply's body from its known content/status/sources (Message.status in
+ * app/models/conversation.py): typing dots (streaming, nothing yet), the reply text (streaming or complete), or a
+ * failure notice (status "error", partial content kept above). Used for every assistant bubble render (history load,
+ * "cheap" poll, "real" live events and reconnect), so in-progress and failed states read the same however you arrive.
+ * Undefined/"complete" status renders `content` as-is.
+ * `errorText` (status "error" only) replaces the generic REPLY_FAILED_NOTICE with the real reason:
+ * Message.error_message/MessageOut.error_message for history and poll (null for rows predating the field or replies
+ * that never started; see sendMessage's catch), or payload.error for a live SSE event. Falls back to the generic notice
+ * otherwise.
+ */
 function renderReplyBody(bubble, content, status, sources, errorText) {
   if (status === "streaming" && !content) {
     bubble.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
@@ -619,17 +451,10 @@ function renderReplyBody(bubble, content, status, sources, errorText) {
   } else {
     appendSourcesFooter(bubble, sources);
   }
-  ToolBlocks.render(bubble); // tool calls (MCP) from bubble._toolEvents, if the reply made any
+  ToolBlocks.render(bubble);
 }
 
-/** Appends every one of a message's attachments (an image, or a small
- * download chip for anything else) to `bubble` — see MessageOut.attachments/
- * AttachmentOut in app/schemas/chat.py. No-op when `message` carries
- * none. Safe to call right after renderReplyBody on the same bubble
- * every time, even for an already-rendered one being updated again (e.g.
- * runChannelPoll) — that call replaces bubble.innerHTML wholesale, so
- * this needs to run again right after it every time, not just once at
- * creation. */
+/* Appends a message's attachments (image, or a download chip for other files) to `bubble` (MessageOut.attachments/AttachmentOut in app/schemas/chat.py); no-op if none. Call it after each renderReplyBody on the same bubble, since that replaces bubble.innerHTML. */
 function renderAttachment(bubble, message) {
   if (!message || !message.attachments) return;
   for (const attachment of message.attachments) {
@@ -638,14 +463,8 @@ function renderAttachment(bubble, message) {
       img.src = attachment.url;
       img.alt = attachment.filename || "attachment";
       img.className = "mt-2 max-w-full rounded-lg";
-      // An <img> has no layout height until it actually loads, so the
-      // plain scrollTop=scrollHeight every caller below does right after
-      // this returns undershoots — the message list scrolls to what
-      // looks like the bottom *before* the image has any height, then
-      // the image loads and pushes everything down, leaving the view no
-      // longer actually at the bottom. Re-scrolling once the real size
-      // is known fixes it regardless of which caller (a fresh send, a
-      // channel poll, a full reload) triggered this render.
+      // An <img> has no height until it loads, so callers' scrollTop=scrollHeight undershoots; re-scroll once the real
+      // size is known, whichever caller (send, poll, reload) rendered it.
       img.addEventListener("load", () => scrollMessagesToBottom());
       bubble.appendChild(img);
     } else {
@@ -686,8 +505,8 @@ function addMessageBubble(
     attachDeleteButtonIfEligible(wrapper, messageId);
   }
   setBubbleTime(wrapper, attachmentSource && attachmentSource.created_at);
-  // A finished message in a private chat can be shared to a channel; a message that was shared INTO this
-  // channel carries a small "Shared from a private chat" remark (see chat_share.js).
+  // A finished private-chat message can be shared to a channel; a message shared into this channel carries a "Shared
+  // from a private chat" remark (chat_share.js).
   if (messageId && (!status || status === "complete")) ChannelShare.decorate(wrapper, messageId, role);
   ChannelShare.remark(wrapper, sharedFrom, attachmentSource && attachmentSource.sender_display_name);
   bubble._toolEvents = attachmentSource && attachmentSource.tool_events;
@@ -698,13 +517,7 @@ function addMessageBubble(
   return { wrapper, bubble };
 }
 
-/** Finds the bubble already tracking `messageId` (see addMessageBubble/
- * streamAssistantReply, which both tag a bubble's wrapper with
- * data-message-id once its id is known) or creates a fresh one — used by
- * the poll/live-watch paths below to update the same DOM node across
- * repeated events instead of appending a duplicate each time. `created`
- * tells the caller whether this is a message it hasn't shown any part of
- * yet (see handleReplyLiveEvent's reconcile-on-first-sight below). */
+/* Finds the bubble already tracking `messageId` (tagged data-message-id by addMessageBubble/streamAssistantReply) or creates one, so poll/live-watch paths update the same node instead of appending duplicates. `created` tells the caller the message is new to this tab (handleReplyLiveEvent's reconcile-on-first-sight). */
 function findOrCreateBubbleForMessage(messageId, role, senderLabel, avatarUrl, initials, senderId) {
   const existing = messagesEl.querySelector(`[data-message-id="${messageId}"]`);
   if (existing) return { bubble: existing.querySelector(".markdown-body"), created: false };
@@ -716,21 +529,15 @@ function findOrCreateBubbleForMessage(messageId, role, senderLabel, avatarUrl, i
   return { bubble, created: true };
 }
 
-/** Renders a conversation's full message list from scratch — shared by
- * selectConversation (initial load) and reconcileConversationMessages
- * (the channel live-updates backstop) below. */
+/* Renders a conversation's full message list from scratch, for selectConversation (initial load) and reconcileConversationMessages (channel live-updates backstop). */
 function renderMessageList(messages, channelInfo) {
   messagesEl.innerHTML = "";
   showEmptyState(messages.length === 0);
   for (const message of messages) {
-    // Sender labels only ever show in a channel's shared conversation —
-    // see bubbleFor's docstring. "AI" for every assistant reply;
-    // message.sender_display_name (see MessageOut) for who actually
-    // typed a user-role message, since more than one member can post
-    // here.
+    // Sender labels show only in a channel's shared conversation (see bubbleFor): "AI" for assistant replies,
+    // message.sender_display_name (MessageOut) for user messages, since several members post.
     const senderLabel = channelInfo ? (message.role === "assistant" ? "AI" : message.sender_display_name) : null;
-    // Clickable-to-enlarge only in a channel — see bubbleFor's own
-    // docstring on why senderId follows senderLabel's exact gating.
+    // Clickable-to-enlarge only in a channel (see bubbleFor on senderId).
     const senderId = channelInfo && message.role === "user" ? message.sender_id : null;
     addMessageBubble(
       message.role,
@@ -749,27 +556,15 @@ function renderMessageList(messages, channelInfo) {
   if (messages.length > 0) scrollMessagesToBottom();
 
   if (channelInfo) {
-    // Covers both the initial load and every reconcileConversationMessages
-    // backstop call, including right after a reply finishes — the single
-    // most reliable checkpoint for this, since it reflects the database's
-    // own authoritative state rather than a live event that might have
-    // been missed.
+    // Covers the initial load and every reconcileConversationMessages call, including right after a reply finishes: the
+    // most reliable checkpoint, since it reflects the database's state rather than a possibly missed live event.
     const last = messages[messages.length - 1];
     channelReplyInFlight = !!(last && last.role === "assistant" && last.status === "streaming");
     updateAskAiButtonState();
   }
 }
 
-/** Refetches and re-renders this conversation's full message history —
- * the correctness backstop for both channel delivery modes and a
- * personal chat's reconnect watch alike: the broadcast hub's bounded
- * queue can drop an event under load (see
- * app.services.reply_broadcast_service), and "real" mode has no other
- * way to learn about a *different* channel member's newly-sent user
- * message (the broadcast hub only ever carries reply-generation
- * events). Called once a watched reply finishes, or the first time this
- * tab sees a message it has no bubble for yet — cheap enough for how
- * infrequently either of those happens. */
+/* Refetches and re-renders the conversation's full history: the backstop for both channel delivery modes and a personal chat's reconnect watch. The broadcast hub's bounded queue can drop events under load (reply_broadcast_service), and "real" mode has no other way to learn of another member's new user message (the hub carries only reply-generation events). Called when a watched reply finishes or when a message has no bubble yet; both are infrequent. */
 async function reconcileConversationMessages(conversationId) {
   if (conversationId !== activeConversationId) return;
   let messages;
@@ -778,14 +573,11 @@ async function reconcileConversationMessages(conversationId) {
   } catch (_) {
     return;
   }
-  if (conversationId !== activeConversationId) return; // switched away while this was in flight
+  if (conversationId !== activeConversationId) return;
   renderMessageList(messages, channelsByConversationId[conversationId] || null);
 }
 
-/** Stops whichever live-updates mechanism (see startReplyWatch/
- * startChannelPolling below) is active for the conversation being left —
- * called on every conversation switch, so exactly one is ever running at
- * a time, for the conversation actually on screen. */
+/* Stops the live-updates mechanism (startReplyWatch/startChannelPolling) for the conversation being left; called on every switch, so one runs at a time. */
 function stopReplyWatch() {
   if (replySubscribeSource) {
     replySubscribeSource.close();
@@ -800,19 +592,7 @@ function stopReplyWatch() {
   replyLiveContent.clear();
 }
 
-/** A read-only SSE connection to app/routers/chat.py's `/subscribe`
- * endpoint, which relays whatever app.services.reply_broadcast_service
- * publishes for this conversation — live, token-by-token, without this
- * tab having to be the one that sent the message. Two callers (see
- * selectConversation below): a channel conversation in "real" delivery
- * mode, watching for any member's activity for as long as the chat stays
- * open; and a personal chat whose own last message is still "streaming"
- * when it's opened — a reconnect after whatever connection originally
- * sent it dropped — which only needs to watch until that one reply
- * settles. Plain EventSource (not the manual fetch+reader
- * streamAssistantReply below uses) is fine here: this is a GET with no
- * body, and the browser's automatic reconnect-on-drop is exactly the
- * behavior wanted for a long-lived "watch this chat" connection. */
+/* A read-only SSE connection to routers/chat.py's `/subscribe`, relaying reply_broadcast_service events for this conversation live, without this tab having sent the message. Two callers (selectConversation): a channel in "real" delivery mode, watching all activity while open; and a personal chat whose last message is still "streaming" when opened (the original connection dropped), watching until that reply settles. Plain EventSource suits it: a GET with no body, and its automatic reconnect is wanted for a long-lived watch. */
 function startReplyWatch(conversationId, oneShot) {
   const source = new EventSource(`/api/chat/${conversationId}/subscribe`);
   replySubscribeSource = source;
@@ -824,21 +604,17 @@ function startReplyWatch(conversationId, oneShot) {
 
 function handleReplyLiveEvent(conversationId, payload) {
   if (conversationId !== activeConversationId) return;
-  // This tab's own streamAssistantReply is already rendering whatever
-  // reply it just sent (or is about to start rendering, within the same
-  // tick) — see ownSendInFlight's own declaration for the race this
-  // avoids. Skips this connection's events for the whole send, not just
-  // once liveMessageIds catches up, since that catch-up is exactly what
-  // isn't guaranteed to win.
+  // This tab's streamAssistantReply is already rendering (or about to render) the reply it sent; see ownSendInFlight
+  // for the race. Skip events for the whole send, not just until liveMessageIds catches up, since that catch-up isn't
+  // guaranteed to win.
   if (ownSendInFlight) return;
   const messageId = payload.message_id;
-  // Same idea, after the fact: once tagged, this message is known to be
-  // one this tab is already rendering live via its own connection.
+  // Once tagged, this message is known to be rendered live by this tab's own connection.
   if (!messageId || liveMessageIds.has(messageId)) return;
 
   if (payload.sync) {
     replyLiveContent.set(messageId, payload.content || "");
-    if (payload.status !== "streaming") return; // already finished by the time this tab connected
+    if (payload.status !== "streaming") return;
     channelReplyInFlight = true;
     updateAskAiButtonState();
     const { bubble, created } = findOrCreateBubbleForMessage(messageId, "assistant", "AI");
@@ -861,10 +637,8 @@ function handleReplyLiveEvent(conversationId, payload) {
     const { bubble, created } = findOrCreateBubbleForMessage(messageId, "assistant", "AI");
     renderReplyBody(bubble, text, "streaming");
     messagesEl.scrollTop = messagesEl.scrollHeight;
-    // A brand-new message this tab hasn't shown any part of yet — pick
-    // up the user message that prompted it (and anything else missed)
-    // in one shot, rather than teaching the broadcast hub about
-    // messages it was never meant to carry.
+    // A brand-new message this tab hasn't shown: fetch the prompting user message and anything missed in one reconcile,
+    // rather than teaching the broadcast hub about messages it doesn't carry.
     if (created) reconcileConversationMessages(conversationId);
   }
   if (payload.deleted) {
@@ -873,13 +647,9 @@ function handleReplyLiveEvent(conversationId, payload) {
     replyLiveContent.delete(messageId);
     const existing = messagesEl.querySelector(`[data-message-id="${messageId}"]`);
     if (existing) existing.remove();
-    // Deleting the *question* this reply was answering (see
-    // conversation_service.delete_message) takes the reply down too —
-    // this event only ever names the reply's own id (the broadcast hub
-    // only ever tracks a conversation's *generation* state), so a full
-    // reconcile is what actually removes the paired question's bubble
-    // for this tab, the same way it's the authoritative source for
-    // done/error below.
+    // Deleting the question takes its reply down too (conversation_service.delete_message), but this event names only
+    // the reply's id (the hub tracks generation state only), so a full reconcile removes the paired question's bubble,
+    // as it is the authority for done/error below.
     reconcileConversationMessages(conversationId);
     if (replyWatchIsOneShot) stopReplyWatch();
     return;
@@ -888,22 +658,16 @@ function handleReplyLiveEvent(conversationId, payload) {
     channelReplyInFlight = false;
     updateAskAiButtonState();
     replyLiveContent.delete(messageId);
-    reconcileConversationMessages(conversationId); // authoritative final content/status/sources
-    // A personal chat's reconnect watch only ever cares about the one
-    // reply it caught up on — nothing else will ever arrive on it, so
-    // close it rather than leaving an idle connection open. A channel's
-    // "real"-mode watch is the opposite: it stays open for as long as
-    // the chat does, since any member might send another message later.
+    reconcileConversationMessages(conversationId);
+    // A personal chat's reconnect watch cares only about the one reply it caught up on: close it rather than leave an
+    // idle connection. A channel's "real"-mode watch stays open as long as the chat does, as any member may send again.
     if (replyWatchIsOneShot) stopReplyWatch();
   }
 }
 
-// How often "cheap" channel delivery mode checks back for new/changed
-// messages while its conversation stays open — frequent enough to feel
-// responsive, cheap enough to leave running for as long as the chat
-// stays open (unlike pollForGeneratedTitle below, this has no give-up-
-// after-N-attempts cap: a channel chat is open-ended, not a one-shot
-// check-back).
+// How often "cheap" delivery mode checks for new or changed messages while the conversation is open: frequent enough to
+// feel responsive, cheap enough to leave running. Unlike pollForGeneratedTitle, it has no attempt cap, as a channel
+// chat is open-ended.
 const CHANNEL_POLL_INTERVAL_MS = 3000;
 
 function startChannelPolling(conversationId) {
@@ -916,29 +680,22 @@ function scheduleChannelPoll(conversationId) {
 }
 
 async function runChannelPoll(conversationId) {
-  if (conversationId !== activeConversationId) return; // switched away while this tick was scheduled
+  if (conversationId !== activeConversationId) return;
   let result;
   try {
     const query = channelPollSince ? `?since=${encodeURIComponent(channelPollSince)}` : "";
     result = await api(`/api/conversations/${conversationId}/messages/latest${query}`);
   } catch (_) {
-    scheduleChannelPoll(conversationId); // transient failure — just try again next tick
+    scheduleChannelPoll(conversationId);
     return;
   }
   if (conversationId !== activeConversationId) return;
 
-  // While this tab's own send is in flight, skip this tick entirely —
-  // see ownSendInFlight's own declaration for why liveMessageIds can't
-  // be relied on yet to filter just the sender's own message. A channel
-  // reply's placeholder Message exists in the database (and so in a
-  // poll response) from the moment generation starts, well before this
-  // tab's own POST /stream has received a single live event to tag it
-  // with — a slow-to-start model (loading into memory, a long queue,
-  // anything past one ~3s poll tick) makes this a routine race, not a
-  // rare one. Deliberately *not* advancing channelPollSince here: this
-  // response (including any other member's message that arrived in the
-  // same window) gets reprocessed once the send finishes, rather than
-  // silently skipped forever.
+  // Skip this tick while this tab's own send is in flight (see ownSendInFlight): liveMessageIds can't yet filter the
+  // sender's own message. A channel reply's placeholder Message is in the database (and poll responses) as soon as
+  // generation starts, before this tab's POST /stream tags it, so a slow-starting model makes this race routine.
+  // channelPollSince is deliberately not advanced, so this response (including other members' messages in the window)
+  // is reprocessed after the send.
   if (ownSendInFlight) {
     scheduleChannelPoll(conversationId);
     return;
@@ -948,21 +705,16 @@ async function runChannelPoll(conversationId) {
   for (const message of result.messages) {
     if (message.role === "assistant") channelReplyInFlight = message.status === "streaming";
     if (message.status === "deleted") {
-      // Checked *before* the liveMessageIds skip below, deliberately: a
-      // message this very tab sent (and so already tagged) can still get
-      // deleted later by someone else — that dedup guard exists to avoid
-      // re-rendering a message this tab is actively driving live, which
-      // deletion is the opposite of.
+      // Checked before the liveMessageIds skip, deliberately: a message this tab sent (already tagged) can still be
+      // deleted by someone else, and that dedup guard exists for messages being rendered live, which deletion is not.
       const existing = messagesEl.querySelector(`[data-message-id="${message.id}"]`);
       if (existing) existing.remove();
-      // .add(), not .delete() — see deleteChannelMessage's own comment
-      // on the exact same choice: once a message is known deleted, this
-      // tab must never recreate a bubble for it again, no matter how
-      // stale a later response claims it still is.
+      //.add, not.delete (see deleteChannelMessage): once a message is known deleted, never recreate its bubble,
+      // however stale a later response is.
       liveMessageIds.add(message.id);
       continue;
     }
-    if (liveMessageIds.has(message.id)) continue; // this tab is already rendering it via its own send
+    if (liveMessageIds.has(message.id)) continue;
     const senderLabel = channelInfo ? (message.role === "assistant" ? "AI" : message.sender_display_name) : null;
     const senderId = channelInfo && message.role === "user" ? message.sender_id : null;
     const { bubble } = findOrCreateBubbleForMessage(
@@ -974,7 +726,7 @@ async function runChannelPoll(conversationId) {
       senderId
     );
     setBubbleTime(bubble.closest("[data-message-id]"), message.created_at);
-    // A message another member shared in from a private chat arrives through here too, while this tab is open.
+    // A message another member shared in from a private chat also arrives here while this tab is open.
     ChannelShare.remark(bubble.closest("[data-message-id]"), message.shared_from, message.sender_display_name);
     bubble._toolEvents = message.tool_events;
     renderReplyBody(bubble, message.content, message.status, message.sources, message.error_message);
@@ -986,21 +738,11 @@ async function runChannelPoll(conversationId) {
   scheduleChannelPoll(conversationId);
 }
 
-/**
- * Scrolls #messages to the bottom, re-checking across a few animation
- * frames until scrollHeight stops growing rather than trusting a single
- * synchronous measurement. Needed because this page's Tailwind build
- * (see base.html: the CDN runtime script, not a precompiled stylesheet)
- * restyles newly-added elements *asynchronously* — right after a big
- * batch of message bubbles is appended (e.g. opening a long chat),
- * scrollHeight still reflects their pre-styled, too-short size for a
- * beat, so scrolling immediately lands short of the real bottom. Capped
- * so a pathological case just gives up instead of polling forever.
- */
+/* Scrolls #messages to the bottom, re-checking over a few animation frames until scrollHeight stops growing. The Tailwind CDN runtime restyles new elements asynchronously (see base.html), so right after a big batch of bubbles scrollHeight is briefly too small. Capped, so a pathological case gives up. */
 function scrollMessagesToBottom() {
   let lastHeight = -1;
   let stableFrames = 0;
-  const maxFrames = 30; // ~0.5s at 60fps — comfortably past Tailwind's usual restyle time
+  const maxFrames = 30;
   function step(frame) {
     const height = messagesEl.scrollHeight;
     stableFrames = height === lastHeight ? stableFrames + 1 : 0;
@@ -1030,7 +772,7 @@ function clearMainPane() {
   conversationTitleEl.textContent = "";
   pinnedBadgesEl.innerHTML = "";
   modelBadgeEl.textContent = "";
-  modelBadgeEl.classList.add("hidden"); // no conversation open — see its own template comment
+  modelBadgeEl.classList.add("hidden");
   setModelBadgeManageable(true);
   messagesEl.innerHTML = "";
   showEmptyState(true);
@@ -1039,10 +781,7 @@ function clearMainPane() {
   updateAskAiButtonState();
 }
 
-/** Toggles the model badge's look between "click to switch" (personal
- * chats, and channel chats for an admin/manager) and a plain read-only
- * display (a channel chat for anyone else) — purely cosmetic, the real
- * enforcement is server-side (see openModelPicker's own guard below). */
+/* Toggles the model badge between "click to switch" (personal chats, and channel chats for an admin/manager) and plain read-only display (other channel viewers). Cosmetic: enforcement is server-side (openModelPicker's guard below). */
 function setModelBadgeManageable(manageable) {
   modelBadgeEl.classList.toggle("cursor-default", !manageable);
   modelBadgeEl.classList.toggle("opacity-60", !manageable);
@@ -1051,10 +790,7 @@ function setModelBadgeManageable(manageable) {
     : "Only admins and this channel's managers can change its model";
 }
 
-// Same icons used on the Notes page's pin chips (see notes.js) — kept
-// as a small separate copy rather than a shared import since these are
-// two independent static files with no bundler/module system tying
-// them together.
+// Same icons as the Notes page pin chips (notes.js), copied since these static files share no module system.
 const PIN_TYPE_ICONS = { persona: "🎭", rules: "📏", skill: "🛠️" };
 const PIN_TYPE_LABELS = { persona: "Persona", rules: "Rules", skill: "Skill" };
 
@@ -1066,9 +802,8 @@ const slotEditorStatusEl = document.getElementById("slot-editor-status");
 const slotEditorUseDefaultBtn = document.getElementById("slot-editor-use-default");
 const slotEditorTurnOffBtn = document.getElementById("slot-editor-turn-off");
 
-// The slot currently open in the editor, so its buttons know which
-// conversation/pin_type to act on — null while the panel is closed.
-let editingSlot = null; // { conversationId, pinType }
+// The slot open in the editor, so its buttons know the conversation/pin_type; null while the panel is closed.
+let editingSlot = null;
 
 function closeSlotEditor() {
   editingSlot = null;
@@ -1081,20 +816,14 @@ function openSlotEditor(conversationId, slot) {
   slotEditorTitleEl.textContent = `${PIN_TYPE_LABELS[slot.pin_type] || slot.pin_type} for this chat${state}`;
   slotEditorContentEl.value = slot.content || "";
   slotEditorContentEl.dir = detectTextDirection(slotEditorContentEl.value);
-  // Reflects this slot's actual current state: checked when it's already
-  // a per-chat override, unchecked when it's on the shared default —
-  // otherwise re-opening an already-customized slot showed an unchecked
-  // box right next to content that's clearly not the default, which read
-  // as if the override had silently been lost.
+  // Reflects the slot's real state: checked for a per-chat override, unchecked on the shared default (otherwise a
+  // customized slot looked like its override was lost).
   slotEditorOnlyThisChatEl.checked = slot.is_override;
-  // "Use default"/"Enable" is the same action either way (POST
-  // use-default) — only its label changes: an active override can
-  // "revert" to the shared default, an off slot needs "enabling" back
-  // on. Hidden only when there's nothing to do — already showing the
-  // plain, active default.
+  // "Use default"/"Enable" is the same action (POST use-default) with a different label: an active override reverts to
+  // the shared default, an off slot is turned back on. Hidden when it's already the active default.
   slotEditorUseDefaultBtn.classList.toggle("hidden", slot.active && !slot.is_override);
   slotEditorUseDefaultBtn.textContent = slot.active ? "Use default" : "Enable";
-  // "Turn off" only makes sense for a slot that's currently on.
+  // "Turn off" applies only to a slot that is on.
   slotEditorTurnOffBtn.classList.toggle("hidden", !slot.active);
   slotEditorStatusEl.textContent = "";
   slotEditorEl.classList.remove("hidden");
@@ -1154,13 +883,10 @@ function closeModelPicker() {
   modelPickerEl.classList.add("hidden");
 }
 
-/** Fetches the installed-model list and renders it into the picker
- * opened by clicking the model badge — a plain name list (unlike
- * Settings' full catalog picker), since there's nothing to install
- * from here, only an existing conversation's model to change. */
+/* Fetches the installed models into the picker opened from the model badge: a plain name list (no install here), only to change an existing conversation's model. */
 async function openModelPicker() {
   if (!activeConversationId || !canManageActive) return;
-  closeSlotEditor(); // only one floating panel open at a time
+  closeSlotEditor();
   modelPickerListEl.innerHTML = "";
   modelPickerStatusEl.textContent = "Loading…";
   modelPickerEl.classList.remove("hidden");
@@ -1181,13 +907,11 @@ async function openModelPicker() {
   for (const model of models) {
     const btn = document.createElement("button");
     btn.type = "button";
-    // Full tag, wrapped rather than truncated — a tag like "hf.co/mistralai/Ministral-3-3B-Instruct-2512-
-    // GGUF:Ministral-3-3B-Instruct-2512-Q4_K_M" is the real pull path an admin needs to actually distinguish
-    // between similarly-named models, and single-line `truncate` inside this panel's old, narrower width cut
-    // it down to something unreadably short ("hf.co/mistralai/Ministral-3-…" for every Ministral variant
-    // alike). `break-all` (not just `break-words`) since a long unbroken segment like the GGUF filename itself
-    // has no natural wrap point a browser would otherwise find. `title` stays as a plain hover fallback, same
-    // convention as Settings' own model catalog rows (see settings.js: renderModelRow's pathLine).
+    // Full tag, wrapped not truncated: a pull path like
+    // "hf.co/mistralai/Ministral-3-3B-Instruct-2512-GGUF:Ministral-3-3B-Instruct-2512-Q4_K_M" is what an admin needs to
+    // tell similar models apart, and `truncate` cut every Ministral variant to the same prefix. `break-all` because a
+    // long unbroken segment (the GGUF filename) has no natural wrap point. `title` stays as a hover fallback (as
+    // settings.js renderModelRow's pathLine).
     btn.className = "w-full break-all rounded-md px-2 py-1.5 text-start font-mono text-xs leading-snug transition-colors " + (
       model === currentModel ? "bg-slate-800 text-slate-100" : "text-slate-300 hover:bg-slate-800"
     );
@@ -1198,9 +922,7 @@ async function openModelPicker() {
   }
 }
 
-/** Switches the active conversation to a different model going
- * forward — past messages stay attributed to whatever model actually
- * generated them, only new replies use the new one. */
+/* Switches the active conversation to another model going forward; past messages keep the model that generated them. */
 async function switchModel(model) {
   if (model === modelBadgeEl.textContent) {
     closeModelPicker();
@@ -1224,13 +946,9 @@ modelBadgeEl.addEventListener("click", () => {
   else closeModelPicker();
 });
 
-// ---- User profile modal (channels only) --------------------------------
-// Opened by clicking a message's own round avatar — see bubbleFor's own
-// docstring on why this is only ever wired up for a channel's shared
-// conversation, never a personal chat. Enlarges the picture and shows
-// whatever basic details GET /api/account/{id} returns; a natural place
-// to grow more fields into later without touching every message's own
-// payload for it.
+// User profile modal (channels only)
+// Opened from a message's round avatar (see bubbleFor: wired only for a channel's shared conversation). Enlarges the
+// picture and shows what GET /api/account/{id} returns; a place to add fields without touching each message's payload.
 
 const userProfileModalEl = document.getElementById("user-profile-modal");
 const userProfileModalAvatarEl = document.getElementById("user-profile-modal-avatar");
@@ -1257,17 +975,14 @@ async function openUserProfileModal(userId) {
 
   const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(" ");
   renderAvatar(userProfileModalAvatarEl, profile.avatar_url, profile.initials);
-  // With no name set, the username alone is already the modal's whole
-  // point — shown as the main line rather than leaving it empty above a
-  // redundant second line repeating the same thing.
+  // With no name set, the username is the main line rather than an empty line above a duplicate.
   userProfileModalNameEl.textContent = fullName || profile.username;
   userProfileModalUsernameEl.textContent = fullName ? `@${profile.username}` : "";
 }
 
 document.getElementById("user-profile-modal-close").addEventListener("click", closeUserProfileModal);
-// Closes on a genuine backdrop click only (the check is against
-// event.target, not currentTarget — a click that started inside the
-// panel and bubbled up would otherwise close it too).
+// Closes on a backdrop click only (checks event.target, not currentTarget): a click that started inside the panel and
+// bubbled up must not close it.
 userProfileModalEl.addEventListener("click", (event) => {
   if (event.target === userProfileModalEl) closeUserProfileModal();
 });
@@ -1275,15 +990,9 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !userProfileModalEl.classList.contains("hidden")) closeUserProfileModal();
 });
 
-/** Shows one clickable icon per persona/rules/skill slot for this
- * conversation (see GET /api/notes/slots/{id}) — always all 3, in the
- * same order, so the row never jumps around; a turned-off slot just
- * fades instead of disappearing, and stays clickable so turning it back
- * on is exactly as easy as turning it off (see openSlotEditor's
- * "Enable" button). Best-effort: a failed lookup just means no icons
- * show, not a broken chat. */
-let pinnedSlots = []; // the active chat's slots, kept so the badges can be redrawn when the first message lands
-let activeHasMessages = false; // once true the badges are read-only (a persona change would force a full re-read)
+/* Shows one clickable icon per persona/rules/skill slot (GET /api/notes/slots/{id}), always all 3 in the same order so the row doesn't jump; an off slot fades but stays clickable to turn it back on (openSlotEditor's "Enable"). Best-effort: a failed lookup shows no icons. */
+let pinnedSlots = [];
+let activeHasMessages = false;
 
 async function loadPinnedBadges(conversationId) {
   let slots;
@@ -1292,16 +1001,14 @@ async function loadPinnedBadges(conversationId) {
   } catch (_) {
     return;
   }
-  // Not awaited by its caller (see selectConversation) — if the user
-  // switched to a different conversation while this was in flight, its
-  // result is now stale and shouldn't overwrite that conversation's icons.
+  // Not awaited by the caller (selectConversation): if the user switched conversations meanwhile, the result is stale
+  // and must not overwrite the new icons.
   if (conversationId !== activeConversationId) return;
   pinnedSlots = slots;
   renderPinnedBadges();
 }
 
-/** Draws the 3 badges from `pinnedSlots`; clickable only for someone who can manage this chat, and only while
- * it has no messages yet. */
+/* Draws the 3 badges from `pinnedSlots`; clickable only for someone who can manage the chat, and only while it has no messages. */
 function renderPinnedBadges() {
   const editable = canManageActive && !activeHasMessages;
   const conversationId = activeConversationId;
@@ -1310,7 +1017,7 @@ function renderPinnedBadges() {
     const badge = document.createElement("button");
     badge.type = "button";
     const look = !editable
-      ? "bg-slate-800/60 opacity-60 cursor-not-allowed" // locked: the chat has messages, or not the viewer's to change
+      ? "bg-slate-800/60 opacity-60 cursor-not-allowed"
       : slot.active
         ? "bg-slate-800" + (editable ? " hover:bg-slate-700" : " cursor-default")
         : "bg-slate-800/40 opacity-40" + (editable ? " hover:opacity-70" : " cursor-default");
@@ -1321,8 +1028,7 @@ function renderPinnedBadges() {
       : activeHasMessages ? " — locked: can only change before the first message" : "";
     badge.title = `${PIN_TYPE_LABELS[slot.pin_type] || slot.pin_type}${state}: ${slot.title || ""}${readOnlyNote}`;
     badge.textContent = PIN_TYPE_ICONS[slot.pin_type] || "📌";
-    // Reads canManageActive fresh at click time (not the value captured
-    // when this badge was rendered) — see its own declaration above.
+    // Reads canManageActive at click time, not render time (see its declaration).
     badge.addEventListener("click", () => {
       if (canManageActive && !activeHasMessages) openSlotEditor(conversationId, slot);
     });
@@ -1330,12 +1036,9 @@ function renderPinnedBadges() {
   }
 }
 
-// ---- Sidebar / conversation list ------------------------------------
+// Sidebar / conversation list
 
-/** A plain "No chats"/"No channels" row for an empty sidebar section —
- * shown instead of just leaving the section blank under its heading, so
- * an empty Chats/Channels list still reads as "empty" rather than
- * "still loading" or "broken". */
+/* A "No chats"/"No channels" row for an empty sidebar section, so an empty list doesn't look like loading or broken. */
 function renderEmptyListPlaceholder(container, text) {
   const placeholder = document.createElement("p");
   placeholder.className = "px-3 py-2 text-xs text-slate-500";
@@ -1364,12 +1067,8 @@ function renderConversationListItem(conversation) {
 
   const titleBtn = document.createElement("button");
   titleBtn.type = "button";
-  // text-left (not text-start): the row itself always stays left-
-  // aligned, in the sidebar's own reading direction, regardless of the
-  // title's language — only the *text itself* (via dir below) follows
-  // Hebrew/Arabic's own reading direction, so a mixed-language title
-  // still renders its characters/word order correctly without flipping
-  // which side of the row it sits on.
+  // text-left, not text-start: the row stays left-aligned in the sidebar's direction whatever the title's language;
+  // only the text (via dir below) follows Hebrew/Arabic direction.
   titleBtn.className = "flex-1 min-w-0 truncate px-3 py-2 text-left";
   const titleText = conversation.title || "New chat";
   titleBtn.dir = detectTextDirection(titleText);
@@ -1401,7 +1100,7 @@ function highlightActiveInSidebar() {
   }
 }
 
-// ---- Sidebar / channel list -------------------------------------------
+// Sidebar / channel list
 
 async function loadChannelList() {
   const channels = await api("/api/channels");
@@ -1423,9 +1122,8 @@ function renderChannelListItem(channel) {
       ? "bg-slate-800 text-slate-100"
       : "text-slate-300 hover:bg-slate-800/60");
 
-  // No delete button here — a channel's lifecycle (create/rename/
-  // membership/delete) is admin-only, managed from Admin settings > Channels,
-  // not from the sidebar (see app/routers/channels.py).
+  // No delete button: a channel's lifecycle (create/rename/membership/delete) is admin-only, in Admin settings >
+  // Channels (app/routers/channels.py).
   const titleBtn = document.createElement("button");
   titleBtn.type = "button";
   titleBtn.className = "flex-1 min-w-0 flex items-center gap-1.5 truncate px-3 py-2 text-left";
@@ -1442,17 +1140,14 @@ function renderChannelListItem(channel) {
 
 async function selectConversation(id) {
   activeConversationId = id;
-  closeSlotEditor(); // an open editor belonged to whichever chat we're leaving
+  closeSlotEditor();
   closeModelPicker();
   highlightActiveInSidebar();
-  // Actually closes the connection for whichever conversation we're
-  // leaving, if this tab has one of its own sends still in flight there
-  // — see activeStreamAbortController's own declaration for why this
-  // matters (a channel keeps generating regardless; a personal chat's
-  // reply is cancelled).
+  // Closes the connection for the conversation being left if this tab has a send in flight there (see
+  // activeStreamAbortController: a channel keeps generating, a personal chat's reply is cancelled).
   activeStreamAbortController?.abort();
   activeStreamAbortController = null;
-  stopReplyWatch(); // belonged to whichever conversation we're leaving, if any
+  stopReplyWatch();
   liveMessageIds = new Set();
 
   const channelInfo = channelsByConversationId[id] || null;
@@ -1461,18 +1156,16 @@ async function selectConversation(id) {
   askAiBtn.classList.toggle("hidden", !channelInfo);
 
   const conversation = await api(`/api/conversations/${id}`);
-  // A channel conversation's display name is the channel's own `name`
-  // (set/edited via Admin settings > Channels), never conversation.title —
-  // see chat_service.build_reply_stream's title-generation guard, which
-  // deliberately leaves that field alone for channel conversations.
+  // A channel conversation's display name is the channel's `name` (Admin settings > Channels), never
+  // conversation.title; chat_service.build_reply_stream's title guard leaves that field alone.
   const titleText = channelInfo ? channelInfo.name : (conversation.title || "New chat");
   conversationTitleEl.textContent = titleText;
   conversationTitleEl.dir = detectTextDirection(titleText);
   modelBadgeEl.textContent = conversation.model || "";
   modelBadgeEl.classList.remove("hidden");
-  toolToggle.sync(id, conversation, canManageActive); // not awaited, like the badges below
-  activeHasMessages = false; // until this chat's messages are known (the badges load in parallel)
-  loadPinnedBadges(id); // not awaited — a badge lookup shouldn't delay showing messages
+  toolToggle.sync(id, conversation, canManageActive);
+  activeHasMessages = false;
+  loadPinnedBadges(id);
 
   const messages = await api(`/api/conversations/${id}/messages`);
   renderMessageList(messages, channelInfo);
@@ -1482,52 +1175,36 @@ async function selectConversation(id) {
   }
 
   if (channelInfo) {
-    // Watch for other members' activity in this channel — which
-    // mechanism depends on the admin-configured channelDeliveryMode (see
-    // its own declaration above). Runs for as long as this channel stays
-    // open: any member might send another message at any time.
+    // Watch for other members' activity in this channel, via the mechanism chosen by channelDeliveryMode (see its
+    // declaration), for as long as the channel is open.
     if (channelDeliveryMode === "real") startReplyWatch(id);
     else startChannelPolling(id);
   } else {
-    // A personal chat has only one possible sender (its owner) and no
-    // delivery-mode choice — but if the last message here is still
-    // "streaming" (see Message.status), that means whatever connection
-    // originally sent it is gone (a disconnect, a reload, a different
-    // tab/device) while generation itself, detached from that
-    // connection, kept going in the background (see
-    // app.services.reply_generation_service). Reconnect and watch just
-    // that one reply through to done/error, then stop (see
-    // handleReplyLiveEvent's replyWatchIsOneShot handling) — nothing
-    // else will ever arrive on this watch until the owner sends a new
-    // message themselves, which streamAssistantReply drives directly.
+    // A personal chat has one possible sender and no delivery-mode choice. If its last message is still "streaming",
+    // the original connection is gone (disconnect, reload, another tab/device) while generation continued in the
+    // background (reply_generation_service). Reconnect and watch that one reply to done/error, then stop
+    // (handleReplyLiveEvent's replyWatchIsOneShot); nothing else arrives until the owner sends again, which
+    // streamAssistantReply drives.
     const lastMessage = messages[messages.length - 1];
     if (lastMessage && lastMessage.role === "assistant" && lastMessage.status === "streaming") {
-      startReplyWatch(id, /* oneShot */ true);
+      startReplyWatch(id, true);
     }
   }
 }
 
 async function createNewConversation() {
   const conversation = await api("/api/conversations", { method: "POST", body: JSON.stringify({}) });
-  // Select first, render the sidebar row second: selectConversation()
-  // sets activeConversationId, which is what actually lets a message get
-  // sent. If the sidebar row's rendering ever has a bug, the chat itself
-  // still works — worst case the sidebar looks stale until the next
-  // reload, instead of every Send silently doing nothing.
+  // Select first, render the sidebar row second: selectConversation sets activeConversationId, which lets messages
+  // send. If row rendering breaks, the chat still works and the sidebar is merely stale.
   await selectConversation(conversation.id);
-  // The only <p> ever appended directly here is the "No chats"
-  // placeholder (list rows are <div data-id> — see
-  // renderConversationListItem) — clear it before adding this chat's
-  // first-ever row, otherwise it'd keep showing alongside a non-empty list.
+  // The only <p> appended directly here is the "No chats" placeholder (rows are <div data-id>, see
+  // renderConversationListItem); clear it before the first row so it doesn't show beside a non-empty list.
   const placeholder = conversationListEl.querySelector("p");
   if (placeholder) placeholder.remove();
   conversationListEl.prepend(renderConversationListItem(conversation));
 }
 
-/** Removes a conversation for good (confirmed first, since this can't be
- * undone). If the deleted chat was the one on screen, falls back to
- * whatever's now first in the list, or an empty "start a new chat" state
- * if that was the last one. */
+/* Deletes a conversation for good (confirmed first). If it was on screen, falls back to the first remaining chat, or an empty "start a new chat" state if it was the last. */
 async function deleteConversation(id) {
   if (!confirm("Delete this chat? This can't be undone.")) return;
 
@@ -1550,11 +1227,9 @@ async function deleteConversation(id) {
 
 document.getElementById("new-chat-btn").addEventListener("click", createNewConversation);
 
-// ---- Sending a message + streaming the reply -------------------------
+// Sending a message + streaming the reply
 
-/** Grows the textarea with its content, up to a sensible max height,
- * instead of scrolling inside a fixed-size box for long messages, and
- * flips its typing direction live as Hebrew/Arabic text is entered. */
+/* Grows the textarea with its content up to a max height, and flips its typing direction live for Hebrew/Arabic input. */
 chatInput.addEventListener("input", () => {
   chatInput.style.height = "auto";
   chatInput.style.height = Math.min(chatInput.scrollHeight, 200) + "px";
@@ -1568,14 +1243,7 @@ chatInput.addEventListener("keydown", (event) => {
   }
 });
 
-/** Shows a small red note right under the user's own bubble for a send
- * that never produced any assistant-side record at all — a 409 "AI
- * busy" rejection (see conversation_service.has_active_reply), or a
- * plain (ask_ai=false) message whose request itself failed outright.
- * Deliberately distinct from renderReplyBody's REPLY_FAILED_NOTICE path,
- * which is reserved for a reply that actually started generating and
- * then failed — this matches exactly what reloading this conversation
- * would show either way: nothing at all, vs. a failed-reply record. */
+/* Shows a small red note under the user's bubble for a send that produced no assistant record: a 409 "AI busy" (conversation_service.has_active_reply) or a plain (ask_ai=false) message whose request failed. Distinct from renderReplyBody's REPLY_FAILED_NOTICE, which is for a reply that started and then failed; this matches what reloading would show. */
 function showInlineSendError(userWrapper, message) {
   const notice = document.createElement("div");
   notice.className = "mt-1 px-1 text-xs text-red-400";
@@ -1585,22 +1253,15 @@ function showInlineSendError(userWrapper, message) {
 
 chatForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  // Plain Send/Enter always posts a normal message in a channel — no AI
-  // reply (that's what #ask-ai-btn below is for). A personal chat has no
-  // such choice: it always asks the AI, exactly as before this feature
-  // existed (see build_reply_stream's own ask_ai coercion for personal
-  // chats, which enforces this server-side too, not just here).
+  // Plain Send/Enter posts a normal message in a channel, with no AI reply (that is #ask-ai-btn). A personal chat
+  // always asks the AI; build_reply_stream's ask_ai coercion enforces this server-side too.
   const activeChannelInfo = activeConversationId ? channelsByConversationId[activeConversationId] : null;
   await sendMessage(!activeChannelInfo);
 });
 
 askAiBtn.addEventListener("click", () => sendMessage(true));
 
-/** Sends whatever's in #chat-input as either a normal channel message
- * (askAi=false — the AI is never invoked, see build_reply_stream's
- * early-return for it) or an explicit "ask AI" request (askAi=true —
- * this conversation's original, and for a personal chat only, behavior).
- * Shared by #chat-form's submit and #ask-ai-btn's click above. */
+/* Sends #chat-input as a normal channel message (askAi=false; the AI isn't invoked, see build_reply_stream's early return) or an explicit "ask AI" request (askAi=true; the only behavior for personal chats). Shared by #chat-form's submit and #ask-ai-btn's click. */
 async function sendMessage(askAi) {
   const content = chatInput.value.trim();
   if (!content) return;
@@ -1608,17 +1269,12 @@ async function sendMessage(askAi) {
   if (!activeConversationId) {
     await createNewConversation();
   }
-  // Captured once, used for the rest of this handler (including the
-  // reconcile in `finally` below) — activeConversationId itself can
-  // change out from under a long-running send if the user switches
-  // conversations mid-stream (see activeStreamAbortController), and
-  // every reconcile/poll helper already no-ops once its own
-  // conversationId argument stops matching the (possibly different by
-  // then) active one.
+  // Captured once for this handler (including the reconcile in `finally`): activeConversationId can change mid-stream
+  // if the user switches (activeStreamAbortController), and the reconcile/poll helpers no-op once their conversationId
+  // stops matching.
   const conversationId = activeConversationId;
 
-  // Captured and cleared from the UI immediately — a new file picked
-  // while this send is still in flight must never end up attached to it.
+  // Captured and cleared from the UI at once, so a file picked during the send is never attached to it.
   const attachmentFiles = pendingAttachments;
   clearPendingAttachment();
 
@@ -1628,17 +1284,12 @@ async function sendMessage(askAi) {
   sendBtn.disabled = true;
   askAiBtn.disabled = true;
 
-  // Only ever shown for a channel's shared conversation (see
-  // bubbleFor's docstring) — channelsByConversationId is populated by
+  // Shown only for a channel's shared conversation (see bubbleFor); channelsByConversationId is filled by
   // loadChannelList.
   const activeChannelInfo = channelsByConversationId[conversationId] || null;
-  // Shown immediately via local object URLs/file names, before the
-  // server round trip even starts — findOrCreateBubbleForMessage's own
-  // "already exists" path leaves this alone once the real attachment
-  // urls are known, but a full renderMessageList rebuild (e.g.
-  // reconcileConversationMessages) always re-renders from the server's
-  // own MessageOut fields, so these local object URLs are never relied
-  // on beyond this one optimistic render.
+  // Shown at once via local object URLs/file names, before the server round trip. findOrCreateBubbleForMessage leaves
+  // it alone once real URLs are known, and a full renderMessageList rebuild (e.g. reconcileConversationMessages) uses
+  // the server's MessageOut fields, so these local URLs serve only this optimistic render.
   const optimisticMessage = {
     attachments: attachmentFiles.map((file) => ({
       url: URL.createObjectURL(file),
@@ -1659,13 +1310,12 @@ async function sendMessage(askAi) {
     activeChannelInfo ? currentUserId : null
   );
   if (!activeHasMessages) {
-    activeHasMessages = true; // the first message locks persona/rules/skill
+    activeHasMessages = true;
     renderPinnedBadges();
   }
 
-  // A normal (askAi=false) message never gets a reply at all — no
-  // "thinking" bubble for it, since build_reply_stream's ask_ai=False
-  // early return never creates an assistant Message for one.
+  // A normal (askAi=false) message gets no reply and no "thinking" bubble; build_reply_stream's early return never
+  // creates an assistant Message.
   let wrapper = null;
   let bubble = null;
   if (askAi) {
@@ -1683,46 +1333,31 @@ async function sendMessage(askAi) {
   try {
     await streamAssistantReply(conversationId, content, askAi, userWrapper, wrapper, bubble, attachmentFiles);
   } catch (err) {
-    // AbortError means the user themselves navigated away (see
-    // activeStreamAbortController) — that bubble is already gone from
-    // the DOM (selectConversation/clearMainPane already rebuilt
-    // #messages for wherever they went instead), so there's nothing
-    // useful to show.
+    // AbortError means the user navigated away (activeStreamAbortController); that bubble is already gone
+    // (selectConversation/clearMainPane rebuilt #messages), so show nothing.
     if (err.name === "AbortError") {
-      // Pane isn't on screen anymore either way — nothing to re-sync.
+      // The pane isn't on screen anymore: nothing to re-sync.
     } else if (err.status === 409) {
-      // Nothing was ever created server-side (see app/routers/chat.py's
-      // stream_reply) — someone else's reply really is still active, so
-      // channelReplyInFlight is intentionally left as-is here, not
-      // reset: this rejection confirms it rather than contradicting it.
+      // Nothing was created server-side (routers/chat.py stream_reply): someone else's reply is still active, so
+      // channelReplyInFlight is left as-is; this rejection confirms it.
       showInlineSendError(userWrapper, err.message);
     } else if (bubble && userWrapper.dataset.messageId) {
-      // The user message really was persisted (see readAssistantReplyStream's
-      // own "user_message_id" tagging) before generation itself failed
-      // outright — matches exactly what reopening this conversation
-      // later would show (see renderReplyBody): a real user message
-      // followed by a real assistant message with status="error".
+      // The user message was persisted (readAssistantReplyStream's "user_message_id" tagging) before generation failed,
+      // matching what reopening would show (renderReplyBody): a user message then an assistant message with
+      // status="error".
       renderReplyBody(bubble, "", "error");
       if (activeChannelInfo) channelReplyInFlight = false;
     } else if (bubble) {
-      // Failed before the server ever saved anything at all (e.g. an
-      // unsupported/oversized attachment, rejected by
-      // chat_attachment_service.save_attachments before build_reply_stream
-      // ever runs — see app/routers/chat.py's stream_reply) — no
-      // user_message_id event ever arrived. Leaving these bubbles in
-      // place would show a "sent" message and a failed reply that a
-      // reload would never reproduce (neither was ever written to the
-      // database), stuck until the next reload quietly removed them —
-      // so both are removed here instead, right away, and the real
-      // reason is surfaced via alert since there's no bubble left to
-      // attach an inline note to.
+      // Failed before the server saved anything (e.g. an unsupported/oversized attachment rejected by
+      // chat_attachment_service.save_attachments before build_reply_stream; routers/chat.py stream_reply), so no
+      // user_message_id event arrived. The "sent" message and failed reply would vanish on reload, so remove both now
+      // and show the reason via alert, as no bubble is left for an inline note.
       userWrapper.remove();
       wrapper.remove();
       if (activeChannelInfo) channelReplyInFlight = false;
       alert(err.message);
     } else {
-      // askAi was false and the request itself failed outright (no
-      // assistant bubble ever existed to show it against).
+      // askAi was false and the request failed outright (no assistant bubble to show it on).
       showInlineSendError(userWrapper, err.message);
     }
   } finally {
@@ -1733,25 +1368,12 @@ async function sendMessage(askAi) {
   }
 }
 
-/**
- * Thin XMLHttpRequest wrapper standing in for fetch() + ReadableStream —
- * needed only because fetch has no upload-progress event at all, and a
- * real percentage for an attached file (see updateUploadProgress below)
- * requires XMLHttpRequest's `xhr.upload.onprogress`. Starts the request
- * synchronously (before returning) so `xhr` is available immediately for
- * abort-registration and upload-progress wiring, before any network
- * activity has to resolve. Returns `{ xhr, chunks }` — `chunks` is an
- * async generator of raw text deltas, playing the same role
- * `response.body.getReader()` used to for readAssistantReplyStream's own
- * SSE-frame buffering below (unchanged) — `xhr.responseText` is already
- * a decoded string, so there's no TextDecoder step needed here the way
- * raw stream bytes required.
- */
+/* Thin XMLHttpRequest wrapper standing in for fetch + ReadableStream, because fetch has no upload-progress event (updateUploadProgress needs `xhr.upload.onprogress`). Starts the request synchronously so `xhr` is available at once for abort and progress wiring. Returns `{ xhr, chunks }`, where `chunks` is an async generator of raw text deltas, like `response.body.getReader` for readAssistantReplyStream's SSE buffering; `xhr.responseText` is already decoded, so no TextDecoder. */
 function startXhrRequest(url, formData) {
   const xhr = new XMLHttpRequest();
   xhr.open("POST", url);
   let seenLength = 0;
-  let pending = null; // {resolve, reject} for whoever's awaiting the next chunk
+  let pending = null;
   const queued = [];
   let finished = false;
   let failure = null;
@@ -1806,20 +1428,9 @@ function startXhrRequest(url, formData) {
   return { xhr, chunks: chunks() };
 }
 
-/** Shows/updates a real visual progress bar under the just-sent user
- * message's own attachment(s) (see the optimisticMessage object built in
- * sendMessage) — created on first call, then just has its value updated
- * on every subsequent xhr.upload progress event. A native <progress>
- * element rather than anything hand-rolled — the simplest possible real
- * bar, no extra library. Since the upload is one multipart body
- * regardless of how many files are in it, the fraction xhr.upload
- * reports is already naturally the *combined* progress across every
- * attached file. */
-// Floor on how long the bar stays on screen once shown, in ms — over
-// loopback/localhost a small attachment can finish uploading (and headers
-// come back) in a handful of milliseconds, faster than the browser's next
-// paint, so without this the bar gets created and removeUploadProgress'd
-// again before it was ever actually rendered — invisible, not just brief.
+/* Shows/updates a progress bar under the just-sent user message's attachment(s) (optimisticMessage in sendMessage): created on first call, updated on each xhr.upload progress event. A native <progress> element; as the upload is one multipart body, the fraction is the combined progress of all files. */
+// Minimum time (ms) the bar stays on screen: over localhost a small attachment can finish before the next paint, so the
+// bar would be created and removed (removeUploadProgress) unseen.
 const MIN_UPLOAD_PROGRESS_VISIBLE_MS = 400;
 
 function updateUploadProgress(userWrapper, fraction) {
@@ -1834,11 +1445,7 @@ function updateUploadProgress(userWrapper, fraction) {
   bar.value = fraction;
 }
 
-/** Removes updateUploadProgress's element once the upload phase is over
- * — called right after headers come back, whether or not there ever was
- * an attachment (a harmless no-op query if not). Delays the actual
- * removal if needed so the bar was on screen for at least
- * MIN_UPLOAD_PROGRESS_VISIBLE_MS — see that constant's own comment. */
+/* Removes updateUploadProgress's element when the upload phase ends (called after headers arrive, with or without an attachment; a harmless no-op query otherwise), delaying removal to honor MIN_UPLOAD_PROGRESS_VISIBLE_MS. */
 function removeUploadProgress(userWrapper) {
   const bar = userWrapper.querySelector(".attachment-upload-progress");
   if (!bar) return;
@@ -1846,17 +1453,7 @@ function removeUploadProgress(userWrapper) {
   setTimeout(() => bar.remove(), Math.max(0, MIN_UPLOAD_PROGRESS_VISIBLE_MS - elapsed));
 }
 
-/**
- * Wraps readAssistantReplyStream below, registering whatever it hands
- * back as activeStreamAbortController for the duration of the call so
- * leaving this conversation (see selectConversation/clearMainPane) can
- * actually abort the underlying request instead of leaving it running
- * unseen — see that variable's own declaration for why this matters,
- * and app.services.reply_generation_service.stream_reply's
- * cancel_on_disconnect for what the server does with the resulting
- * disconnect. An XMLHttpRequest's own `.abort()` closes the connection
- * the exact same way an AbortController's would.
- */
+/* Wraps readAssistantReplyStream, registering its request as activeStreamAbortController for the call so leaving the conversation (selectConversation/clearMainPane) can abort it instead of leaving it running unseen (see that variable and stream_reply's cancel_on_disconnect in reply_generation_service). An XMLHttpRequest's `.abort` closes the connection as an AbortController would. */
 async function streamAssistantReply(conversationId, content, askAi, userWrapper, wrapper, bubble, attachmentFiles) {
   try {
     await readAssistantReplyStream(
@@ -1876,35 +1473,20 @@ async function streamAssistantReply(conversationId, content, askAi, userWrapper,
   }
 }
 
-/**
- * Sends the user's message and reads the server's Server-Sent Events
- * response as it arrives, updating `bubble`'s contents on every chunk
- * so the reply appears to "type" in real time.
- *
- * XMLHttpRequest (via startXhrRequest above) rather than fetch — the
- * only way to get a real upload-progress percentage for an attached
- * file; browser EventSource can't be used either way since it only
- * supports GET, and we need to POST the message body.
- *
- * `wrapper`/`bubble` are the reply bubble's own elements (see
- * bubbleFor) — `null` when `askAi` is false, since a normal message
- * never gets a reply bubble at all (see build_reply_stream's ask_ai=False
- * early return, which never creates an assistant Message for one), so
- * every branch below that touches either one is guarded accordingly.
- * When present, `wrapper` is tagged with the reply's real message_id as
- * soon as the first event reveals it, and that id added to
- * liveMessageIds, so the poll/live-watch paths above know this
- * particular reply is already being driven live by this very function
- * and leave it alone. `userWrapper` is the *user* message's own wrapper
- * (already showing `content`, added optimistically before this call) —
- * tagged the same way, off a dedicated "user_message_id" event
- * app.services.chat_service.build_reply_stream yields right after saving
- * it: without this, the optimistic bubble never carries a
- * data-message-id at all, so once this tab's own ownSendInFlight-driven
- * skip (see runChannelPoll/handleReplyLiveEvent) ends and polling/live-
- * watch resumes, it would see this same user message in the catch-up
- * fetch as unrecognized and create a genuine duplicate for it — a real,
- * shipped bug, not just a hypothetical one.
+/*
+ * Sends the user's message and reads the Server-Sent Events response as it arrives, updating `bubble` on every chunk so
+ * the reply "types" live.
+ * 
+ * XMLHttpRequest (startXhrRequest) rather than fetch gives a real upload-progress percentage; EventSource is out since
+ * it supports only GET and we POST the body.
+ * 
+ * `wrapper`/`bubble` are the reply bubble's elements (bubbleFor), `null` when `askAi` is false (a normal message gets
+ * no reply bubble; build_reply_stream's early return creates no assistant Message), so branches touching them are
+ * guarded. `wrapper` is tagged with the reply's message_id once the first event reveals it and added to liveMessageIds,
+ * so poll/live-watch paths leave it alone. `userWrapper` is the user message's wrapper (already showing `content`,
+ * added optimistically), tagged from the "user_message_id" event that chat_service.build_reply_stream yields right
+ * after saving it. Without that tag, once the ownSendInFlight skip (runChannelPoll/handleReplyLiveEvent) ends, the
+ * catch-up fetch would see the user message as unrecognized and duplicate it (a shipped bug).
  */
 async function readAssistantReplyStream(
   conversationId,
@@ -1916,11 +1498,8 @@ async function readAssistantReplyStream(
   registerAbortable,
   attachmentFiles
 ) {
-  // FormData rather than JSON — the browser sets its own multipart
-  // boundary in Content-Type, so no header is set explicitly here (see
-  // app/routers/chat.py's stream_reply, which now takes Form()/File()
-  // fields instead of a JSON ChatRequest body). "attachments" is
-  // repeated once per file, matching the router's list[UploadFile].
+  // FormData, not JSON: the browser sets the multipart boundary in Content-Type, so no header is set (routers/chat.py
+  // stream_reply takes Form/File fields). "attachments" repeats per file, matching list[UploadFile].
   const formData = new FormData();
   formData.append("content", content);
   formData.append("ask_ai", askAi);
@@ -1929,23 +1508,17 @@ async function readAssistantReplyStream(
   const { xhr, chunks } = startXhrRequest(`/api/chat/${conversationId}/stream`, formData);
   registerAbortable(xhr);
   if (attachmentFiles.length > 0) {
-    // Shown at 0% immediately, rather than waiting for the first real
-    // progress event — over loopback/localhost a small file can finish
-    // uploading before the browser ever gets around to firing one, which
-    // would otherwise mean the bar never appears at all rather than just
-    // briefly (see MIN_UPLOAD_PROGRESS_VISIBLE_MS for the other half of
-    // that fix).
+    // Shown at 0% at once: over localhost a small file can finish before the browser fires a progress event, so the bar
+    // would never appear (see MIN_UPLOAD_PROGRESS_VISIBLE_MS).
     updateUploadProgress(userWrapper, 0);
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable) updateUploadProgress(userWrapper, e.loaded / e.total);
     });
   }
 
-  // Status/headers aren't known until the response actually starts — an
-  // error response (e.g. 409) still arrives through the same `chunks`
-  // stream as a normal one, so the not-ok check happens once, on the
-  // first readystatechange past HEADERS_RECEIVED — the same thing
-  // fetch's own `!response.ok` checked, just observed differently.
+  // Status/headers are unknown until the response starts; an error response (e.g. 409) arrives through the same
+  // `chunks` stream, so the not-ok check runs once, at the first readystatechange past HEADERS_RECEIVED (fetch's
+  // `!response.ok` equivalent).
   await new Promise((resolve, reject) => {
     xhr.addEventListener("readystatechange", function onReady() {
       if (xhr.readyState < XMLHttpRequest.HEADERS_RECEIVED) return;
@@ -1954,17 +1527,15 @@ async function readAssistantReplyStream(
         resolve();
         return;
       }
-      // A 409 ("AI already replying" — see conversation_service.has_active_reply)
-      // carries a specific {"detail": "..."} body worth showing verbatim
-      // near the user's own message (see sendMessage's catch handler);
-      // anything else falls back to the generic status-based message.
+      // A 409 ("AI already replying", conversation_service.has_active_reply) carries a {"detail": "..."} body worth
+      // showing verbatim near the user's message (sendMessage's catch); anything else gets the generic status message.
       xhr.addEventListener("loadend", () => {
         let message = `Request failed (${xhr.status})`;
         try {
           const errorBody = JSON.parse(xhr.responseText);
           if (errorBody.detail) message = errorBody.detail;
         } catch (_) {
-          // Not JSON (or no body at all) — keep the generic message.
+          // Not JSON or no body: keep the generic message.
         }
         const error = new Error(message);
         error.status = xhr.status;
@@ -1978,62 +1549,43 @@ async function readAssistantReplyStream(
   let fullText = "";
 
   for await (const newText of chunks) {
-    // SSE frames are separated by a blank line; a single progress event
-    // can contain zero, one, or several complete frames, so we buffer
-    // and split rather than assuming one delta == one frame.
+    // SSE frames end with a blank line, and one progress event can hold zero, one or several complete frames, so buffer
+    // and split instead of assuming one delta is one frame.
     buffer += newText;
     const frames = buffer.split("\n\n");
-    buffer = frames.pop(); // last piece may be an incomplete frame
+    buffer = frames.pop();
 
     for (const frame of frames) {
       const line = frame.trim();
       if (!line.startsWith("data:")) continue;
       const payload = JSON.parse(line.slice("data:".length).trim());
 
-      // The very first event on every send, for every conversation type
-      // (see app.services.chat_service.build_reply_stream) — tags the
-      // *user* message's own bubble, which otherwise never carries a
-      // data-message-id at all (see readAssistantReplyStream's own
-      // docstring for why that's a real bug, not just tidiness).
-      // attachDeleteButtonIfEligible here too: this is the sender's own
-      // tab, which the poll/live-watch paths deliberately skip re-
-      // processing for a message already in liveMessageIds (see
-      // runChannelPoll/handleReplyLiveEvent) — without this, a channel
-      // admin/manager would never see a delete icon on their *own*
-      // freshly-sent message until something unrelated forced a full
-      // reconcile (switching conversations and back, a reload).
+      // The first event of every send, for every conversation type (build_reply_stream): tags the user message's
+      // bubble, which otherwise has no data-message-id (see readAssistantReplyStream's docstring on the duplicate bug).
+      // Also calls attachDeleteButtonIfEligible: the sender's tab skips re-processing messages in liveMessageIds
+      // (runChannelPoll/handleReplyLiveEvent), so a channel admin/manager would see no delete icon on their own new
+      // message until a reconcile.
       if (payload.user_message_id && !userWrapper.dataset.messageId) {
         userWrapper.dataset.messageId = payload.user_message_id;
         liveMessageIds.add(payload.user_message_id);
         attachDeleteButtonIfEligible(userWrapper, payload.user_message_id);
         ChannelShare.decorate(userWrapper, payload.user_message_id, "user");
       }
-      // Present on every event now (see app.services.reply_generation_service)
-      // — tag the bubble with it the first time it's seen (before the
-      // error check below: an instant failure's very first event can
-      // *be* the error, and this tag needs to land regardless, so a
-      // later reconcile finds this exact DOM node instead of creating a
-      // duplicate for the same message_id). Only present at all when
-      // askAi is true (wrapper/bubble are null otherwise).
+      // Present on every event (reply_generation_service): tag the bubble the first time it's seen, before the error
+      // check, since an instant failure's first event can be the error and a later reconcile must find this node
+      // instead of duplicating the message_id. Only present when askAi is true (wrapper/bubble are null otherwise).
       if (bubble && payload.message_id && !wrapper.dataset.messageId) {
         wrapper.dataset.messageId = payload.message_id;
         liveMessageIds.add(payload.message_id);
         attachDeleteButtonIfEligible(wrapper, payload.message_id);
       }
-      // A channel conversation never gets an auto-generated title (see
-      // chat_service.build_reply_stream) — its header/sidebar entry
-      // always show the channel's own name instead. Declared up here
-      // (rather than only where the title-specific check below needs it)
-      // since the "deleted" branch just below needs it too.
+      // A channel conversation never gets an auto-generated title (build_reply_stream); its header and sidebar entry
+      // show the channel's name. Declared here because the "deleted" branch below needs it too.
       const isChannel = !!channelsByConversationId[conversationId];
       if (payload.deleted) {
-        // A channel admin/manager deleted this exact reply while it was
-        // still generating (see conversation_service.delete_message) —
-        // this tab is the sender's own connection, so it's the one place
-        // that can't just wait for the next poll/live-watch tick to
-        // notice: remove the bubble right here, same as
-        // deleteChannelMessage does for the tab that actually clicked
-        // delete.
+        // A channel admin/manager deleted this reply while it was generating (conversation_service.delete_message).
+        // This is the sender's connection and can't wait for a poll/live-watch tick, so remove the bubble now, as
+        // deleteChannelMessage does for the clicking tab.
         if (bubble) wrapper.remove();
         if (isChannel) {
           channelReplyInFlight = false;
@@ -2042,30 +1594,21 @@ async function readAssistantReplyStream(
         return;
       }
       if (payload.error) {
-        // Rendered the same way a reload of this conversation would show it (see renderReplyBody) — whatever
-        // text had already streamed stays visible, with the real failure reason below it (see
-        // Message.error_message/MessageOut.error_message — payload.error here is that exact same text, just
-        // arriving live instead of from a reload) rather than a one-off plain-text error message that reload
-        // could never reproduce. Shouldn't happen server-side when askAi is false (no reply is ever attempted —
-        // see build_reply_stream), but fail safe rather than silently swallow it if it somehow did.
+        // Rendered as a reload would show it (renderReplyBody): streamed text stays visible with the real failure
+        // reason below (Message.error_message/MessageOut.error_message; payload.error is the same text arriving live).
+        // Shouldn't happen server-side when askAi is false (no reply is attempted; build_reply_stream), but fail safe
+        // rather than swallow it.
         if (bubble) {
           renderReplyBody(bubble, fullText, "error", null, payload.error);
           return;
         }
         throw new Error(payload.error);
       }
-      // (isChannel is declared above, before the "deleted" branch.) A
-      // payload.title here would just be the stale "New chat" placeholder
-      // for a channel and must not overwrite what's already showing.
-      // Two different events can carry a title, handled identically
-      // either way: an early one sent right after the message is saved
-      // (see build_reply_stream) — "simple" mode already knows the real
-      // title by then, so the sidebar doesn't have to wait for the
-      // *entire reply* to finish just to learn something already
-      // decided before a token of it was generated — and "done" below,
-      // whose title is only actually new for "smart" mode (still
-      // "New chat" the first time around, until the check-back below
-      // picks up whatever it eventually lands on).
+      // (isChannel is declared above the "deleted" branch.) For a channel, payload.title is the stale "New chat"
+      // placeholder and must not overwrite what's showing.
+      // Two events can carry a title, handled alike: an early one right after the message is saved (build_reply_stream;
+      // "simple" mode already knows the title, so the sidebar needn't wait for the whole reply) and "done" below, whose
+      // title is new only for "smart" mode (still "New chat" until the check-back picks it up).
       if (payload.title && !isChannel) {
         updateConversationTitleDisplay(conversationId, payload.title);
       }
@@ -2082,11 +1625,8 @@ async function readAssistantReplyStream(
           channelReplyInFlight = false;
           updateAskAiButtonState();
         }
-        // Deliberately returns here instead of continuing the loop to
-        // let the stream close naturally: the server yields this event
-        // *before* "smart" title mode's model call, if that's the
-        // admin-configured mode (Admin settings > System) — so this response
-        // doesn't have to sit through that too.
+        // Return here instead of looping until the stream closes: the server yields this event before "smart" title
+        // mode's model call (Admin settings > System), so the response needn't wait for it.
         if (!isChannel && payload.title === "New chat") {
           pollForGeneratedTitle(conversationId);
         }
@@ -2096,13 +1636,7 @@ async function readAssistantReplyStream(
   }
 }
 
-/** Updates both the header and this conversation's sidebar row with a
- * new title — shared by the immediate update above (when a title is
- * already known) and pollForGeneratedTitle below (once a "smart" mode
- * title finishes generating). No-ops harmlessly if `conversationId` has
- * since scrolled out of the sidebar (e.g. paginated away, if that's
- * ever added) — the header only updates when `conversationId` is still
- * the active one. */
+/* Updates the header and the sidebar row with a new title; shared by the immediate update above and pollForGeneratedTitle ("smart" mode). No-op if `conversationId` is gone from the sidebar; the header updates only if it is still active. */
 function updateConversationTitleDisplay(conversationId, title) {
   if (conversationId === activeConversationId) {
     conversationTitleEl.textContent = title;
@@ -2115,12 +1649,9 @@ function updateConversationTitleDisplay(conversationId, title) {
   }
 }
 
-// How many times, and how far apart, to check back for a title that was
-// still generating when its first reply finished streaming ("smart"
-// mode only — see chat_service.build_reply_stream/title_service.py) —
-// bounded rather than indefinite, so an unusually slow model just means
-// the sidebar keeps showing "New chat" until the next reload instead of
-// a timer polling forever in the background.
+// How many times, and how far apart, to check for a title still generating when the first reply finished ("smart" mode;
+// chat_service.build_reply_stream/title_service.py). Bounded, so a slow model leaves "New chat" until reload rather
+// than a timer polling forever.
 const TITLE_POLL_ATTEMPTS = 6;
 const TITLE_POLL_INTERVAL_MS = 5000;
 
@@ -2129,7 +1660,7 @@ async function pollForGeneratedTitle(conversationId, attempt = 1) {
   try {
     conversation = await api(`/api/conversations/${conversationId}`);
   } catch (_) {
-    return; // e.g. the conversation was deleted in the meantime
+    return;
   }
   if (conversation.title && conversation.title !== "New chat") {
     updateConversationTitleDisplay(conversationId, conversation.title);
@@ -2140,29 +1671,20 @@ async function pollForGeneratedTitle(conversationId, attempt = 1) {
   }
 }
 
-// ---- Boot -------------------------------------------------------------
+// Boot
 
-/** Loads the admin-configured channel delivery mode (see
- * app.services.chat_settings_service.get_channel_delivery_mode) — every
- * logged-in user can read this, not just admins, since this page needs
- * it to decide how to behave in a channel chat. Best-effort: a failed
- * fetch just leaves channelDeliveryMode at its already-assigned "cheap"
- * default rather than blocking the rest of the page. */
+/* Loads the admin-configured channel delivery mode (chat_settings_service.get_channel_delivery_mode), readable by every logged-in user since the page needs it in channel chats. Best-effort: a failed fetch keeps the "cheap" default. */
 async function loadChannelDeliveryMode() {
   try {
     ({ mode: channelDeliveryMode } = await api("/api/settings/channel-delivery-mode"));
   } catch (_) {
-    // Keep the default already assigned above.
+    // Keep the default assigned above.
   }
 }
 
 (async function init() {
-  // Always lands on the empty-state banner, never auto-opening whatever
-  // chat happens to be newest — every route into this page (typing the
-  // URL, the sidebar logo, a redirect back from Settings/Notes) should
-  // land on the same neutral "nothing open yet" screen; picking a
-  // specific chat is always an explicit click (sidebar row or "New
-  // chat"), never a guess made on the user's behalf.
+  // Always land on the empty-state banner, never auto-open the newest chat: every route here (URL, sidebar logo,
+  // redirect from Settings/Notes) shows the same neutral screen, and opening a chat is an explicit click.
   await Promise.all([loadChannelList(), loadConversationList(), loadChannelDeliveryMode()]);
   showEmptyState(true);
 })();

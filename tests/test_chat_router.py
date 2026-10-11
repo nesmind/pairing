@@ -1,12 +1,8 @@
-"""Unit tests for app/routers/chat.py's get_attachment endpoint — called
-directly, not through a TestClient/ASGI app (see
-tests/test_instance_proxy_http.py's own docstring on why this project
-doesn't use that pattern). Covers a real regression found via live QA:
-MessageAttachment.message has no lazy="selectin" (unlike most
-relationships in this codebase), so reading attachment.message.
-conversation_id directly crashed every attachment fetch with
-sqlalchemy.exc.MissingGreenlet — fixed by looking the Message up by
-attachment.message_id instead."""
+"""Tests for routers/chat.py's get_attachment, called directly, not via TestClient/ASGI (see
+tests/test_instance_proxy_http.py). Covers a regression found in live QA: MessageAttachment.message lacks
+lazy="selectin", so reading attachment.message.conversation_id crashed every fetch with MissingGreenlet; fixed
+by looking the Message up by attachment.message_id.
+"""
 
 from pathlib import Path
 
@@ -54,10 +50,9 @@ async def test_get_attachment_404s_for_an_unknown_id(db, user):
 async def test_get_attachment_rejects_a_user_with_no_access_to_the_conversation(
     db, user, admin_user, tmp_path, monkeypatch
 ):
-    """A real membership/ownership check, not just "does the row exist"
-    — the whole point of routing every attachment fetch through
-    get_accessible_conversation_or_404 rather than serving straight off
-    the id."""
+    """A real membership/ownership check, not just "does the row exist": every attachment fetch goes through
+    get_accessible_conversation_or_404.
+    """
     monkeypatch.setattr(chat_attachment_service, "ATTACHMENTS_DIR", tmp_path)
     monkeypatch.setattr(chat_router, "ATTACHMENTS_DIR", tmp_path)
 

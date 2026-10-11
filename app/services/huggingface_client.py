@@ -1,18 +1,14 @@
-"""
-Searches and verifies GGUF models on Hugging Face — the only source Settings > Model's "Browse more models"
-uses (see app/services/extended_model_catalog_service.py). Every field this module returns comes straight from
-Hugging Face's real Hub API, confirmed live rather than assumed:
+"""Searches and verifies GGUF models on Hugging Face, the only source of Settings > Model's "Browse more
+models" (extended_model_catalog_service.py). Fields come from the real Hub API:
 
-- GET /api/models?search=<q>&filter=gguf — repo search, filtered to repos tagged "gguf".
-- GET /api/models/<repo_id>?blobs=true — every file's real byte size plus a `gguf` metadata block with real
-  parameter count and context length.
+- GET /api/models?search=<q>&filter=gguf: repo search for "gguf"-tagged repos.
+- GET /api/models/<repo_id>?blobs=true: each file's byte size plus a `gguf` block with parameter count and context
+  length.
 
-A model actually gets pulled through Ollama's own existing hf.co/ passthrough (`ollama pull
-hf.co/<repo_id>:<tag>`) or Matricxon's equivalent — this file only searches/verifies, it never downloads model
-weights itself. `<tag>` is built from the exact GGUF filename (minus its extension) rather than a
-hand-extracted "quant code": both engines match the tag against candidate filenames case-insensitively, so the
-full filename is guaranteed to match unambiguously, where a heuristic substring extraction could pick the wrong
-file on an unusually-named repo.
+Pulls go through Ollama's hf.co/ passthrough (`ollama pull hf.co/<repo_id>:<tag>`) or Matricxon's
+equivalent; this file never downloads weights. `<tag>` is the exact GGUF filename minus extension, not a
+quant code: both engines match tags to filenames case-insensitively, so the full name is unambiguous where
+substring extraction could pick the wrong file.
 """
 
 import httpx
@@ -23,21 +19,20 @@ _SEARCH_LIMIT = 20
 
 
 class HuggingFaceLookupError(Exception):
-    """Raised when a repo/search can't be reached or resolved — not found, or Hugging Face itself is
-    unreachable (no internet, or a misconfigured/absent proxy). Same "turn a low-level failure into a clean,
-    actionable message" convention as app.services.ollama_client.OllamaError."""
+    """Raised when a repo/search can't be reached or resolved (not found, or Hugging Face unreachable: no internet or
+    bad proxy). A clean message, like ollama_client.OllamaError."""
 
 
 class HuggingFaceCatalogSearch:
-    """The "Browse more models" search + file-picker steps — a search result/repo listing is read-only and
-    never itself trusted for what gets stored (see extended_model_catalog_service.ExtendedModelCatalog.add,
-    which re-verifies from scratch via repo_files rather than trusting a caller's earlier search result)."""
+    """The "Browse more models" search and file-picker steps. Results are read-only and never trusted for storage:
+    ExtendedModelCatalog.add re-verifies via repo_files.
+    """
 
     @staticmethod
     async def search(query: str, proxy_url: str | None) -> list[dict]:
-        """Up to 20 GGUF-tagged repos matching `query`, ranked by download count — same ranking
-        huggingface.co/models itself defaults to. Returns [] for a query with no matches (not an error — an
-        empty result set is just an empty JSON array, not a 404, confirmed live)."""
+        """Up to 20 GGUF-tagged repos matching `query`, by downloads (huggingface.co/models' default). [] for no
+        matches (an empty array, not a 404).
+        """
         async with httpx.AsyncClient(timeout=_TIMEOUT, follow_redirects=True, proxy=proxy_url) as client:
             try:
                 resp = await client.get(
@@ -66,7 +61,7 @@ class HuggingFaceCatalogSearch:
                 "likes": repo.get("likes", 0),
                 "gated": bool(repo.get("gated")),
                 "is_image": HuggingFaceCatalogSearch.is_image_repo(repo),
-                # Search results don't include cardData — only repo_files below does.
+                # Search results lack cardData; only repo_files has it.
                 "license": None,
             }
             for repo in repos
@@ -74,11 +69,10 @@ class HuggingFaceCatalogSearch:
 
     @staticmethod
     async def repo_files(repo_id: str, proxy_url: str | None) -> dict:
-        """Real metadata plus every single-file GGUF variant `repo_id` actually offers, each with its real
-        download size — the file-picker step shown once an admin picks a repo from search()'s own results (or
-        already knows the exact repo path and skips search). Raises HuggingFaceLookupError if the repo doesn't
-        exist (Hugging Face's own API returns 401, not 404, for an unauthenticated request to a nonexistent
-        repo — confirmed live, both are treated as "not found" here) or Hugging Face is unreachable."""
+        """Metadata plus every single-file GGUF variant of `repo_id` with real download sizes: the file-picker step.
+        Raises HuggingFaceLookupError if the repo doesn't exist (the unauthenticated API returns 401, not 404; both
+        mean "not found") or Hugging Face is unreachable.
+        """
         async with httpx.AsyncClient(timeout=_TIMEOUT, follow_redirects=True, proxy=proxy_url) as client:
             try:
                 resp = await client.get(f"{HF_API_BASE}/{repo_id}", params={"blobs": "true"})
@@ -101,27 +95,21 @@ class HuggingFaceCatalogSearch:
             for s in repo.get("siblings", [])
             if HuggingFaceCatalogSearch._is_single_file_gguf(s["rfilename"]) and s.get("size")
         ]
-        # A same-repo mmproj sidecar means every non-projector file here is a vision model — Ollama auto-pairs
-        # that sidecar on a hf.co/ pull and Matricxon pulls it alongside (see model_catalog_service's own
-        # comment on the curated `vision` flag), so the file picker can badge them "+Vision" upfront.
+        # A same-repo mmproj sidecar makes every non-projector file a vision model (Ollama auto-pairs it on hf.co/
+        # pull, Matricxon pulls it alongside; see model_catalog_service's curated `vision` flag), so the picker badges
+        # "+Vision".
         has_projector = any(HuggingFaceCatalogSearch.is_projector_file(s["rfilename"]) for s in gguf_siblings)
         files = [
             {
                 "filename": s["rfilename"],
                 "download_gb": round(s["size"] / 1_000_000_000, 2),
-                # See HuggingFaceCatalogSearch.is_projector_file's own docstring: this repo's family/
-                # parameter_size below almost never describes this specific file when True — the file-picker UI
-                # flags it instead of silently attributing the main model's architecture to a projector sidecar.
+                # See HuggingFaceCatalogSearch.is_projector_file: when True, family/parameter_size rarely describe this
+                # file, so the picker flags it rather than attributing the main model's architecture.
                 "is_projector": HuggingFaceCatalogSearch.is_projector_file(s["rfilename"]),
                 "vision": has_projector and not HuggingFaceCatalogSearch.is_projector_file(s["rfilename"]),
-                # Real git-LFS sha256 and exact byte size (download_gb above is rounded, too imprecise to
-                # compare a completed download against) — both already present on every real GGUF sibling
-                # (always LFS-tracked by their size alone), known upfront from this same call, no extra
-                # request. Internal-only today (not in HfFileOption/the API response, silently dropped by
-                # pydantic's default "ignore extra fields" behavior):
-                # app.services.matricxon_direct_puller.MatricxonDirectPuller verifies a direct-from-HF
-                # download against these the same way Matricxon's own HFDownloader already does for its own
-                # pulls.
+                # Git-LFS sha256 and exact byte size (download_gb is too rounded to verify a download), on every GGUF
+                # sibling from this same call. Internal only (not in HfFileOption; pydantic drops it).
+                # MatricxonDirectPuller verifies direct downloads against them like Matricxon's HFDownloader.
                 "sha256": s.get("lfs", {}).get("sha256"),
                 "size_bytes": s["size"],
             }
@@ -138,42 +126,38 @@ class HuggingFaceCatalogSearch:
             "files": files,
         }
 
-    # Hub pipeline tags / community tags that mark a text-to-image (diffusion) repo — such a model can't run on a
-    # chat engine (its GGUF has no `general.architecture`) and instead belongs to the image engine's own store
-    # (see app.services.image_model_service). "image-text-to-text" (a vision *chat* model) deliberately isn't here.
+    # Hub tags marking a text-to-image repo: it can't run on a chat engine (no `general.architecture`) and belongs
+    # to the image engine's store (image_model_service). "image-text-to-text" (a vision *chat* model) is not here.
     _IMAGE_PIPELINE_TAGS = frozenset({"text-to-image", "image-to-image"})
     _IMAGE_REPO_TAGS = frozenset({"sd.cpp", "stable-diffusion.cpp"})
 
     @staticmethod
     def is_image_repo(repo: dict) -> bool:
-        """True for a diffusion-model repo, judged from the Hub's own `pipeline_tag`/`tags` (present in both the
-        search listing and the per-repo lookup) — some sd.cpp conversions have no pipeline_tag, so the
-        stable-diffusion.cpp community tags count too."""
+        """True for a diffusion repo, from `pipeline_tag`/`tags` (in search and per-repo lookups). Some sd.cpp
+        conversions lack a pipeline_tag, so stable-diffusion.cpp community tags count too.
+        """
         return repo.get("pipeline_tag") in HuggingFaceCatalogSearch._IMAGE_PIPELINE_TAGS or bool(
             HuggingFaceCatalogSearch._IMAGE_REPO_TAGS & set(repo.get("tags") or [])
         )
 
-    # GGUF files this app can't sensibly offer as a single pullable tag — sharded multi-part weights (e.g.
-    # "-00001-of-00002.gguf") would need every shard pulled together, which neither engine's hf.co/ single-tag
-    # passthrough has a way to express; skipped rather than shown as if they were a normal, complete option.
+    # GGUF files not offerable as one pullable tag: sharded weights ("-00001-of-00002.gguf") need all shards,
+    # which neither engine's hf.co/ single-tag passthrough expresses. Skipped, not shown as a normal option.
     @staticmethod
     def _is_single_file_gguf(filename: str) -> bool:
         return filename.endswith(".gguf") and "-of-" not in filename
 
-    # A vision-projector (mmproj/CLIP) sidecar, not a standalone chat model — same llama.cpp/GGUF-ecosystem
-    # naming convention app/model_catalog.py's own hand-curated vision entries already rely on. A multi-file
-    # repo's *one* repo-level `gguf` metadata block (see repo_files' own docstring) describes whichever file
-    # Hugging Face picked as primary — almost never a same-repo projector sidecar — so a caller offering
-    # per-file choices from that same repo needs this to know which files that block actually describes.
+    # A vision-projector (mmproj/CLIP) sidecar, not a chat model (the naming convention of model_catalog.py's
+    # vision entries). A multi-file repo's one `gguf` block describes Hugging Face's primary file, almost never
+    # a projector, so per-file choices need this to know what that block covers (see repo_files).
     @staticmethod
     def is_projector_file(filename: str) -> bool:
         return "mmproj" in filename.lower()
 
     @staticmethod
     def _format_param_count(total: int | None) -> str | None:
-        """1_235_814_432 -> "1.2B" — huggingface.co's own gguf.total is a raw parameter count, not the
-        human-readable "N.NB" string app/model_catalog.py's hand-curated entries and Ollama's registry both
-        use."""
+        """1_235_814_432 -> "1.2B": Hugging Face's gguf.total is a raw count, unlike the "N.NB" strings in
+        model_catalog.py and Ollama's registry.
+        """
         if not total:
             return None
         if total >= 1_000_000_000:

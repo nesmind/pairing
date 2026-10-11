@@ -1,20 +1,11 @@
-"""Periodically prunes the four append-only, poller-written tables this
-app accumulates over time (telemetry_events, model_snapshots,
-system_metric_snapshots, gpu_metric_snapshots — see
-app.services.ollama_ps_poller, app.services.system_metrics_poller, and
-app.services.ollama_telemetry for what writes them). A one-shot prune
-at process startup only bounds
-growth *between restarts* — a self-hosted deployment that stays up for
-weeks or months between restarts needs this to actually run
-periodically too, or these tables grow unbounded for the process's
-entire uptime. Same detached-task/strong-ref-set idiom as the two
-pollers above; primary-gated the same way and for the same reason
-(host-level/shared tables, not per-instance ones).
+"""Periodically prunes the four append-only poller-written tables (telemetry_events, model_snapshots,
+system_metric_snapshots, gpu_metric_snapshots; writers: ollama_ps_poller, system_metrics_poller,
+ollama_telemetry). A prune only at startup bounds growth between restarts; a deployment up for weeks needs
+it periodic too, or the tables grow for the whole uptime. Same detached-task/strong-ref-set idiom as the
+two pollers above; primary-gated for the same reason (shared tables).
 
-The retention windows themselves are admin-configurable (Settings >
-System, see app.services.retention_settings_service) — read fresh at
-the start of every sweep, not cached, so a change takes effect on the
-next run rather than requiring a restart.
+The windows are admin-configurable (Settings > System, retention_settings_service) and read fresh each
+sweep, so a change applies at the next run, not after a restart.
 """
 
 import asyncio
@@ -30,9 +21,8 @@ from app.services import retention_settings_service
 
 logger = logging.getLogger("llama_chat")
 
-# Every 6 hours — an indexed DELETE against a range that's usually empty (nothing stale yet) is cheap, so there's
-# no real cost to sweeping more often than daily, and it keeps each table's actual peak size closer to its
-# intended retention window instead of drifting up over the course of a day.
+# Every 6 hours: an indexed DELETE over a usually empty range is cheap, so sweeping more than daily costs little
+# and keeps each table's peak near its retention window instead of drifting up over a day.
 SWEEP_INTERVAL_SECONDS = 6 * 60 * 60
 
 _background_tasks: set[asyncio.Task] = set()
@@ -72,16 +62,15 @@ async def _run_retention_poller() -> None:
         try:
             await prune_once()
         except Exception:
-            # A single bad sweep (e.g. a transient DB error) must never kill the loop permanently.
+            # A bad sweep (e.g. a transient DB error) must never kill the loop for good.
             logger.exception("Retention sweep failed.")
         await asyncio.sleep(SWEEP_INTERVAL_SECONDS)
 
 
 def start_retention_poller() -> None:
-    """Called once, from startup_service.run_startup_tasks (primary
-    only) — runs an initial sweep almost immediately (first loop
-    iteration, before the first sleep), then every SWEEP_INTERVAL_SECONDS
-    for as long as the process stays up."""
+    """Called once from startup_service.run_startup_tasks (primary only): an initial sweep almost at once (before the
+    first sleep), then every SWEEP_INTERVAL_SECONDS.
+    """
     task = asyncio.create_task(_run_retention_poller())
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)

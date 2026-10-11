@@ -1,6 +1,5 @@
-"""Unit tests for app/services/matricxon_telemetry.py — the Matricxon-flavored twin of
-tests/test_ollama_telemetry.py, same "never touch the global OTel registry" guarantee (see that module's own
-docstring for the full reasoning, identical here)."""
+"""Tests for services/matricxon_telemetry.py, the twin of tests/test_ollama_telemetry.py, with the same "never touch the
+global OTel registry" guarantee (see ollama_telemetry)."""
 
 import asyncio
 
@@ -58,16 +57,14 @@ def test_record_chat_success_sets_attributes_from_the_done_payload():
 async def test_record_chat_error_sets_error_status():
     from opentelemetry.trace import StatusCode
 
-    # A real (recording) span, not the no-op fallback get_tracer() returns before init — the no-op span's
-    # NonRecordingSpan has no readable .status at all, so this needs a real TracerProvider to assert against.
-    # Async (unlike this file's other plain-attribute-setting test) since init_matricxon_telemetry() calls
-    # capture_main_loop(), which needs a running event loop — see that function's own docstring.
+    # A real (recording) span, not the no-op fallback get_tracer returns before init: NonRecordingSpan has no
+    # readable.status. Async since init_matricxon_telemetry calls capture_main_loop, which needs a running loop.
     matricxon_telemetry.init_matricxon_telemetry()
     tracer = matricxon_telemetry.get_tracer()
     with tracer.start_as_current_span("matricxon.chat", record_exception=False, set_status_on_exception=False) as span:
         matricxon_telemetry.record_chat_error(span, "http://localhost:8420", 1, RuntimeError("boom"))
         assert span.status.status_code == StatusCode.ERROR
-    # Flushes/joins the BatchSpanProcessor's background export before this test's own event loop closes — without
-    # this, its worker thread tries to export after the loop is gone (harmless but noisy: a logged "Failed to
-    # persist" + a "coroutine was never awaited" warning from a real background thread outliving the test).
+    # Flushes/joins the BatchSpanProcessor's export before this test's loop closes; otherwise its worker thread
+    # exports after the loop is gone (harmless but noisy: a "Failed to persist" log and a "coroutine was never awaited"
+    # warning).
     await matricxon_telemetry.shutdown_matricxon_telemetry()

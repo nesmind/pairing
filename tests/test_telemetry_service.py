@@ -1,10 +1,9 @@
-"""Unit tests for app/services/telemetry_service.py — the by-host/by-model group_by() counts are plain SQL (same
-convention as tests/test_stats_service.py), but the latency time-series bucketing and p95 figure are hand-rolled
-Python (see that module's own docstring on why SQL isn't portable enough here), so those get direct, exact-value
-coverage rather than just a smoke test. Every _event() below defaults to engine="ollama" (TelemetryEvent's own
-Python-side column default — see app/models/telemetry.py) and every test asks get_engine_telemetry_summary for
-"ollama" specifically, matching that default; test_a_matricxon_events_never_leak_into_ollamas_summary at the
-bottom is the one test that actually exercises the engine filter itself."""
+"""Tests for services/telemetry_service.py: the by-host/by-model group_by counts are plain SQL (as
+tests/test_stats_service.py), but latency bucketing and p95 are hand-rolled Python (SQL isn't portable enough;
+see the module), so they get exact-value coverage. Every _event defaults to engine="ollama"
+(TelemetryEvent's column default, app/models/telemetry.py) and every test asks get_engine_telemetry_summary for
+"ollama"; test_a_matricxon_events_never_leak_into_ollamas_summary is the one exercising the engine filter.
+"""
 
 from datetime import timedelta
 
@@ -106,8 +105,8 @@ async def test_latency_by_model_computes_avg_and_bounded_p95(db):
     assert stat.model == "llama3:latest"
     assert stat.request_count == 2
     assert stat.avg_duration_ms == 150.0
-    # method="inclusive" keeps p95 within the observed min/max — see telemetry_service's own comment on why the
-    # default "exclusive" method can extrapolate past the actual max with only a couple of samples.
+    # method="inclusive" keeps p95 within the observed min/max; the default "exclusive" can extrapolate past the max
+    # with a couple of samples (see telemetry_service).
     assert 100.0 <= stat.p95_duration_ms <= 200.0
 
 
@@ -160,9 +159,9 @@ async def test_latency_time_series_buckets_by_hour(db):
 
 @pytest.mark.asyncio
 async def test_a_matricxon_events_never_leak_into_ollamas_summary(db):
-    """The real feature this covers: both engines write to the same TelemetryEvent table (see that model's own
-    docstring) — asking for Ollama's summary must never count, group, or average in a Matricxon call, and vice
-    versa, regardless of how similar the model/host names happen to be."""
+    """Both engines write to the same TelemetryEvent table (see the model): Ollama's summary must never count, group or
+    average a Matricxon call, nor the reverse, however similar the model/host names.
+    """
     db.add_all(
         [
             _event(model="shared-name:latest", host="http://shared:1", engine="ollama"),

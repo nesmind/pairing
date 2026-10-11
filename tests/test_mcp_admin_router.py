@@ -1,4 +1,4 @@
-"""app/routers/mcp_admin.py, called directly like the other router tests."""
+"""routers/mcp_admin.py, called directly like the other router tests."""
 
 import pytest
 from fastapi import HTTPException
@@ -68,7 +68,7 @@ async def test_connection_can_be_tested_before_saving(db, server) -> None:
 
     assert ok.ok and "new__add" in [t.name for t in ok.tools]
     assert not failed.ok and failed.error
-    assert await mcp_admin.list_servers(db=db, _admin=None) == []  # nothing was saved
+    assert await mcp_admin.list_servers(db=db, _admin=None) == []
 
 
 async def test_testing_an_edit_without_headers_uses_the_saved_ones(db, server, monkeypatch) -> None:

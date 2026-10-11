@@ -1,8 +1,7 @@
-"""Unit tests for app/services/chat_attachment_service.py: attachment
-validation/classification/storage (including the multi-file per-type
-caps), the text-extraction fold-in, and the image-attachment application
-reply_generation_service ends up using (see tests/test_chat_service.py
-for how build_reply_stream wires all three together)."""
+"""Tests for services/chat_attachment_service.py: validation, classification, storage (including per-type caps),
+the text-extraction fold-in and the image-attachment application reply_generation_service uses
+(tests/test_chat_service.py shows how build_reply_stream wires all three).
+"""
 
 import base64
 import io
@@ -21,11 +20,9 @@ def _upload(filename: str, data: bytes) -> UploadFile:
 
 @pytest.fixture(autouse=True)
 def _isolated_attachments_dir(tmp_path, monkeypatch):
-    """save_attachments() writes through app.config.ATTACHMENTS_DIR
-    directly (imported by name into chat_attachment_service, same
-    module-split import-binding gotcha as elsewhere in this codebase) —
-    without this, every test below would write real files into the
-    project's own attachments/ folder instead of a throwaway tmp_path."""
+    """save_attachments writes through app.config.ATTACHMENTS_DIR (imported by name; module-split binding gotcha);
+    otherwise tests would write into the project's real attachments/ folder.
+    """
     monkeypatch.setattr(chat_attachment_service, "ATTACHMENTS_DIR", tmp_path)
 
 
@@ -60,9 +57,9 @@ async def test_save_attachments_rejects_a_file_over_the_size_limit():
 
 @pytest.mark.asyncio
 async def test_save_attachments_writes_two_same_named_files_without_colliding():
-    """Two attachments in the same conversation with the same original
-    filename must not overwrite each other — see save_attachments' own
-    comment on the random-token prefix."""
+    """Two attachments with the same original filename in one conversation must not overwrite each other
+    (save_attachments' random-token prefix).
+    """
     first, second = await chat_attachment_service.save_attachments(
         [_upload("same.txt", b"first"), _upload("same2.txt", b"second")], "conv-1"
     )
@@ -145,7 +142,7 @@ async def test_apply_image_attachment_is_a_noop_for_text(db, tmp_path, monkeypat
     result = await chat_attachment_service.apply_image_attachment(db, [attachment], ollama_messages)
 
     assert result is None
-    assert ollama_messages == [{"role": "user", "content": "hi"}]  # untouched
+    assert ollama_messages == [{"role": "user", "content": "hi"}]
 
 
 @pytest.mark.asyncio
@@ -189,7 +186,7 @@ async def test_apply_image_attachment_attaches_base64_bytes_to_the_last_message(
     result = await chat_attachment_service.apply_image_attachment(db, attachments, ollama_messages)
 
     assert result == "llava:latest"
-    # Only the last entry (the user's own turn) is touched.
+    # Only the last entry (the user's turn) is touched.
     assert ollama_messages[0] == {"role": "system", "content": "be nice"}
     assert ollama_messages[-1]["role"] == "user"
     assert ollama_messages[-1]["content"] == "look at this"

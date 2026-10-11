@@ -1,21 +1,11 @@
-"""
-Authentication: password hashing, login brute-force throttling, the
-FastAPI dependencies API routers use to require a logged-in user (or
-specifically an admin), and PageAuth — the same check for HTML page
-routes, which need a redirect instead of a raised HTTPException.
+"""Authentication: password hashing, login throttling, the FastAPI dependencies requiring a user or admin,
+and PageAuth (same check for HTML routes, which redirect instead of raising).
 
-Sessions are handled by Starlette's SessionMiddleware (registered in
-app/main.py) — a signed cookie holding `{"user_id": ...}`. There's no
-server-side session table: the cookie itself, signed with
-app.config.SECRET_KEY, is the only state, which is enough for a
-single-server self-hosted app and keeps this file simple.
+Sessions are Starlette's SessionMiddleware (app/main.py): a cookie holding `{"user_id":...}` signed
+with SECRET_KEY, with no server-side table.
 
-bcrypt's hash/verify calls are left as plain blocking calls rather than
-wrapped in asyncio.to_thread: they're CPU-bound (not I/O), take on the
-order of 100ms on modest hardware, and this app targets a small number
-of concurrent self-hosted users — the "unless dealing with strictly
-blocking...I/O" carve-out in CLAUDE.md's async rule is exactly this kind
-of tradeoff. Revisit if this ever needs to serve many concurrent logins.
+bcrypt calls stay blocking (CPU-bound, ~100ms, few concurrent users; CLAUDE.md's async carve-out).
+Revisit for many concurrent logins.
 """
 
 import time
@@ -29,11 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import User
 
-# Login brute-force throttling: an in-memory map of client IP -> timestamps
-# of recent failed attempts. Resets on process restart and isn't shared
-# across multiple worker processes, same tradeoff as the session cookie
-# above — fine for this app's single-server deployment model, not a
-# distributed rate limiter.
+# Login throttling: in-memory client IP -> recent failure timestamps. Resets on restart and is not shared
+# across workers; fine for single-server use.
 _LOGIN_ATTEMPT_WINDOW_SECONDS = 15 * 60
 _LOGIN_ATTEMPT_LIMIT = 5
 _failed_login_attempts: dict[str, list[float]] = {}
@@ -55,26 +42,17 @@ def clear_failed_logins(ip: str) -> None:
 
 
 def resolve_client_ip(direct_ip: str, forwarded_for: str | None) -> str:
-    """The IP the login rate limiter above should actually key on.
-    Only trusts `forwarded_for` when `direct_ip` is this machine's own
-    loopback address — i.e. the request actually came through
-    app/services/instance_proxy.py's built-in load balancer (Settings >
-    System, proxy_mode="local"), which always connects from 127.0.0.1
-    and sets this header itself. A remote attacker hitting /login
-    directly could otherwise set their own X-Forwarded-For and freely
-    rotate past the rate limit — trusting a client-supplied header for
-    security-relevant IP attribution is only ever safe when it's known
-    to come from a trusted hop, never from an arbitrary caller."""
+    """The IP the rate limiter keys on. `forwarded_for` is trusted only when `direct_ip` is loopback, i.e. via
+    instance_proxy.py's balancer (proxy_mode="local"), which sets the header. Otherwise an attacker could
+    rotate X-Forwarded-For past the limit.
+    """
     if direct_ip in ("127.0.0.1", "::1") and forwarded_for:
         return forwarded_for.split(",")[0].strip()
     return direct_ip
 
 
 def hash_password(password: str) -> str:
-    """One-way hash for storing a password. bcrypt includes its own
-    random salt, so the same password hashes differently every time —
-    that's expected and correct, not a bug to "fix" by comparing hashes
-    directly (always use verify_password instead)."""
+    """One-way bcrypt hash with its own random salt (equal passwords hash differently); compare via verify_password."""
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
@@ -82,37 +60,24 @@ def verify_password(password: str, password_hash: str) -> bool:
     return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
 
 
-# Not a real account's hash — a fixed placeholder so login can run a bcrypt
-# comparison against *something* when the username doesn't exist. Without
-# this, an unknown username short-circuits before bcrypt.checkpw ever runs
-# while a real one takes bcrypt's tens-of-ms, and that timing gap lets an
-# attacker enumerate valid usernames before even attempting to brute-force
-# passwords. See verify_password_or_dummy below.
+# Placeholder hash so login still runs a bcrypt comparison for unknown usernames; otherwise the timing
+# gap reveals valid usernames. See verify_password_or_dummy.
 _DUMMY_PASSWORD_HASH = "$2b$12$HfzYiavSCrc.jixfSvznC.L4UWgTyyN.Sr198JT4ZQj35iCUotqlm"
 
 
 def verify_password_or_dummy(password: str, password_hash: str | None) -> bool:
-    """Like verify_password, but always runs bcrypt even when there's no
-    real hash to check against (password_hash is None) — pass this the
-    looked-up user's hash, or None when no such user exists, so a login
-    attempt for an unknown username costs the same time as one for a real
-    account. Always returns False when password_hash is None."""
+    """Like verify_password, but runs bcrypt even when `password_hash` is None (unknown user), so timing is
+    the same. Returns False for None.
+    """
     real_hash = password_hash if password_hash is not None else _DUMMY_PASSWORD_HASH
     ok = verify_password(password, real_hash)
     return ok if password_hash is not None else False
 
 
 async def get_current_user(request: Request, db: AsyncSession = Depends(get_db)) -> User:
-    """FastAPI dependency: the logged-in user, from the session cookie.
-    Raises 401 if there's no session, it points at a since-deleted user,
-    or the account has since been disabled — routers that need a
-    logged-in user just add `Depends(get_current_user)` and get a real
-    User back, no manual checking required.
-
-    Checking `status` here (not just at login) means disabling a user
-    takes effect immediately, on their very next request, rather than
-    only blocking their *next* login while an already-open session of
-    theirs keeps working."""
+    """Dependency: the logged-in user from the session cookie. 401 if no session, deleted user or disabled
+    account. Checking `status` here makes disabling take effect on the next request.
+    """
     user_id = request.session.get("user_id")
     if user_id:
         user = await db.get(User, user_id)
@@ -123,29 +88,22 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
 
 
 def require_admin(user: User = Depends(get_current_user)) -> User:
-    """Like get_current_user, but 403s anyone who isn't an admin —
-    for the Settings page's System tab and its endpoints."""
+    """Like get_current_user, but 403 for non-admins."""
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
 
 
 class PageAuth:
-    """The page-route counterpart to get_current_user/require_admin above: same session-cookie check (including
-    the same self-healing behavior — a stale session pointing at a deleted/disabled user gets cleared, not just
-    rejected), but a raw 401/403 error page is a bad experience for someone who just clicked a sidebar link, so
-    every check here returns a RedirectResponse for the route to hand straight back instead of raising.
+    """Page-route counterpart of get_current_user/require_admin: same cookie check (stale sessions are
+    cleared), but returns a RedirectResponse instead of raising.
 
-    One instance per request — construct it, `await .resolve()`, then call `.require_login()` or
-    `.require_admin()`, each returning either the real User or the RedirectResponse to return. Fails closed by
-    design: `.user` starts (and stays) None until `.resolve()` actually finds a valid session, so a route that
-    forgets to await `.resolve()` first gets an incorrect-but-safe "redirect to login" rather than an accidental
-    bypass — there's no code path where a real User comes back without the session actually having been checked.
+    One instance per request: `await.resolve`, then `.require_login` or `.require_admin`, each
+    returning the User or a RedirectResponse. Fails closed: `.user` stays None until `.resolve` finds a
+    valid session, so forgetting it redirects to login instead of bypassing.
 
-    Typical call site (see app/main.py's page routes, the only callers):
-
-        auth = await PageAuth(request, db).resolve()
-        if isinstance(user := auth.require_admin(), RedirectResponse):
+        auth = await PageAuth(request, db).resolve
+        if isinstance(user:= auth.require_admin, RedirectResponse):
             return user
     """
 
@@ -166,9 +124,8 @@ class PageAuth:
 
     @property
     def is_admin(self) -> bool:
-        """For a page that renders differently for an admin without gating the whole page on it (e.g. chat.html's
-        Stats sidebar link, settings.html's System tab) — use require_admin() instead when the *entire* page
-        should be inaccessible to a non-admin."""
+        """For pages that differ for admins without gating the whole page; use require_admin to block non-admins
+        entirely."""
         return self.user is not None and self.user.role == "admin"
 
     def require_login(self) -> "User | RedirectResponse":
@@ -181,19 +138,11 @@ class PageAuth:
 
 
 async def seed_default_users(db: AsyncSession) -> User:
-    """Creates the one starter admin account if it doesn't already
-    exist — idempotent, so it's safe to call on every startup. Returns
-    that admin User (existing or newly created), so app/main.py can use
-    its id to backfill any conversation created before multi-user
-    support existed, and app.services.db_config_service can seed a
-    fresh database the same way a real first boot does.
+    """Creates the starter admin if missing (idempotent; safe every startup) and returns it, so app/main.py can
+    backfill pre-multi-user conversations and db_config_service can seed a fresh database.
 
-    The account uses its username as its password. That's exactly as
-    insecure as it sounds — fine for a first login on a private network,
-    not fine to leave as-is on anything internet-reachable. The password
-    is still stored properly hashed (never plaintext), but "properly
-    hashed" doesn't help against someone simply typing "admin" — change
-    it before exposing this app beyond your own machine.
+    Its password equals its username: fine for a first login on a private network, but change it before
+    exposing the app (it is hashed, but "admin" is easy to guess).
     """
     existing = (await db.execute(select(User).where(User.username == "admin"))).scalar_one_or_none()
     if existing is None:

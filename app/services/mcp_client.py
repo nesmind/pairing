@@ -1,8 +1,8 @@
 """Talks to one MCP server over streamable HTTP.
 
-Each call opens its own short session (initialize, one request, close) instead of keeping a
-connection: nothing is shared between users or between pAIring instances, so any instance can serve
-any reply, and a server restart never leaves a dead connection behind."""
+Each call opens its own short session (initialize, one request, close) instead of a held connection: nothing
+is shared between users or pAIring instances, so any instance serves any reply and a restart leaves no dead connection.
+"""
 
 import asyncio
 import time
@@ -16,13 +16,13 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
 MAX_RESULT_CHARS = 20_000  # hard cap; the admin's smaller limit is applied by the tool loop
-_MAX_PARALLEL_CALLS = 8  # across all users on this instance
+_MAX_PARALLEL_CALLS = 8
 
 _slots = asyncio.Semaphore(_MAX_PARALLEL_CALLS)
 
 
 class McpError(Exception):
-    """The server was unreachable, timed out, or answered with a protocol error."""
+    """The server was unreachable, timed out or answered with a protocol error."""
 
 
 @dataclass(frozen=True)
@@ -34,7 +34,7 @@ class McpToolInfo:
 
 @dataclass(frozen=True)
 class McpServerInfo:
-    """What a server says about itself when a session starts (the MCP `initialize` answer)."""
+    """What a server says about itself at session start (the MCP `initialize` answer)."""
 
     name: str = ""
     version: str = ""
@@ -47,7 +47,7 @@ class McpServerInfo:
 class McpInspection:
     server: McpServerInfo
     tools: list[McpToolInfo]
-    seconds: float  # connect + initialize + list tools
+    seconds: float
 
 
 @dataclass(frozen=True)
@@ -70,7 +70,7 @@ class McpConnection:
         return await self._with_session(run)
 
     async def inspect(self) -> McpInspection:
-        """One short session: the server's own description plus its tools, and how long that took."""
+        """One short session: the server's description and tools, and how long it took."""
         started = time.monotonic()
 
         async def run(session: ClientSession) -> list[McpToolInfo]:
@@ -97,7 +97,7 @@ class McpConnection:
             raise McpError(f"timed out after {self._timeout:g}s") from exc
         except McpError:
             raise
-        except Exception as exc:  # incl. the ExceptionGroup anyio raises from a failed connect
+        except Exception as exc:  # incl. the ExceptionGroup anyio raises on a failed connect
             raise McpError(_describe(exc)) from exc
 
     @asynccontextmanager

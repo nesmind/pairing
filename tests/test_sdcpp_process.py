@@ -1,4 +1,4 @@
-"""sdcpp_process.spawn against tiny stand-in 'sd-server' scripts — startup success and failure reporting."""
+"""sdcpp_process.spawn against tiny stand-in 'sd-server' scripts: startup success and failure reporting."""
 
 import os
 import signal

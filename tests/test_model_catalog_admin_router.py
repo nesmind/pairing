@@ -1,5 +1,5 @@
-"""Unit tests for app/routers/model_catalog_admin.py — called directly, not through a TestClient/ASGI app (see
-tests/test_instance_proxy_http.py's own docstring on why this project doesn't use that pattern)."""
+"""Tests for routers/model_catalog_admin.py, called directly, not via TestClient/ASGI (see
+tests/test_instance_proxy_http.py)."""
 
 import pytest
 from fastapi import HTTPException
@@ -39,10 +39,9 @@ def _stub_repo_files(monkeypatch, repo: dict = _REPO) -> None:
 
 @pytest.fixture(autouse=True)
 def _stub_gguf_probe(monkeypatch):
-    """Same "couldn't reach Hugging Face" stub as tests/test_extended_model_catalog_service.py's own fixture
-    (see its docstring) — add_extended_model here goes through the same ExtendedModelCatalog.add, which now
-    also probes the real GGUF header; this keeps that probe from making a real network call in these
-    router-level tests too."""
+    """The "couldn't reach Hugging Face" stub of tests/test_extended_model_catalog_service.py: add_extended_model
+    uses ExtendedModelCatalog.add, which also probes the GGUF header; this prevents a real network call.
+    """
 
     async def fake_probe_metadata(_repo_id, _filename, _proxy_url):
         return None
@@ -138,10 +137,10 @@ async def test_add_extended_model_verifies_and_adds(db, admin_user, monkeypatch)
 
 @pytest.mark.asyncio
 async def test_add_extended_model_flags_already_installed_and_omits_it_from_entries(db, admin_user, monkeypatch):
-    """Confirmed live: adding a tag that's already installed used to come back looking identical to a genuine
-    new addition (no way for the frontend to tell it apart from the entries list alone, since
-    ExtendedModelCatalog.build excludes any installed tag on purpose — see its own docstring) — an admin who
-    just re-added an already-installed model had nowhere left to find it and pull it, misled by a flat "Added"."""
+    """Confirmed live: adding an already-installed tag looked identical to a genuine new addition (the frontend
+    can't tell from `entries`, as ExtendedModelCatalog.build excludes installed tags), so an admin who re-added
+    one found nowhere to pull it, misled by a flat "Added".
+    """
     tag = ExtendedModelCatalog.build_tag(_REPO["repo_id"], _REPO["files"][0]["filename"])
     monkeypatch.setattr(extended_model_catalog_service, "list_models", lambda: _async_return([{"name": tag}]))
     _stub_repo_files(monkeypatch)

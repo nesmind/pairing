@@ -1,7 +1,6 @@
-"""Unit tests for app/services/matricxon_ps_poller.py — the Matricxon-flavored twin of
-tests/test_ollama_ps_poller.py (see that module's own docstring for the shared background-loop precedent this
-mirrors). Uses the shared `db` fixture, which already patches matricxon_ps_poller.AsyncSessionLocal (see
-conftest.py)."""
+"""Tests for services/matricxon_ps_poller.py, the twin of tests/test_ollama_ps_poller.py (same loop precedent).
+Uses the shared `db` fixture, which patches matricxon_ps_poller.AsyncSessionLocal (conftest.py).
+"""
 
 import asyncio
 from datetime import UTC, datetime
@@ -94,8 +93,8 @@ async def test_poll_once_writes_nothing_when_no_models_are_loaded_anywhere(monke
 
 @pytest.mark.asyncio
 async def test_run_matricxon_ps_poller_survives_a_poll_failure(monkeypatch):
-    """A single bad iteration (e.g. a transient DB error) must not kill the loop permanently — verified here by
-    making the *first* _poll_once call raise and confirming a second call still happens."""
+    """A bad iteration (e.g. a transient DB error) must not kill the loop: the first _poll_once raises and a second call
+    still happens."""
     calls = 0
 
     async def fake_poll_once():
@@ -103,7 +102,7 @@ async def test_run_matricxon_ps_poller_survives_a_poll_failure(monkeypatch):
         calls += 1
         if calls == 1:
             raise RuntimeError("transient failure")
-        raise SystemExit  # stop the infinite loop cleanly once the second attempt has happened
+        raise SystemExit
 
     monkeypatch.setattr(matricxon_ps_poller, "_poll_once", fake_poll_once)
     monkeypatch.setattr(matricxon_ps_poller, "POLL_INTERVAL_SECONDS", 0)
@@ -116,8 +115,9 @@ async def test_run_matricxon_ps_poller_survives_a_poll_failure(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_start_matricxon_ps_poller_tracks_its_own_task_with_a_strong_reference(monkeypatch):
-    """asyncio only holds a *weak* reference to a bare create_task() result — without the strong-ref set this
-    module keeps, the poller task could be garbage-collected mid-run (same idiom as ollama_ps_poller's own)."""
+    """asyncio keeps only a weak reference to a bare create_task result; without this module's strong-ref set the
+    poller task could be garbage-collected mid-run (as ollama_ps_poller).
+    """
 
     async def fake_run_forever():
         await asyncio.sleep(999)

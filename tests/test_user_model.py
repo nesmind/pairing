@@ -1,8 +1,7 @@
-"""Unit tests for app/models/user.py's User.initials/avatar_url
-properties — the small round-avatar fallback used wherever a picture
-hasn't been uploaded (see app/services/avatar_service.py,
-app/models/conversation.py's Message.sender_avatar_url/sender_initials,
-and chat.js's renderAvatar)."""
+"""Tests for models/user.py's User.initials/avatar_url, the avatar fallback used where no picture is
+uploaded (avatar_service.py, Message.sender_avatar_url/sender_initials in models/conversation.py, chat.js's
+renderAvatar).
+"""
 
 from app.models import User
 
@@ -28,7 +27,7 @@ def test_avatar_url_is_none_until_a_picture_is_uploaded():
 
 
 def test_avatar_url_points_at_the_account_avatar_endpoint_with_avatar_path_as_the_cache_buster():
-    # avatar_path itself is unique per upload (a random token baked into the filename — see
-    # avatar_service.save_avatar), so reusing it verbatim as the ?v= value needs no filesystem access at all.
+    # avatar_path is unique per upload (a random token in the filename; avatar_service.save_avatar), so reusing it as
+    # the ?v= value needs no filesystem access.
     user = User(id="u1", username="asmith", avatar_path="u1-a1b2c3d4.png")
     assert user.avatar_url == "/api/account/u1/avatar?v=u1-a1b2c3d4.png"

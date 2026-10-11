@@ -1,6 +1,4 @@
-"""The login account model. See app/models/__init__.py for the package
-this belongs to and app/services/auth_service.py for the business logic
-built on top of it."""
+"""The login account model (logic: app/services/auth_service.py)."""
 
 from sqlalchemy import Column, DateTime, String
 
@@ -11,80 +9,45 @@ DEFAULT_TIMEZONE = "UTC"
 
 
 class User(Base):
-    """A login account. Every conversation and per-user setting belongs
-    to exactly one User (see Conversation.owner_id and
-    AppSetting.owner_id) — the shared knowledge base is the one
-    exception, deliberately visible to every user (see
-    app/services/document_service.py)."""
+    """A login account. Conversations and per-user settings belong to one User; the knowledge base is shared."""
 
     __tablename__ = "users"
 
     id = Column(String(ID_LEN), primary_key=True, default=new_id)
-    # Matches the max_length on schemas.user.UserCreate.username — the
-    # app never lets a longer value in, this just gives MySQL a bound too.
+    # Matches schemas.user.UserCreate.username max_length; bounds MySQL too.
     username = Column(String(50), nullable=False, unique=True)
-    # Purely descriptive — never used for login/identity (username is),
-    # and nullable since every account that existed before this field
-    # was added has neither, and nothing in the app requires either to
-    # be set going forward either.
+    # Descriptive only (username is the identity); nullable for older accounts.
     first_name = Column(String(100), nullable=True)
     last_name = Column(String(100), nullable=True)
-    # Filename only (not a full path) under app.config.AVATARS_DIR — see
-    # app/services/avatar_service.py, the only writer. Null means "no
-    # picture uploaded"; the UI falls back to `initials` below in that
-    # case (see also Message.sender_avatar_url/sender_initials in
-    # app/models/conversation.py, which read this same pair per message
-    # sender).
+    # Filename under AVATARS_DIR (written only by app/services/avatar_service.py). Null = no picture; the UI
+    # uses `initials` (see Message.sender_avatar_url / sender_initials).
     avatar_path = Column(String(255), nullable=True)
-    # bcrypt hash (see app/services/auth_service.py) — the plaintext
-    # password is never stored or logged anywhere.
+    # bcrypt hash (auth_service.py); plaintext is never stored or logged.
     password_hash = Column(String(255), nullable=False)
-    # "admin" unlocks the Settings page's System tab (see
-    # app/routers/settings.py); "user" is everyone else. Nothing about a
-    # user's own conversations/settings differs by role.
+    # "admin" unlocks Settings > System (app/routers/settings.py); "user" is everyone else.
     role = Column(String(20), nullable=False, default="user")
-    # "active" or "disabled". A disabled account can't log in, and an
-    # already-open session for it stops working on its very next request
-    # (see app.services.auth_service.get_current_user) — an admin
-    # flipping this doesn't have to also force a logout separately.
-    # Deliberately a soft deactivation rather than a delete: it keeps the
-    # account's conversation history intact and reversible.
+    # "active" or "disabled". A disabled account cannot log in and an open session stops on its next request
+    # (auth_service.get_current_user). A soft deactivation that keeps history.
     status = Column(String(20), nullable=False, default="active")
-    # IANA name (e.g. "Asia/Jerusalem") the UI renders this user's message
-    # timestamps in — see app/static/js/timezone.js. New accounts start on
-    # DEFAULT_TIMEZONE; the user changes it in Settings > Account.
+    # IANA timezone (e.g. "Asia/Jerusalem") for message timestamps (app/static/js/timezone.js). Starts as
+    # DEFAULT_TIMEZONE; changed in Settings > Account.
     timezone = Column(String(64), nullable=False, default=DEFAULT_TIMEZONE, server_default=DEFAULT_TIMEZONE)
     created_at = Column(DateTime, default=utcnow)
 
     @property
     def avatar_url(self) -> str | None:
-        """Same "URL only once the file actually exists" contract as
-        app.models.conversation.MessageAttachment.url — null until this
-        account has uploaded a picture (see
-        app.services.avatar_service.save_avatar), in which case the UI
-        falls back to `initials` below instead.
+        """URL only once the file exists (like MessageAttachment.url); null falls back to `initials`
+        (avatar_service.save_avatar).
 
-        The `?v=<avatar_path>` suffix is a cache-buster: avatar_path
-        itself now includes a random token generated fresh on every
-        upload (see save_avatar's own docstring on why — a re-upload
-        that kept the exact same URL left browsers showing the stale
-        cached picture, confirmed live), so reusing it here as the query
-        value is enough on its own — no extra state, no filesystem call,
-        and no reliance on a timestamp's resolution being fine enough to
-        tell two fast re-uploads apart (an earlier version of this used
-        the file's own mtime for that and, confirmed live, two uploads in
-        quick succession could land on the same one)."""
+        `?v=<avatar_path>` is a cache-buster: avatar_path holds a fresh random token per upload (a same-URL
+        re-upload showed stale pictures; mtime was too coarse for quick re-uploads).
+        """
         if not self.avatar_path:
             return None
         return f"/api/account/{self.id}/avatar?v={self.avatar_path}"
 
     @property
     def initials(self) -> str:
-        """Round-avatar fallback text shown wherever no picture has been
-        uploaded (see app.services.avatar_service and chat.js's
-        renderAvatar) — the first letter of first_name and of last_name
-        (whichever are set), or just the username's own first letter if
-        neither is. Always at least one character: every account has a
-        username."""
+        """Avatar fallback text: first letters of first/last name, else the username's first letter (never empty)."""
         letters = [name[0] for name in (self.first_name, self.last_name) if name]
         return "".join(letters).upper() if letters else self.username[0].upper()

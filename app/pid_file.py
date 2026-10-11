@@ -1,7 +1,7 @@
-"""The primary server's own PID file, the single source of truth for scripts/start.sh, stop.sh and status.sh.
+"""The primary server's PID file, the source of truth for scripts/start.sh, stop.sh and status.sh.
 
-Self-written by the process (os.getpid()), not captured by the launching shell, so it is right however the
-process was started (background job, setsid, supervisor, container). Same idea as Matricxon's PidFile."""
+Written by the process itself (os.getpid), so it is right however it was launched. Same idea as Matricxon's PidFile.
+"""
 
 import os
 from pathlib import Path

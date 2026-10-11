@@ -1,7 +1,6 @@
-"""Unit tests for app/services/db_schema_check.py: classifying a
-candidate database's existing tables (if any) before build_schema or
-save_and_apply ever runs DDL against it — see that module's own
-docstring for why a raw connection succeeding isn't enough on its own."""
+"""Tests for services/db_schema_check.py: classifying a candidate database's existing tables before build_schema or
+save_and_apply run DDL (a successful raw connection isn't enough; see the module).
+"""
 
 import sqlite3
 
@@ -26,16 +25,14 @@ def test_classify_schema_recognizes_a_real_pAIring_schema(tmp_path):
 
 
 def test_classify_schema_recognizes_a_legacy_pre_alembic_schema(tmp_path):
-    """A pAIring schema that predates Alembic entirely (no
-    alembic_version table, but real pAIring tables) must still classify
-    as compatible — this is exactly the case app.database._run_migrations
-    itself already knows how to stamp-and-upgrade rather than treat as
-    foreign."""
+    """A pre-Alembic pAIring schema (real tables, no alembic_version) must classify as compatible: the case
+    app.database._run_migrations stamps and upgrades.
+    """
     from app.database import _run_migrations
 
     db_path = tmp_path / "legacy.db"
     url = f"sqlite:///{db_path}"
-    _run_migrations(url)  # creates the schema, including alembic_version
+    _run_migrations(url)
     conn = sqlite3.connect(str(db_path))
     try:
         conn.execute("DROP TABLE alembic_version")
@@ -59,10 +56,8 @@ def test_classify_schema_rejects_a_database_with_unrelated_tables(tmp_path):
 
 
 def test_classify_schema_rejects_a_pAIring_schema_with_one_extra_foreign_table(tmp_path):
-    """Even mostly-compatible isn't good enough — a single table pAIring
-    doesn't recognize alongside its own real tables still means this
-    database is shared with something else, which is exactly the
-    situation this check exists to catch."""
+    """Mostly compatible isn't enough: one unrecognized table beside pAIring's own means the database is shared with
+    something else."""
     from app.database import _run_migrations
 
     db_path = tmp_path / "mixed.db"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Reports whether pAIring is running (PID file run/pairing.pid)
+# Reports whether pAIring is running (PID file run/pairing.pid).
 #
 # Exit code: 0 running and healthy, 1 stopped, 2 running but not answering.
 set -uo pipefail
@@ -7,7 +7,7 @@ set -uo pipefail
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$APP_DIR"
 
-# Colored like uvicorn's own "INFO:" lines (plain text when not a terminal).
+# Colored like uvicorn's "INFO:" lines (plain when not a terminal).
 if [ -t 1 ]; then G=$'\033[32m'; R=$'\033[31m'; N=$'\033[0m'; else G=""; R=""; N=""; fi
 info() { printf '%sINFO:%s %s\n' "$G" "$N" "$*"; }
 err() { printf '%sERROR:%s %s\n' "$R" "$N" "$*"; }

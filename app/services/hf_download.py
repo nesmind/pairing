@@ -1,4 +1,4 @@
-"""Streams one Hugging Face file to disk (via a .part file) as {"status","completed","total"} progress events."""
+"""Streams one Hugging Face file to disk (via a.part file) as {"status","completed","total"} progress events."""
 
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -9,7 +9,7 @@ _TIMEOUT = httpx.Timeout(None, connect=10.0)
 
 
 async def stream_file(url: str, dest: Path, proxy_url: str | None, label: str) -> AsyncIterator[dict]:
-    """Yields progress events; a failure yields a final {"error": ...} (and leaves no partial file)."""
+    """Yields progress events; a failure yields a final {"error":...} (and leaves no partial file)."""
     part = dest.with_name(dest.name + ".part")
     dest.parent.mkdir(parents=True, exist_ok=True)
     try:

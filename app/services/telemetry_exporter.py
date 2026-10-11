@@ -1,22 +1,15 @@
-"""The cross-thread bridge behind the Telemetry page's OpenTelemetry
-export pipeline — kept in its own file, independent of SDK bootstrap
-(see app.services.ollama_telemetry/matricxon_telemetry, both of which use this same DBSpanExporter unmodified —
-each engine's spans arrive under their own instrumentation scope name, "pairing.ollama"/"pairing.matricxon",
-which is how _persist_spans below tells them apart and stamps the right TelemetryEvent.engine), so the actual
-hazard here (moving data from a background thread into this app's async DB layer) is testable on its own.
+"""The cross-thread bridge of the Telemetry page's OpenTelemetry export, separate from SDK bootstrap
+(ollama_telemetry/matricxon_telemetry both use this DBSpanExporter unmodified; their spans arrive under scope
+names "pairing.ollama"/"pairing.matricxon", which _persist_spans uses to stamp TelemetryEvent.engine), so the
+background-thread-to-async-DB hazard is testable alone.
 
-opentelemetry-sdk's BatchSpanProcessor calls a SpanExporter's export()
-from its own dedicated worker thread, not this app's asyncio event
-loop — but persisting a span means an async SQLAlchemy write, which
-needs to run *on* that loop. capture_main_loop() stashes a reference to
-it (called once, from ollama_telemetry.init_ollama_telemetry(), which
-itself runs inside startup_service.run_startup_tasks() on the main
-loop); DBSpanExporter.export() then hands each batch off via
-asyncio.run_coroutine_threadsafe(...).result(timeout=...) — bounded, so
-a stuck DB never wedges the SDK's worker thread forever. Any failure
-(loop not captured yet, timeout, DB error) is logged and turned into
-SpanExportResult.FAILURE — never raised, since a telemetry hiccup must
-never be allowed to affect the real Ollama/Matricxon call it's describing.
+opentelemetry-sdk's BatchSpanProcessor calls a SpanExporter's export from its own worker thread, not the
+asyncio loop, but persisting a span is an async SQLAlchemy write that must run *on* the loop.
+capture_main_loop stashes it (called once from ollama_telemetry.init_ollama_telemetry, inside
+startup_service.run_startup_tasks on the main loop); DBSpanExporter.export hands each batch off via
+asyncio.run_coroutine_threadsafe(...).result(timeout=...), bounded so a stuck DB can't wedge the SDK's worker.
+Any failure (loop not captured, timeout, DB error) is logged and returned as SpanExportResult.FAILURE, never
+raised: telemetry must not affect the Ollama/Matricxon call it describes.
 """
 
 import asyncio
@@ -39,10 +32,8 @@ _main_loop: asyncio.AbstractEventLoop | None = None
 
 
 def capture_main_loop() -> None:
-    """Must be called once, from inside the app's own running event
-    loop (see ollama_telemetry.init_ollama_telemetry) — there's no other
-    reliable way for a plain background thread to find its way back to
-    it later."""
+    """Call once from inside the app's running event loop (ollama_telemetry.init_ollama_telemetry): a background thread
+    has no other way back to it."""
     global _main_loop
     _main_loop = asyncio.get_running_loop()
 
@@ -52,18 +43,17 @@ def _ns_to_ms(value: object) -> float | None:
 
 
 def _span_to_event(span: ReadableSpan, engine: str) -> TelemetryEvent | None:
-    """Converts one finished span into a row — returns None for a span
-    missing the timestamps a row can't do without (defensive only; every
-    span this app itself creates always has both)."""
+    """Converts one finished span to a row; None for a span lacking the timestamps a row needs (defensive: this
+    app's spans always have both).
+    """
     if span.start_time is None or span.end_time is None:
         return None
     attrs = span.attributes or {}
     return TelemetryEvent(
         engine=engine,
-        # Span names are "<engine>.chat"/"<engine>.embed" (see ollama_client.py/matricxon_client.py's own
-        # start_as_current_span calls) — splitting on the first "." rather than removeprefix(f"{engine}.") reads
-        # the same either way today, but doesn't silently produce a wrong kind if a span's own name prefix ever
-        # drifted from `engine` for some reason.
+        # Span names are "<engine>.chat"/"<engine>.embed" (the start_as_current_span calls in ollama_client.py/
+        # matricxon_client.py). Splitting on the first "." rather than removeprefix(f"{engine}.") reads the same today
+        # but yields no wrong kind if a span's prefix drifts from `engine`.
         kind=span.name.split(".", 1)[-1],
         model=attrs.get("gen_ai.request.model"),
         host=attrs.get("server.address", "unknown"),
@@ -81,10 +71,8 @@ def _span_to_event(span: ReadableSpan, engine: str) -> TelemetryEvent | None:
     )
 
 
-# Every tracer this app creates comes from one of these two scopes (see ollama_telemetry.get_tracer/
-# matricxon_telemetry.get_tracer) — a span from anything else (there is nothing else today, but a stray
-# no-op-tracer span from a test that never bootstrapped either provider is a real, harmless possibility) is
-# silently dropped rather than guessed at.
+# Every tracer comes from one of these two scopes (ollama_telemetry.get_tracer / matricxon_telemetry.get_tracer);
+# a span from any other (e.g. a stray no-op-tracer span from a test that bootstrapped neither) is dropped, not guessed.
 _ENGINE_BY_SCOPE = {"pairing.ollama": "ollama", "pairing.matricxon": "matricxon"}
 
 
@@ -105,9 +93,9 @@ async def _persist_spans(spans: Sequence[ReadableSpan]) -> None:
 
 
 class DBSpanExporter(SpanExporter):
-    """Registered on a BatchSpanProcessor (never SimpleSpanProcessor —
-    that would call export() synchronously inline on the ML engine call's
-    own hot path, exactly the coupling this file exists to avoid)."""
+    """Registered on a BatchSpanProcessor (never SimpleSpanProcessor: that calls export synchronously on the
+    engine call's hot path, the coupling this file avoids).
+    """
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
         if _main_loop is None:

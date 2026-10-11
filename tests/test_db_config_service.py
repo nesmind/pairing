@@ -1,11 +1,7 @@
-"""Unit tests for app/services/db_config_service.py: parsing/building
-DATABASE_URL for both backends, the .env upsert that persists it, the
-"blank password means keep the existing one" rule, and the
-test-connection/build-schema actions themselves (against a real
-throwaway SQLite file; MySQL's driver-missing branch is exercised via
-monkeypatch rather than assumed, since whether pymysql happens to be
-installed varies by environment — see pyproject.toml's optional `mysql`
-extra)."""
+"""Tests for services/db_config_service.py: parsing/building DATABASE_URL for both backends, the .env upsert,
+"blank password keeps the existing one", and test-connection/build-schema (against a real throwaway SQLite
+file; MySQL's driver-missing branch via monkeypatch, as pymysql's presence varies by environment).
+"""
 
 from pathlib import Path
 
@@ -22,22 +18,17 @@ from app.services import db_config_service, db_config_url, env_file, instance_pr
 
 @pytest.fixture(autouse=True)
 def isolated_env(tmp_path, monkeypatch):
-    """Every test gets its own throwaway .env — never touch the real
-    project .env file just by running the test suite."""
+    """Each test gets its own throwaway.env; never touch the project's real one."""
     monkeypatch.setattr(env_file, "ENV_PATH", tmp_path / ".env")
     return tmp_path
 
 
 @pytest.fixture(autouse=True)
 def no_sibling_instances(monkeypatch):
-    """save_and_apply's broadcast_database_switch (see
-    app.services.instance_db_broadcast) reads this machine's *real*
-    instances.json by default — without this, these tests would depend
-    on whatever local instances happen to actually be tracked/alive on
-    whichever machine runs the suite, exactly the incidental-environment-
-    state trap this project has hit before. Every test in this file gets
-    a clean "no other instances" world unless it explicitly overrides
-    this (see test_save_and_apply_reports_a_sibling_that_failed_to_switch)."""
+    """save_and_apply's broadcast_database_switch (instance_db_broadcast) reads this machine's *real*
+    instances.json, which would make tests depend on whatever local instances are alive. Every test gets a clean
+    "no other instances" world unless it overrides it (test_save_and_apply_reports_a_sibling_that_failed_to_switch).
+    """
     monkeypatch.setattr(instance_process, "read_tracking", lambda: {})
 
 
@@ -118,19 +109,17 @@ def test_build_url_mysql_raises_when_no_password_anywhere():
 
 
 def test_build_url_mysql_escapes_a_newline_in_host_or_database():
-    """Security regression test: host/database used to be interpolated
-    unescaped, so a value containing a literal newline survived into the
-    built DSN and, from there, into a real extra line in .env (see
-    env_file.write_env_value) — letting a database-settings save inject
-    arbitrary environment variables (e.g. overriding SECRET_KEY) that
-    take effect on the next restart."""
+    """Security regression: host/database were interpolated unescaped, so a newline survived into the DSN and .env
+    (env_file.write_env_value), letting a database-settings save inject environment variables (e.g.
+    SECRET_KEY) effective on the next restart.
+    """
     update = DbConfigUpdate(
         db_type="mysql",
         mysql=MysqlParams(host="x\nSECRET_KEY=deadbeef", user="paichat", password="s3cret", database="paichat"),
     )
     url = db_config_url._build_url(update, db_config_url._default_url())
     assert "\n" not in url
-    assert "%0A" in url  # the newline survives only as a harmless, inert percent-escape
+    assert "%0A" in url
 
 
 def test_build_url_mysql_round_trips_an_escaped_database_name():
@@ -144,11 +133,9 @@ def test_build_url_mysql_round_trips_an_escaped_database_name():
 
 
 def test_resolve_sqlite_path_strips_traversal_from_filename(monkeypatch):
-    """Security regression test: `filename` used to be joined onto
-    `directory` with no sanitization at all, so an admin-supplied value
-    like "../../etc/cron.d/evil" escaped the chosen directory entirely —
-    unlike every ordinary upload, which already goes through
-    document_upload.safe_filename for exactly this reason."""
+    """Security regression: `filename` was joined onto `directory` unsanitized, so "../../etc/cron.d/evil" escaped
+    the chosen directory, unlike uploads, which use document_upload.safe_filename.
+    """
     monkeypatch.setattr(db_config_url, "BASE_DIR", Path("/opt/pAIchat"))
     update = DbConfigUpdate(db_type="sqlite", sqlite=SqliteParams(directory="data", filename="../../etc/cron.d/evil"))
     url = db_config_url._build_url(update, "sqlite:////irrelevant")
@@ -164,12 +151,10 @@ def test_get_current_config_masks_password_and_reports_has_password():
 
 
 def test_get_current_config_flags_restart_required_when_saved_differs_from_live(monkeypatch):
-    """restart_required must compare .env against what the live engine
-    is *actually* bound to right now (database.live_database_url, kept
-    current by switch_database) — not app.config.DATABASE_URL, which is
-    frozen at whatever this process originally booted with and would
-    make this flag incorrectly stick at True forever after the first
-    ever live switch (see database.switch_database's own docstring)."""
+    """restart_required must compare.env with what the live engine is bound to (database.live_database_url, kept
+    current by switch_database), not the boot-frozen app.config.DATABASE_URL, which would leave it stuck True
+    after the first live switch (see database.switch_database).
+    """
     monkeypatch.setattr(database, "live_database_url", "sqlite:////currently/running.db")
     db_config_url._write_env_database_url("sqlite:////not/yet/applied.db")
     assert db_config_url.get_current_config().restart_required is True
@@ -183,14 +168,11 @@ def test_get_current_config_no_restart_required_when_saved_matches_live(monkeypa
 
 @pytest_asyncio.fixture
 async def restore_live_engine():
-    """save_and_apply and switch_database mutate app.database's *global*
-    engine/session factory for real — necessary to prove they actually
-    work, but it has to be undone afterwards so it doesn't leak into
-    whatever test (in this file or another) runs next in the same
-    process. Disposes whatever engine ends up live at teardown if it
-    isn't the original, so a temp sqlite file's connection doesn't stay
-    open either. Also snapshots/restores live_database_url — the other
-    piece of global state switch_database updates (see its docstring)."""
+    """save_and_apply and switch_database mutate app.database's *global* engine/session factory, necessary to prove
+    they work but to be undone so it doesn't leak into later tests. Disposes a non-original engine at teardown
+    (so a temp sqlite connection doesn't stay open) and restores live_database_url, the other global switch_database
+    updates.
+    """
     original_engine = database.engine
     original_live_url = database.live_database_url
     yield
@@ -227,7 +209,7 @@ async def test_ensure_schema_and_seed_is_idempotent(tmp_path):
     url = f"sqlite:///{tmp_path / 'seed.db'}"
     update = DbConfigUpdate(db_type="sqlite", sqlite=SqliteParams(directory=str(tmp_path), filename="seed.db"))
     await db_config_service._ensure_schema_and_seed(url, update)
-    await db_config_service._ensure_schema_and_seed(url, update)  # must not duplicate or fail second time
+    await db_config_service._ensure_schema_and_seed(url, update)
 
     engine = create_async_engine(database._async_url(url))
     try:
@@ -247,29 +229,22 @@ async def test_save_and_apply_switches_the_live_engine_with_no_restart(tmp_path,
     assert result.ok is True
     assert db_config_url._read_env_database_url() == f"sqlite:///{tmp_path / 'live.db'}"
 
-    # The live engine is now genuinely serving from the new file — no
-    # restart, no re-import, just querying through the same
-    # AsyncSessionLocal every request already uses.
+    # The live engine now serves from the new file: no restart or re-import, through the AsyncSessionLocal every request
+    # uses.
     async with database.AsyncSessionLocal() as db:
         admin = (await db.execute(select(User).where(User.username == "admin"))).scalar_one()
         assert admin.role == "admin"
 
-    # Regression: get_current_config used to compare .env against
-    # app.config.DATABASE_URL, a constant frozen at process boot — which
-    # never updates on a live switch, so this flag would incorrectly
-    # read True forever after the very first successful save_and_apply,
-    # even though .env and the live engine are now perfectly in sync.
+    # Regression: get_current_config compared.env with the boot-frozen app.config.DATABASE_URL, so the flag read
+    # True forever after the first save_and_apply though.env and the live engine were in sync.
     assert db_config_url.get_current_config().restart_required is False
 
 
 @pytest.mark.asyncio
 async def test_save_and_apply_reports_a_sibling_that_failed_to_switch(tmp_path, monkeypatch, restore_live_engine):
-    """Security/reliability regression test for the real incident this
-    fix addresses: save_and_apply must still report ok=True (this
-    process's own switch — the one serving traffic right now — did
-    succeed) while surfacing which *other* local instance(s) still need
-    a restart, rather than silently leaving them stranded on the old
-    database with no indication anything's wrong."""
+    """Regression for a real incident: save_and_apply must report ok=True (this serving process switched) while
+    naming which *other* local instances still need a restart, not leaving them stranded on the old database silently.
+    """
 
     async def fake_broadcast(_url):
         return ["instance on port 8001: Connection refused"]
@@ -296,8 +271,8 @@ async def test_save_and_apply_leaves_everything_untouched_on_failure(monkeypatch
     result = await db_config_service.save_and_apply(update)
 
     assert result.ok is False
-    assert database.engine is original_engine  # live app untouched
-    assert db_config_url._read_env_database_url() == original_saved_url  # .env untouched
+    assert database.engine is original_engine
+    assert db_config_url._read_env_database_url() == original_saved_url
 
 
 def test_test_connection_sqlite_reports_ok_when_directory_writable_and_file_absent(tmp_path):
@@ -305,7 +280,7 @@ def test_test_connection_sqlite_reports_ok_when_directory_writable_and_file_abse
     update = DbConfigUpdate(db_type="sqlite", sqlite=SqliteParams(directory=str(target_dir), filename="new.db"))
     result = db_config_service.test_connection(update)
     assert result.ok is True
-    assert not (target_dir / "new.db").exists()  # a *test* must not create the database file itself
+    assert not (target_dir / "new.db").exists()
 
 
 def test_test_connection_sqlite_connects_to_an_existing_valid_database(tmp_path):
@@ -327,10 +302,9 @@ def test_test_connection_sqlite_rejects_a_file_that_isnt_a_real_database(tmp_pat
 
 
 def test_test_connection_mysql_reports_missing_driver_clearly(monkeypatch):
-    """pymysql is a plain dependency now (requirements.txt) — a normal
-    install always gets it — but this stays as a defensive check for
-    whatever venv wasn't set up that way, simulated here via monkeypatch
-    rather than assumed."""
+    """pymysql is a plain dependency (requirements.txt), but this keeps a defensive check for a venv set up
+    otherwise, simulated via monkeypatch.
+    """
 
     def fake_create_engine(*_args, **_kwargs):
         raise ModuleNotFoundError("No module named 'pymysql'", name="pymysql")
@@ -346,9 +320,8 @@ def test_test_connection_mysql_reports_missing_driver_clearly(monkeypatch):
 
 
 def test_test_connection_mysql_reports_a_clean_message_on_connection_failure():
-    """A real connection attempt against a host nothing listens on —
-    exercises the actual failure path (not simulated) without depending
-    on any real MySQL server being reachable from wherever tests run."""
+    """A real connection attempt to a host nothing listens on: exercises the actual failure path without needing a MySQL
+    server."""
     update = DbConfigUpdate(
         db_type="mysql",
         mysql=MysqlParams(host="127.0.0.1", port=1, user="paichat", password="s3cret", database="paichat"),
@@ -378,10 +351,8 @@ class _FakeMysqlEngine:
 
 
 def _stub_successful_mysql_connection(monkeypatch):
-    """Stubs out the sync connect+schema-check steps of _test_mysql so
-    these tests can isolate just the async-driver check that runs after
-    them, without needing a real MySQL server reachable from wherever
-    tests run."""
+    """Stubs the sync connect+schema-check steps of _test_mysql to isolate the async-driver check after them, without a
+    MySQL server."""
     monkeypatch.setattr(db_config_service, "create_engine", lambda *_a, **_k: _FakeMysqlEngine())
     monkeypatch.setattr(
         db_config_service,
@@ -391,14 +362,10 @@ def _stub_successful_mysql_connection(monkeypatch):
 
 
 def test_test_connection_mysql_warns_when_async_driver_missing_even_though_sync_connection_works(monkeypatch):
-    """Regression test: pymysql (sync, used by Test connection/Build
-    schema) and aiomysql (async, only needed by Save's live switch) are
-    both plain dependencies now (a normal install gets both), but
-    nothing used to check them *together* — so an out-of-sync venv (an
-    older install, one resolved by hand) could have only pymysql, see
-    Test connection and Build schema both report success, and only
-    discover the async gap when Save failed on the very next click. Test
-    connection must catch it itself."""
+    """Regression: pymysql (sync; Test connection/Build schema) and aiomysql (async; Save's live switch) are both
+    dependencies, but nothing checked them together, so a venv with only pymysql (older or hand-resolved) passed
+    Test connection and Build schema and failed at Save. Test connection must catch it.
+    """
     _stub_successful_mysql_connection(monkeypatch)
     monkeypatch.setattr("importlib.util.find_spec", lambda name: None if name == "aiomysql" else object())
 
@@ -408,7 +375,7 @@ def test_test_connection_mysql_warns_when_async_driver_missing_even_though_sync_
     )
     result = db_config_service.test_connection(update)
     assert result.ok is False
-    assert "Connected successfully" in result.message  # still says the connection itself worked
+    assert "Connected successfully" in result.message
     assert "pip install" in result.message
 
 
@@ -441,7 +408,7 @@ async def test_build_schema_creates_every_table_and_seeds_defaults_on_an_empty_s
     assert "users" in tables
     assert "conversations" in tables
     assert "alembic_version" in tables
-    assert "admin" in usernames  # build_schema seeds the same starter data a fresh install gets
+    assert "admin" in usernames
 
 
 @pytest.mark.asyncio
@@ -466,9 +433,7 @@ async def test_build_schema_mysql_reports_a_clean_message_on_connection_failure(
 
 @pytest.mark.asyncio
 async def test_build_schema_never_touches_the_env_file_or_the_live_engine(tmp_path, restore_live_engine):
-    """build_schema is the non-committing preview action — only
-    save_and_apply is allowed to touch .env or the live app (see its own
-    tests above)."""
+    """build_schema is the non-committing preview: only save_and_apply may touch.env or the live app (tests above)."""
     original_saved_url = db_config_url._read_env_database_url()
     original_engine = database.engine
 
@@ -481,9 +446,9 @@ async def test_build_schema_never_touches_the_env_file_or_the_live_engine(tmp_pa
 
 
 def _make_foreign_sqlite_db(path):
-    """Creates a SQLite file with a table pAIring doesn't recognize —
-    stands in for "someone pointed this at the wrong database" (another
-    app's DB, a stale export, a typo'd name that happens to exist)."""
+    """Creates a SQLite file with a table pAIring doesn't recognize: "pointed at the wrong database" (another
+    app's DB, a stale export, a typo'd name that exists).
+    """
     import sqlite3
 
     conn = sqlite3.connect(str(path))
@@ -496,12 +461,10 @@ def _make_foreign_sqlite_db(path):
 
 @pytest.mark.asyncio
 async def test_build_schema_refuses_a_database_with_an_incompatible_schema(tmp_path):
-    """Regression test for the admin-lockout scenario this whole check
-    exists to prevent: without it, build_schema would hand a foreign
-    database straight to Alembic, whose pre-Alembic-upgrade heuristic
-    (see app.database._run_migrations) would wrongly *stamp* it as
-    already migrated without ever creating pAIring's own tables — an app
-    that starts fine and then 500s on every request."""
+    """Regression for the admin-lockout this check prevents: without it build_schema would give a foreign database
+    to Alembic, whose pre-Alembic heuristic (app.database._run_migrations) would *stamp* it migrated without
+    creating pAIring's tables, so the app starts fine and 500s on every request.
+    """
     db_path = tmp_path / "foreign.db"
     _make_foreign_sqlite_db(db_path)
 
@@ -511,8 +474,7 @@ async def test_build_schema_refuses_a_database_with_an_incompatible_schema(tmp_p
     assert result.ok is False
     assert "some_other_apps_table" in result.message
 
-    # And critically: nothing was touched. No alembic_version table
-    # planted, no pAIring tables created alongside the foreign one.
+    # And nothing was touched: no alembic_version table planted, no pAIring tables beside the foreign one.
     import sqlite3
 
     conn = sqlite3.connect(str(db_path))
@@ -536,15 +498,13 @@ async def test_save_and_apply_refuses_a_database_with_an_incompatible_schema(tmp
 
     assert result.ok is False
     assert "some_other_apps_table" in result.message
-    assert database.engine is original_engine  # live app never switched
-    assert db_config_url._read_env_database_url() == original_saved_url  # .env never written
+    assert database.engine is original_engine
+    assert db_config_url._read_env_database_url() == original_saved_url
 
 
 def test_test_connection_sqlite_reports_incompatible_schema_without_being_blocked_from_reporting_it(tmp_path):
-    """test_connection is purely diagnostic — it must still *report* an
-    incompatible schema (ok=False, a clear reason) rather than crash,
-    even though (unlike build_schema/save_and_apply) it never touches
-    the database at all."""
+    """test_connection is diagnostic: it must still *report* an incompatible schema (ok=False, a clear reason), not
+    crash, though it never touches the database."""
     db_path = tmp_path / "foreign.db"
     _make_foreign_sqlite_db(db_path)
 
@@ -553,17 +513,16 @@ def test_test_connection_sqlite_reports_incompatible_schema_without_being_blocke
 
     assert result.ok is False
     assert "some_other_apps_table" in result.message
-    assert "Connected" in result.message  # still says the connection itself worked
+    assert "Connected" in result.message
 
 
 @pytest.mark.asyncio
 async def test_build_schema_accepts_a_database_with_an_existing_compatible_schema(tmp_path):
-    """The flip side of the two tests above: a database that already has
-    a real (even if not-yet-fully-current) pAIring schema must still be
-    accepted, not treated as foreign just for being non-empty."""
+    """The flip side: a database with a real (even not-fully-current) pAIring schema is accepted, not foreign for being
+    non-empty."""
     update = DbConfigUpdate(db_type="sqlite", sqlite=SqliteParams(directory=str(tmp_path), filename="schema.db"))
     first = await db_config_service.build_schema(update)
     assert first.ok is True
 
-    second = await db_config_service.build_schema(update)  # already has pAIring's own schema now
+    second = await db_config_service.build_schema(update)
     assert second.ok is True

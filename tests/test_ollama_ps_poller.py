@@ -1,7 +1,6 @@
-"""Unit tests for app/services/ollama_ps_poller.py — the first periodic
-background-loop precedent in this codebase (see its own module
-docstring). Uses the shared `db` fixture, which already patches
-ollama_ps_poller.AsyncSessionLocal at this module (see conftest.py)."""
+"""Tests for services/ollama_ps_poller.py, the first periodic background loop in this codebase (see its module
+docstring). Uses the shared `db` fixture, which patches ollama_ps_poller.AsyncSessionLocal (conftest.py).
+"""
 
 import asyncio
 from datetime import UTC, datetime
@@ -26,8 +25,7 @@ class _FakeResponse:
 
 
 class _FakePsClient:
-    """Stands in for httpx.AsyncClient's GET /api/ps — one canned
-    response (or a raised error) per host, keyed by URL prefix."""
+    """Stands in for httpx.AsyncClient's GET /api/ps: one canned response (or error) per host, keyed by URL prefix."""
 
     def __init__(self, responses: dict[str, object]):
         self._responses = responses
@@ -96,8 +94,8 @@ async def test_poll_once_writes_nothing_when_no_models_are_loaded_anywhere(monke
 
 @pytest.mark.asyncio
 async def test_run_ollama_ps_poller_survives_a_poll_failure(monkeypatch):
-    """A single bad iteration (e.g. a transient DB error) must not kill the loop permanently — verified here by
-    making the *first* _poll_once call raise and confirming a second call still happens."""
+    """A bad iteration (e.g. a transient DB error) must not kill the loop: the first _poll_once raises and a second call
+    still happens."""
     calls = 0
 
     async def fake_poll_once():
@@ -105,7 +103,7 @@ async def test_run_ollama_ps_poller_survives_a_poll_failure(monkeypatch):
         calls += 1
         if calls == 1:
             raise RuntimeError("transient failure")
-        raise SystemExit  # stop the infinite loop cleanly once the second attempt has happened
+        raise SystemExit
 
     monkeypatch.setattr(ollama_ps_poller, "_poll_once", fake_poll_once)
     monkeypatch.setattr(ollama_ps_poller, "POLL_INTERVAL_SECONDS", 0)
@@ -118,9 +116,9 @@ async def test_run_ollama_ps_poller_survives_a_poll_failure(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_start_ollama_ps_poller_tracks_its_own_task_with_a_strong_reference(monkeypatch):
-    """asyncio only holds a *weak* reference to a bare create_task() result — without the strong-ref set this
-    module keeps, the poller task could be garbage-collected mid-run (same idiom as title_service's own
-    background tasks)."""
+    """asyncio keeps only a weak reference to a bare create_task result; without this module's strong-ref set the
+    poller task could be garbage-collected mid-run (same idiom as title_service's background tasks).
+    """
 
     async def fake_run_forever():
         await asyncio.sleep(999)
@@ -130,9 +128,8 @@ async def test_start_ollama_ps_poller_tracks_its_own_task_with_a_strong_referenc
     ollama_ps_poller.start_ollama_ps_poller()
 
     assert len(ollama_ps_poller._background_poller_tasks) == 1
-    # Cancel *and* await, not just fire-and-forget cancel() — an unawaited cancellation can keep resolving on
-    # its own schedule after this test returns, bleeding stray event-loop activity into whatever test runs next
-    # in the same process (see title_service's own background-task tests for this same convention).
+    # Cancel *and* await, not fire-and-forget: an unawaited cancellation can keep resolving after the test returns,
+    # bleeding event-loop activity into the next test (as title_service's background-task tests).
     tasks = list(ollama_ps_poller._background_poller_tasks)
     for task in tasks:
         task.cancel()

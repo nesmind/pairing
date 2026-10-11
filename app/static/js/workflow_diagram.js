@@ -1,30 +1,17 @@
-/**
- * D3-based rendering for the Stats page's "Visual chat workflow" diagram —
- * mechanics only, no descriptive content (see workflow_diagram_data.js
- * for WORKFLOW_NODES/WORKFLOW_EDGES). Lazily invoked via
- * initWorkflowDiagram(), called once by stats.js the first time "Visual
- * workflow" is actually clicked.
- *
- * Deliberately NOT a D3 force simulation — every node's x/y is fixed,
- * hand-laid-out data, since this is a real, fixed pipeline meant to
- * read as documentation, not an arbitrary graph that should jitter into
- * some equilibrium. Laid out top-to-bottom (vertical) and taller than
- * any viewport, so the wrapping container (#workflow-canvas-wrap, see
- * stats.html) scrolls it natively — no drag-to-pan/wheel-to-zoom, which
- * had no visible affordance telling a first-time viewer either was
- * needed.
+/*
+ * D3 rendering for the Stats "Visual chat workflow" diagram: mechanics only (content: workflow_diagram_data.js
+ * WORKFLOW_NODES/WORKFLOW_EDGES). Invoked lazily via initWorkflowDiagram, called once by stats.js on first open.
+ * 
+ * Not a D3 force simulation: node x/y are fixed and hand-laid-out, as this is a fixed pipeline read as documentation.
+ * Laid out top-to-bottom and taller than any viewport, so the container (#workflow-canvas-wrap, stats.html) scrolls
+ * natively; drag-to-pan/wheel-zoom had no visible affordance.
  */
 
 const WORKFLOW_ARROW_MARKER_ID = "wf-arrow";
 const isMlStage = (category) => category.startsWith("ml_");
 const FIRST_ML_CATEGORY = Object.keys(WORKFLOW_CATEGORY_COLORS).find(isMlStage);
 
-/** A smooth cubic-bezier path between two nodes' centers, exiting/
- * entering whichever side faces the other node (left/right for a
- * mostly-horizontal edge, top/bottom for a mostly-vertical one) — every
- * edge in WORKFLOW_EDGES is one of these two shapes, so one function
- * covers the whole diagram instead of hand-picking d3.linkHorizontal()
- * only for the strictly-horizontal main chain. */
+/* A smooth cubic-bezier path between two nodes' centers, leaving/entering the side that faces the other node (left/right for mostly-horizontal edges, top/bottom for vertical). Every WORKFLOW_EDGES edge is one of the two, so one function covers all. */
 function workflowEdgePath(from, to, dir) {
   const x1 = from.x + from.w / 2;
   const y1 = from.y + from.h / 2;
@@ -60,10 +47,7 @@ function workflowEdgePath(from, to, dir) {
   return path.toString();
 }
 
-/** Builds the "what does each border color mean" key shown pinned in
- * the corner of the diagram — one swatch + label per entry in
- * WORKFLOW_CATEGORY_COLORS/LABELS (see workflow_diagram_data.js), so
- * adding a new category there picks it up here automatically. */
+/* Builds the border-color key pinned in the diagram's corner: a swatch + label per WORKFLOW_CATEGORY_COLORS/LABELS entry (workflow_diagram_data.js), so a new category is picked up automatically. */
 function renderWorkflowLegend() {
   const legendEl = document.getElementById("workflow-legend");
   legendEl.innerHTML =
@@ -83,13 +67,7 @@ function renderWorkflowLegend() {
       .join("");
 }
 
-/** The category label is rendered with CSS `uppercase` — a blind visual
- * transform that would also cap every letter of this app's own
- * stylized name (APP_NAME — see workflow_diagram_data.js, e.g. lowercase
- * p, capital AI, lowercase ring for the "pAIring" default) into all
- * caps. Escapes the label first, then wraps any APP_NAME substring in
- * text-transform:none so it renders with its real casing even under
- * the ancestor's uppercase class. */
+/* The category label uses CSS `uppercase`, which would also capitalize every letter of the stylized app name (APP_NAME in workflow_diagram_data.js, e.g. "pAIring"). Escapes the label, then wraps APP_NAME in text-transform:none to keep its casing. */
 function formatCategoryLabel(label) {
   return escapeHtml(label).replace(
     new RegExp(APP_NAME, "g"),
@@ -118,11 +96,7 @@ function showWorkflowDetail(node) {
   d3.select(`.wf-node[data-id="${node.id}"] rect`).attr("stroke-width", 3);
 }
 
-/** The diagram's own content bounds, from the hand-laid-out node
- * positions — the <svg> is sized to exactly this (plus a margin), so
- * the wrapping container's native scrollbars appear precisely where
- * the content actually overflows, rather than the SVG being stretched
- * to fill whatever space happens to be available. */
+/* The diagram's content bounds from the node positions; the <svg> is sized to exactly this (plus a margin), so the container's scrollbars appear where content overflows instead of the SVG stretching to the available space. */
 function workflowCanvasBounds() {
   const margin = 40;
   const minX = Math.min(...WORKFLOW_NODES.map((n) => n.x));
@@ -197,7 +171,7 @@ function initWorkflowDiagram() {
     .attr("stroke", (d) => WORKFLOW_CATEGORY_COLORS[d.category] || ThemeColors.get("--color-slate-500"))
     .attr("stroke-width", 1.5);
 
-  // ML-engine stages get a tint of their group colour, so the forward-pass stages read apart at a glance.
+  // ML-engine stages get a tint of their group colour, so forward-pass stages read apart.
   nodeGroups
     .filter((d) => isMlStage(d.category))
     .select("rect")
@@ -205,9 +179,8 @@ function initWorkflowDiagram() {
     .attr("fill-opacity", 0.14)
     .attr("stroke-width", 2);
 
-  // Top-right badge: "MCP" = tool-use stage, "K" = native C kernels (CPU), "G" = can run on the GPU (experimental), "K|G" = either: the
-  // C kernels on the CPU, or the GPU when the engine runs on one.
-  // "MCP" = a stage that only runs when a chat uses MCP tools.
+  // Top-right badge: "MCP" = a stage that runs only when a chat uses MCP tools; "K" = native C kernels (CPU); "G" = can
+  // run on the GPU (experimental); "K|G" = either: C kernels on the CPU, or the GPU when the engine runs on one.
   const BADGE_TITLES = {
     K: "Runs on native C kernels",
     G: "Can run on the GPU (experimental, MATRICXON_DEVICE=cuda)",
@@ -215,7 +188,7 @@ function initWorkflowDiagram() {
     MCP: "MCP stage: only runs when the chat has Tools turned on",
   };
   const badgeOf = (d) => [d.native ? "K" : "", d.gpu ? "G" : "", d.mcp ? "MCP" : ""].filter(Boolean).join("|");
-  // A small pill straddling the node's top-right border, so it never sits on the label text.
+  // A small pill straddling the node's top-right border, clear of the label text.
   const badges = nodeGroups
     .filter((d) => badgeOf(d))
     .append("g")

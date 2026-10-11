@@ -1,7 +1,6 @@
-"""Every Connector this app ships — listed explicitly, same "visible in one place,
-never depends on import order" reasoning as app.services.engines.registry.registry.
-Adding connector #2 is one new ConnectorDefinition (see runpod_connector.py for the
-shape) plus one line here."""
+"""Every Connector this app ships, listed explicitly (like engines.registry.registry, no import-order
+dependence). Connector #2 is one ConnectorDefinition (see runpod_connector.py) plus one line here.
+"""
 
 from app.services.connectors.base import ConnectorDefinition
 from app.services.connectors.runpod_connector import RUNPOD_CONNECTOR

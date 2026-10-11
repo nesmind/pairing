@@ -1,9 +1,7 @@
-"""Periodically polls Matricxon's GET /api/ps ("what's currently loaded in memory right now") on every
-configured host, and appends a snapshot row per (host, model) — the Matricxon-flavored twin of
-app.services.ollama_ps_poller (see that module's own docstring for the full "why a poller, why primary-gated"
-reasoning, identical here). Confirmed field-compatible against ../matricxon/app/schemas/ps.py directly
-(name/size/size_vram/expires_at, the exact same shape _poll_host below already parses) — Matricxon's own
-/api/ps was built deliberately Ollama-API-compatible, same as every other endpoint matricxon_client.py talks to.
+"""Polls Matricxon's GET /api/ps ("what's loaded now") on every host and appends a snapshot row per (host,
+model): the twin of ollama_ps_poller (see its docstring for why a poller, primary-gated). Field-compatible
+with../matricxon/app/schemas/ps.py (name/size/size_vram/expires_at, as _poll_host parses): /api/ps is
+Ollama-compatible like every endpoint matricxon_client.py uses.
 """
 
 import asyncio
@@ -21,8 +19,8 @@ logger = logging.getLogger("llama_chat")
 POLL_INTERVAL_SECONDS = 30.0
 _PS_TIMEOUT = httpx.Timeout(5.0, connect=2.0)
 
-# Same strong-ref-set/done-callback idiom as ollama_ps_poller's own — a bare asyncio.create_task() result is
-# only weakly referenced, so without this the poller task could be garbage-collected mid-run.
+# Same strong-ref set/done-callback idiom as ollama_ps_poller: a bare create_task result is weakly
+# referenced and could be garbage-collected mid-run.
 _background_poller_tasks: set[asyncio.Task] = set()
 
 
@@ -60,7 +58,7 @@ async def _poll_once() -> None:
         try:
             snapshots.extend(await _poll_host(host))
         except httpx.HTTPError as exc:
-            # One unreachable host shouldn't stop the others from being polled.
+            # One unreachable host mustn't stop the others being polled.
             logger.warning("Could not poll /api/ps on %s: %s", host, exc)
     if not snapshots:
         return
@@ -74,14 +72,13 @@ async def _run_matricxon_ps_poller() -> None:
         try:
             await _poll_once()
         except Exception:
-            # A single bad poll (e.g. a transient DB error) must never kill the loop permanently.
+            # A bad poll (e.g. a transient DB error) must never kill the loop for good.
             logger.exception("Matricxon /api/ps poll failed.")
         await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
 
 def start_matricxon_ps_poller() -> None:
-    """Called once, from startup_service.run_startup_tasks (primary
-    only) — see ollama_ps_poller's own module docstring for why."""
+    """Called once from startup_service.run_startup_tasks (primary only); see ollama_ps_poller."""
     task = asyncio.create_task(_run_matricxon_ps_poller())
     _background_poller_tasks.add(task)
     task.add_done_callback(_background_poller_tasks.discard)

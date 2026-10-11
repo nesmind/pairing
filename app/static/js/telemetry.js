@@ -1,23 +1,17 @@
-/**
- * Per-engine (Ollama/Matricxon) telemetry rendering, for the Stats page's own "Telemetry" nav entry (see
- * stats.html/stats.js — this is a data-view slot inside that page, not a standalone one, so this file has no
- * top-level nav-switching logic of its own; stats.js's activateStatsView calls loadTelemetry() every time that
- * entry is activated). Kept as its own file (not folded into stats.js) so the two dashboards' fetch/render logic
- * don't depend on each other's internals. Chart rendering itself lives in telemetry_charts.js/
- * telemetry_bar_chart.js.
- *
- * One shared dashboard (not a separate #telemetry-source-view-<engine> panel per engine, unlike an early version
- * of this file) — both engines' summaries are the exact same shape (see app/schemas/telemetry.py), so switching
- * #telemetry-source-select just re-fetches and re-renders into the same elements rather than toggling between
- * two parallel copies of the same markup.
+/*
+ * Per-engine (Ollama/Matricxon) telemetry for the Stats "Telemetry" entry (a data-view slot in stats.html/stats.js, so
+ * no nav switching here; stats.js's activateStatsView calls loadTelemetry on each activation). Separate from stats.js
+ * so the two dashboards' fetch/render logic stay independent. Charts: telemetry_charts.js/telemetry_bar_chart.js.
+ * 
+ * One shared dashboard, not a panel per engine: both engines' summaries have the same shape (app/schemas/telemetry.py),
+ * so switching #telemetry-source-select re-fetches into the same elements.
  */
 
-// Which engine's history is currently shown — defaults to "ollama" only until the first real load below
-// resolves the actually-active engine and corrects it (see loadTelemetry).
+// The engine whose history is shown; "ollama" only until the first load resolves the active engine and corrects it
+// (loadTelemetry).
 let currentTelemetrySource = "ollama";
-// Set once, the first time this view is ever activated (mirrors stats.js's own window.workflowDiagramInitialized
-// one-time-init idiom for the workflow diagram) — a *later* refresh/re-visit must never override whatever engine
-// an admin has since picked from the dropdown, only the very first "what should this page open on" decision.
+// Set once, on the first activation (like stats.js's window.workflowDiagramInitialized): later refreshes must not
+// override the engine an admin since picked; only the first "what should this page open on" decision.
 let telemetryDefaultEngineApplied = false;
 
 document.getElementById("telemetry-source-select").addEventListener("change", (e) => {
@@ -72,9 +66,7 @@ function renderLatencyByModel(summary) {
   }
 }
 
-/** "Currently loaded" is a recent /api/ps snapshot (see app/services/ollama_ps_poller.py/matricxon_ps_poller.py,
- * whichever matches the currently selected engine), not a live push — expires_at is shown as a plain formatted
- * time, not a ticking countdown, to avoid implying more real-time precision than a ~30s poll interval has. */
+/* "Currently loaded" is a recent /api/ps snapshot (app/services/ollama_ps_poller.py/matricxon_ps_poller.py for the selected engine), not a live push. expires_at is a plain formatted time, not a countdown, to avoid implying more precision than a ~30s poll. */
 function renderLoadedModels(summary) {
   const el = document.getElementById("telemetry-loaded-models");
   el.innerHTML = '';
@@ -85,9 +77,9 @@ function renderLoadedModels(summary) {
   let totalRam = 0;
   let totalVram = 0;
   for (const m of summary.loaded_models) {
-    // size_bytes is the model's whole footprint, size_vram_bytes the part of it on the GPU — the rest is RAM.
-    // A CPU-only engine (Matricxon) reports 0 VRAM, so RAM is the figure that actually matters there.
-    // != null checks, not truthiness: 0 is a real value, distinct from "never reported".
+    // size_bytes is the model's whole footprint, size_vram_bytes the GPU part; the rest is RAM. A CPU-only engine
+    // (Matricxon) reports 0 VRAM, so RAM is what matters there. != null checks, not truthiness: 0 is a real value,
+    // distinct from "never reported".
     const hasSize = m.size_bytes != null;
     const vramBytes = m.size_vram_bytes || 0;
     const ramBytes = hasSize ? Math.max(m.size_bytes - vramBytes, 0) : 0;
@@ -114,28 +106,20 @@ function renderTelemetry(summary) {
   renderHostBarChart(summary.by_host);
 }
 
-/** Resolves the currently-active engine (same /health endpoint settings.js's Model tab already reads its own
- * active-engine badge from) and, the very first time this view opens, points the dropdown at it — "Show the
- * right engine telemetry when entering this page," not just "Ollama" every time regardless of what's actually
- * running. Also fills in the small "you're currently on: X" note next to the selector, which stays accurate
- * even after an admin switches the dropdown to look at the *other* engine's history — that note always reflects
- * what's really serving live traffic, independent of which engine this dashboard happens to be showing. */
-// Every engine's own display name (see app/schemas/common.py's EngineOption) — filled in once by
-// populateTelemetryEngineOptionsOnce, read by applyDefaultTelemetryEngineOnce's own "Currently on: X" note.
+/* Resolves the active engine (the /health endpoint settings.js's Model tab uses) and, the first time this view opens, points the dropdown at it, rather than "Ollama" regardless of what's running. Also fills the "you're currently on: X" note, which stays accurate when an admin switches the dropdown to the other engine's history: it always shows what serves live traffic. */
+// Each engine's display name (EngineOption in app/schemas/common.py), filled once by populateTelemetryEngineOptionsOnce
+// and read by applyDefaultTelemetryEngineOnce's "Currently on: X" note.
 let telemetryEngineDisplayNames = {};
 
-/** Fills #telemetry-source-select's <option>s from GET /api/settings/engine/options (every engine
- * app.services.engines.registry knows about) instead of two hardcoded <option>s — same "don't hardcode the
- * engine list" reasoning as settings.js's identical Active-engine picker. Runs once; the registry's own engine
- * set never changes at runtime. */
+/* Fills #telemetry-source-select's <option>s from GET /api/settings/engine/options (every engine in app.services.engines.registry) instead of two hardcoded options, as settings.js's Active-engine picker. Runs once; the registry doesn't change at runtime. */
 async function populateTelemetryEngineOptionsOnce() {
   const selectEl = document.getElementById("telemetry-source-select");
   if (selectEl.options.length > 0) return;
   const { engines } = await api("/api/settings/engine/options");
   for (const { name, display_name: displayName, capabilities } of engines) {
     telemetryEngineDisplayNames[name] = displayName;
-    // Telemetry only exists for local engines (Ollama/Matricxon) — a remote/serverless connector-backed engine
-    // (e.g. RunPod) has nothing this app can instrument, so it's never offered here.
+    // Telemetry exists only for local engines (Ollama/Matricxon); a remote/serverless connector engine (e.g. RunPod)
+    // has nothing to instrument, so it is never offered.
     if (!capabilities.local_process) continue;
     const option = document.createElement("option");
     option.value = name;
@@ -151,7 +135,7 @@ async function applyDefaultTelemetryEngineOnce() {
   try {
     ({ active_engine: activeEngine } = await api("/health"));
   } catch (_err) {
-    // Leave the current fallback selection in place — a /health hiccup here shouldn't block the dashboard itself.
+    // Keep the current fallback selection: a /health hiccup shouldn't block the dashboard.
     selectEl.classList.remove("invisible");
     return;
   }
@@ -159,7 +143,7 @@ async function applyDefaultTelemetryEngineOnce() {
   noteEl.textContent = `Currently on: ${telemetryEngineDisplayNames[activeEngine] || activeEngine}`;
   if (!telemetryDefaultEngineApplied) {
     telemetryDefaultEngineApplied = true;
-    // A non-local active engine has no option here — keep the first local engine selected instead.
+    // A non-local active engine has no option here: keep the first local engine selected.
     if ([...selectEl.options].some((o) => o.value === activeEngine)) {
       currentTelemetrySource = activeEngine;
       selectEl.value = activeEngine;
@@ -167,7 +151,7 @@ async function applyDefaultTelemetryEngineOnce() {
       currentTelemetrySource = selectEl.value;
     }
   }
-  // Only revealed once it shows the real active engine — see stats.html's own comment on its `invisible` class.
+  // Revealed only once it shows the real active engine (see stats.html's comment on its `invisible` class).
   selectEl.classList.remove("invisible");
 }
 
@@ -177,8 +161,8 @@ async function loadTelemetry() {
   try {
     const summary = await api(`/api/telemetry/${currentTelemetrySource}/summary`);
     renderTelemetry(summary);
-    // Now called on a repeating timer (see stats.js's STATS_VIEW_REFRESH) — a transient failure must not leave
-    // a stale error banner shown forever once a later refresh actually succeeds.
+    // Called on a repeating timer (stats.js STATS_VIEW_REFRESH): a transient failure must not leave a stale error
+    // banner after a later refresh succeeds.
     errorEl.classList.add("hidden");
   } catch (err) {
     errorEl.textContent = err.message;

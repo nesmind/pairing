@@ -1,5 +1,6 @@
-"""Settings > MCP servers: the tool servers (Model Context Protocol, streamable HTTP) the admin connects
-so models can use their tools. Admin-only: this is where server credentials are entered."""
+"""Settings > MCP servers: tool servers (Model Context Protocol, streamable HTTP) the admin connects.
+Admin-only: credentials are entered here.
+"""
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,8 +35,9 @@ async def test_connection(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),
 ):
-    """Tries the form's values before saving. With `server_id` (editing) and no headers typed, the saved
-    headers are used, since their values are never sent to the browser."""
+    """Tries the form's values before saving. With `server_id` and no typed headers, the saved headers are
+    used (their values never reach the browser).
+    """
     headers = body.headers
     if headers is None and server_id:
         try:

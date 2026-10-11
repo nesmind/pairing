@@ -1,11 +1,9 @@
-"""Reads back the "currently loaded models" table for the Telemetry page from the raw poll history
-app.services.ollama_ps_poller/matricxon_ps_poller write (both engines share the same ModelSnapshot table —
-see that model's own docstring — so every query here filters by `engine`, one engine's dashboard at a time, the
-same convention app.services.telemetry_service uses for TelemetryEvent). Deliberately avoids a GROUP BY host,
-model_name + MAX(polled_at) window-function query (version-fragile the same way a SQL percentile would be, see
-app/services/telemetry_service.py's own docstring) — instead fetches the last couple of poll intervals' worth of
-rows (a result set that's always tiny: a handful of models across a handful of hosts) and dedupes to the newest
-per (host, model_name) in Python.
+"""Reads the Telemetry page's "currently loaded models" table from the poll history ollama_ps_poller/
+matricxon_ps_poller write. Both engines share the ModelSnapshot table (see the model), so every query filters
+by `engine`, one dashboard at a time (as telemetry_service for TelemetryEvent). It avoids a GROUP BY host,
+model_name + MAX(polled_at) window query (version-fragile like a SQL percentile, see telemetry_service):
+it fetches the last couple of poll intervals (always a tiny set) and dedupes to the newest per (host, model_name) in
+Python.
 """
 
 from datetime import timedelta
@@ -18,9 +16,7 @@ from app.models._base import utcnow
 from app.schemas import LoadedModelSnapshot
 from app.services.ollama_ps_poller import POLL_INTERVAL_SECONDS
 
-# A few poll intervals' worth of lookback — enough to tolerate one slow
-# or skipped poll without losing "currently loaded" visibility, without
-# ever pulling in stale history.
+# A few poll intervals of lookback: tolerates one slow or skipped poll without pulling in stale history.
 _LOOKBACK = timedelta(seconds=POLL_INTERVAL_SECONDS * 3)
 
 

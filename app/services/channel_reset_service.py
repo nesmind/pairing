@@ -1,4 +1,4 @@
-"""Admin "Reset channel": wipes a channel's chat history and sets its notes afresh; keeps the channel and members."""
+"""Admin "Reset channel": wipes the history and sets notes afresh; channel and members stay."""
 
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,9 +16,9 @@ from app.services import (
 class ChannelResetService:
     @staticmethod
     async def reset(db: AsyncSession, channel: Channel, admin: User) -> int:
-        """Deletes every message (and attachment file) of the channel's shared conversation, cancelling any reply
-        still generating, and sets its notes afresh from `admin`'s current default notes (a clean chat is
-        where they are configured). Returns how many messages were removed. No undo."""
+        """Deletes every message (and attachment file), cancels any generating reply and sets notes afresh from
+        `admin`'s defaults. Returns the number removed. No undo.
+        """
         conversation = channel.conversation
         streaming = [m.id for m in conversation.messages if m.status == "streaming"]
         for message_id in streaming:  # no `await` between the two: see conversation_service._cancel_and_clear

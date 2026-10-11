@@ -1,7 +1,5 @@
-"""Unit tests for app/hardware.py's has_avx2() — /proc/cpuinfo is
-monkeypatched via app.hardware's own Path import, not the real
-filesystem, so these are deterministic regardless of whichever real CPU
-runs the test suite."""
+"""Tests for app/hardware.py's has_avx2. /proc/cpuinfo is patched via app.hardware's Path import, so results don't
+depend on the real CPU."""
 
 from app import hardware
 
@@ -23,10 +21,8 @@ def test_has_avx2_true_when_the_flag_is_present(monkeypatch):
 
 
 def test_has_avx2_false_when_the_flag_is_absent(monkeypatch):
-    # A real, confirmed-live case: a 2011-era CPU with AVX but not AVX2 —
-    # modern prebuilt numpy/torch wheels assume AVX2 and hard-crash
-    # (SIGILL) without it, so this is the exact case app.services.
-    # comfyui_installer's own AVX2 gate exists to catch up front.
+    # Confirmed live: a 2011-era CPU with AVX but not AVX2. Modern prebuilt numpy/torch wheels assume AVX2 and
+    # SIGILL without it: the case comfyui_installer's AVX2 gate catches up front.
     monkeypatch.setattr(hardware, "Path", lambda _p: _FakePath("flags : fpu vme avx sse4_2"))
     assert hardware.has_avx2() is False
 

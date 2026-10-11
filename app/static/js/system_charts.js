@@ -1,20 +1,9 @@
-/**
- * D3 rendering for the Stats page's "System" view: a donut/arc gauge
- * (CPU/RAM/disk/GPU usage right now), a dual-line history chart (CPU %
- * and memory % over the last hour), and a multi-line GPU utilization
- * history chart (one line per GPU — see renderGpuHistoryChart, empty
- * and hidden on any machine with no GPU this app's own poller can read). All the history
- * charts reuse telemetry_charts.js's shared telemetryChartSetup/
- * telemetryDrawAxes helpers rather than duplicating axis/scale
- * boilerplate a third time in this app — those helpers were already
- * written generically, not Ollama-specific, despite the file name.
- */
+/* D3 rendering for the Stats "System" view: a donut gauge (CPU/RAM/disk/GPU now), a dual-line history chart (CPU % and memory % over the last hour) and a multi-line GPU utilization chart (one line per GPU, renderGpuHistoryChart; empty and hidden without a readable GPU). The history charts reuse telemetry_charts.js's telemetryChartSetup/telemetryDrawAxes, which are generic despite the file name. */
 
 const SYSTEM_GAUGE_SIZE = 120;
 const SYSTEM_GAUGE_STROKE = 12;
-// Cycled through for each GPU's own line/legend swatch — GPU count is dynamic (0 to however many are installed),
-// unlike CPU/Memory's fixed two colors above, so this can't just be two hardcoded constants. Themed via
-// ThemeColors (see app/static/js/theme.js) rather than fixed hex.
+// Cycled for each GPU's line/legend swatch; the GPU count varies (0 to many), unlike CPU/Memory's two fixed colors.
+// Themed via ThemeColors (theme.js), not fixed hex.
 const GPU_LINE_COLORS = [
   ThemeColors.chart(1),
   ThemeColors.chart(3),
@@ -24,9 +13,7 @@ const GPU_LINE_COLORS = [
   ThemeColors.chart(2),
 ];
 
-/** Renders one full-circle usage gauge into the <div id="containerId">
- * — a background ring plus a colored foreground arc proportional to
- * `percent`, with the rounded percentage centered inside. */
+/* Renders one full-circle usage gauge into <div id="containerId">: a background ring plus a colored arc proportional to `percent`, with the rounded percentage centered. */
 function renderSystemGauge(containerId, percent, color) {
   const container = document.getElementById(containerId);
   container.innerHTML = "";
@@ -62,10 +49,7 @@ function renderSystemGauge(containerId, percent, color) {
     .text(`${Math.round(clamped)}%`);
 }
 
-/** Renders the CPU%/Memory% dual-line history chart from
- * SystemMetricsSummary.history (already time-ordered, one point per
- * poll — see system_metrics_service.py; no bucketing needed here since
- * the poll interval is short and the window is bounded). */
+/* Renders the CPU%/Memory% dual-line history from SystemMetricsSummary.history (time-ordered, one point per poll; system_metrics_service.py). No bucketing: the poll interval is short and the window bounded. */
 function renderSystemHistoryChart(history) {
   const emptyEl = document.getElementById("system-history-empty");
   const svgEl = document.getElementById("system-history-chart");
@@ -112,10 +96,7 @@ function renderSystemHistoryChart(history) {
     .text("%");
 }
 
-/** Renders GPU utilization % over time — one line per gpu_index, cycling through GPU_LINE_COLORS (see
- * system_metrics.js's renderGpuLegend for the matching color-key it builds alongside this). Flat input (see
- * GpuHistoryPoint's own docstring) grouped by gpu_index here rather than server-side, since drawing is the only
- * place that actually needs it split up. */
+/* Renders GPU utilization % over time, one line per gpu_index cycling through GPU_LINE_COLORS (renderGpuLegend in system_metrics.js builds the matching key). The flat input (GpuHistoryPoint) is grouped by gpu_index here, as drawing is the only place needing it split. */
 function renderGpuHistoryChart(gpuHistory) {
   const emptyEl = document.getElementById("gpu-history-empty");
   const svgEl = document.getElementById("gpu-history-chart");

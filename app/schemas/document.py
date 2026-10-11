@@ -1,5 +1,4 @@
-"""Request/response shapes for app/routers/documents.py and the RAG
-upload-limit settings in app/routers/settings.py."""
+"""Request/response shapes for app/routers/documents.py and the RAG limits in app/routers/settings.py."""
 
 from datetime import datetime
 
@@ -7,8 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ScopeSummary(BaseModel):
-    """Document/chunk/size counts for one knowledge-base scope (see
-    KnowledgeSummary)."""
+    """Document/chunk/size counts for one knowledge-base scope (KnowledgeSummary)."""
 
     document_count: int
     chunk_count: int
@@ -16,13 +14,11 @@ class ScopeSummary(BaseModel):
 
 
 class RagLimits(BaseModel):
-    """Admin-configured RAG settings (see Settings > System): whether the knowledge base is turned on for
-    users at all, the biggest single file anyone may upload, and the most storage one user's own private
-    documents may add up to. `enabled` is checked by GET /api/settings/rag-availability before anything
-    else (see its own docstring) — a system-wide override independent of which inference engine is active
-    or whether an embedding model happens to be installed; `max_file_mb`/`max_user_space_mb` are enforced in
-    app/routers/documents.py's upload handler and aren't applied to the shared/global scope, which only
-    admin can add to anyway."""
+    """Admin RAG settings (Settings > System): whether the knowledge base is on, the biggest single upload, and
+    the storage cap per user's private documents. `enabled` is checked first by GET /api/settings/rag-availability,
+    independent of engine or embedding model. The size limits apply in routers/documents.py uploads, not to the
+    admin-only global scope.
+    """
 
     enabled: bool = True
     max_file_mb: float = Field(..., gt=0)
@@ -30,9 +26,7 @@ class RagLimits(BaseModel):
 
 
 class KnowledgeSummary(BaseModel):
-    """What Settings shows about the knowledge base: the current user's
-    own private documents, the shared documents every user's chats can
-    also draw on, and the current upload limits."""
+    """What Settings shows about the knowledge base: the user's private documents, shared documents and the limits."""
 
     folder: str
     mine: ScopeSummary
@@ -41,21 +35,19 @@ class KnowledgeSummary(BaseModel):
 
 
 class DocumentOut(BaseModel):
-    """One row in the Knowledge tab's document list — a display name
-    (not its full owner-scoped storage path) plus which scope it's in."""
+    """One row of the Knowledge tab list: a display name (not the storage path) and its scope."""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: str
     filename: str
-    scope: str  # "mine" | "shared"
+    scope: str
     chunk_count: int
     created_at: datetime
 
 
 class UploadResult(BaseModel):
-    """The final outcome of an upload job, once done — see
-    UploadJobStatus.result below."""
+    """Final outcome of an upload job (UploadJobStatus.result)."""
 
     summary: KnowledgeSummary
     uploaded: list[str]
@@ -63,15 +55,11 @@ class UploadResult(BaseModel):
 
 
 class UploadJobStatus(BaseModel):
-    """Progress snapshot for one upload job. POST /api/documents/upload
-    returns one of these immediately (with `done: false` unless every
-    file was rejected up front); the browser polls
-    GET /api/documents/upload/{job_id} for the same shape until `done`
-    is true, at which point `result` is populated. Deliberately a plain
-    per-filename dict rather than a typed list — this is an internal
-    progress structure, not a stable public API contract.
+    """Progress of one upload job. POST /api/documents/upload returns one at once (`done: false` unless all
+    files were rejected); the browser polls GET /api/documents/upload/{job_id} until `done`, when `result` is set.
+    A plain per-filename dict, as an internal structure, not a public contract.
 
-    `files` maps each file's name to a dict shaped like:
+    `files` maps name to:
       {"status": "waiting"|"processing"|"added"|"updated"|"skipped"|"error",
        "chunk": int, "chunks_total": int|None, "error": str (only if status=="error")}
     """

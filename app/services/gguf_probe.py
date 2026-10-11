@@ -1,17 +1,11 @@
-"""
-Reads real per-file GGUF header metadata (architecture, display name) directly from a Hugging Face-hosted file
-via HTTP range requests — a few MB at most, never the full (often multi-GB) weights. Split out of
-app.services.huggingface_client (file-size rule) since this is byte-level GGUF binary parsing, a distinct
-concern from that module's plain JSON Hub API calls.
+"""Reads per-file GGUF header metadata (architecture, display name) from a Hugging Face file with HTTP range
+requests: a few MB, never the multi-GB weights. Split from huggingface_client (file-size rule): binary GGUF
+parsing vs. JSON Hub API calls.
 
-Exists because Hugging Face's own repo-level `gguf` metadata block (HuggingFaceCatalogSearch.repo_files)
-describes only ONE file per multi-file repo (confirmed live: HF picks whichever file it treats as primary) —
-every other file in that same repo (a vision-projector/mmproj sidecar, an embedding-only companion, ...) gets
-misattributed that file's architecture/size if a caller just trusts the repo-level block uncritically for it.
-Reading the real file directly is the only way to know what a *specific* file actually is before pulling it —
-confirmed live against two real files in the same repo: a 2MB range read correctly resolved "clip" for a
-vision-projector sidecar and "phi2" for its sibling text model, matching what Matricxon itself determined
-independently once each was actually pulled.
+Needed because Hugging Face's repo-level `gguf` block describes only ONE file in a multi-file repo (its
+primary), so other files (mmproj sidecar, embedding companion) would get that file's architecture/size.
+Reading the file is the only way to know what it is before pulling: a 2MB range resolved "clip" for a
+vision-projector and "phi2" for its sibling text model, matching what Matricxon found once pulled.
 """
 
 import logging
@@ -25,14 +19,13 @@ _RESOLVE_BASE = "https://huggingface.co"
 _TIMEOUT = httpx.Timeout(15.0, connect=10.0)
 _MAGIC = b"GGUF"
 
-# First-pass range covers real metadata comfortably even with a full tokenizer vocab (confirmed live: a real
-# 51,200-token vocab + 50,000 BPE merges still fit in ~1.8MB, and general.architecture/general.name are written
-# before any of that on every real file checked) — the fallback only matters for a genuinely unusual repo.
+# The first range covers metadata even with a full vocab (51,200 tokens + 50,000 merges fit in ~1.8MB;
+# general.architecture/general.name come first); the fallback is for unusual repos.
 _FIRST_RANGE_BYTES = 2 * 1024 * 1024
 _FALLBACK_RANGE_BYTES = 16 * 1024 * 1024
 
-# GGUFValueType (the real llama.cpp/ggml GGUF spec) -> (struct format, byte size) for every fixed-size scalar
-# type. STRING(8) and ARRAY(9) are handled separately below (variable-length).
+# GGUFValueType (llama.cpp/ggml spec) -> (struct format, byte size) for fixed-size scalars. STRING(8) and ARRAY(9) are
+# variable-length, handled separately.
 _SCALAR_TYPES = {
     0: ("<B", 1),
     1: ("<b", 1),
@@ -51,8 +44,8 @@ _ARRAY_TYPE = 9
 
 
 class _BufferExhausted(Exception):
-    """Raised internally when `data` runs out before the key/value section finishes parsing — signals
-    probe_metadata to retry with a larger range, not a real parse failure."""
+    """Raised when `data` ends before the key/value section does; probe_metadata retries with a larger range (not a
+    parse failure)."""
 
 
 def _read_string(data: bytes, offset: int) -> tuple[str, int]:
@@ -66,9 +59,9 @@ def _read_string(data: bytes, offset: int) -> tuple[str, int]:
 
 
 def _skip_value(data: bytes, offset: int, value_type: int) -> int:
-    """Advances past one metadata value without keeping it — every value this probe doesn't care about (every
-    key except general.architecture/general.name) still has to be skipped correctly to reach the next key/value
-    pair, since GGUF's own header has no per-entry byte length of its own to jump by."""
+    """Skips one metadata value: every key except general.architecture/general.name must still be skipped
+    correctly, since GGUF entries have no byte length to jump by.
+    """
     if value_type == _STRING_TYPE:
         _, offset = _read_string(data, offset)
         return offset
@@ -83,8 +76,7 @@ def _skip_value(data: bytes, offset: int, value_type: int) -> int:
                 _, offset = _read_string(data, offset)
             return offset
         if element_type == _ARRAY_TYPE:
-            # No real architecture this app pulls defines a nested array — refusing outright is safer than
-            # silently mis-parsing everything after it.
+            # No architecture this app pulls uses a nested array; refusing is safer than mis-parsing what follows.
             raise _BufferExhausted
         _, size = _SCALAR_TYPES[element_type]
         end = offset + size * length
@@ -98,15 +90,11 @@ def _skip_value(data: bytes, offset: int, value_type: int) -> int:
 
 
 def _parse_metadata(data: bytes) -> dict[str, str | int | None] | None:
-    """None if `data` isn't a GGUF file at all (wrong magic) — a real "give up," not a retry-with-more-bytes
-    case. Raises _BufferExhausted if general.architecture/general.name/general.parameter_count might still be
-    further in than what was fetched. Stops as soon as all three are found, or once every key/value pair in
-    the header has been seen. `parameter_count` (the same key
-    app.services.extended_model_catalog_service's sibling matricxon repo reads via `metadata.get("general.
-    parameter_count")` to build its own sidecar's `parameter_size` display string) is scalar-typed, not a
-    string, so it's read via the same `_SCALAR_TYPES` table `_skip_value` already uses to skip past values
-    this probe doesn't care about — real files don't always carry it, so it's left None rather than guessed
-    at, same as architecture/name when a file genuinely doesn't have them."""
+    """None if `data` isn't GGUF (wrong magic; give up, don't retry). Raises _BufferExhausted if
+    general.architecture/name/parameter_count may lie beyond what was fetched. Stops once all three are found or
+    all pairs are seen. `parameter_count` is scalar-typed, read via the same `_SCALAR_TYPES` table as
+    `_skip_value` (matching how the sibling matricxon repo builds `parameter_size`); left None if absent.
+    """
     if data[:4] != _MAGIC:
         return None
     if len(data) < 24:
@@ -141,14 +129,10 @@ def _parse_metadata(data: bytes) -> dict[str, str | int | None] | None:
 
 
 async def probe_metadata(repo_id: str, filename: str, proxy_url: str | None) -> dict[str, str | int | None] | None:
-    """Real general.architecture/general.name/general.parameter_count read directly from `filename`'s own
-    GGUF header on Hugging Face — via a couple of HTTP range requests, never the full file. Returns None on
-    any failure (network error, not actually a GGUF file, corrupt/unexpected binary content, or genuinely
-    can't find the metadata even at the larger fallback range) — always best-effort:
-    app.services.extended_model_catalog_service.ExtendedModelCatalog.add falls back to Hugging Face's own
-    coarser repo-level metadata instead of failing the whole "Add" action over this, and
-    app.services.matricxon_direct_puller.MatricxonDirectPuller treats a None parameter_count the same way
-    Matricxon's own sidecar-building code does — "unknown", not a hard failure.
+    """general.architecture/name/parameter_count from `filename`'s GGUF header on Hugging Face via a couple of
+    range requests. None on any failure (network, not GGUF, corrupt, metadata not found even at the larger
+    range): best-effort, as ExtendedModelCatalog.add falls back to repo-level metadata and
+    MatricxonDirectPuller treats a None parameter_count as "unknown".
     """
     url = f"{_RESOLVE_BASE}/{repo_id}/resolve/main/{filename}"
     async with httpx.AsyncClient(timeout=_TIMEOUT, follow_redirects=True, proxy=proxy_url) as client:
@@ -164,8 +148,8 @@ async def probe_metadata(repo_id: str, filename: str, proxy_url: str | None) -> 
             except _BufferExhausted:
                 continue
             except Exception:
-                # Untrusted binary content from the open internet — anything genuinely unexpected here must
-                # degrade to "couldn't determine it," never take the whole "Add" action down with it.
+                # Untrusted internet binary: anything unexpected degrades to "couldn't determine it", never failing
+                # "Add".
                 logger.warning("Failed to parse GGUF metadata for %s:%s", repo_id, filename, exc_info=True)
                 return None
             return result

@@ -2,16 +2,15 @@
 
 Revision ID: e2a9c4d7b1f6
 Revises: b3f1a7d9c2e4
-Create Date: 2026-10-04 10:00:00.000000
+Create Date: 10:00:00.000000
 
-MCP tool support: the servers an admin connected, and the tool calls a reply made (shown under it).
+MCP tool support: connected servers, and the tool calls a reply made.
 """
 
 import sqlalchemy as sa
 
 from alembic import op
 
-# revision identifiers, used by Alembic.
 revision = "e2a9c4d7b1f6"
 down_revision = "b3f1a7d9c2e4"
 branch_labels = None

@@ -1,6 +1,5 @@
-"""Unit tests for app/services/huggingface_client.py. httpx.AsyncClient is replaced with a fake that records the
-call and returns a canned response instead of hitting the real network — same "stand in for AsyncClient" pattern
-tests/test_ollama_client.py already uses."""
+"""Tests for services/huggingface_client.py. httpx.AsyncClient is replaced by a fake that records the call and returns a
+canned response (as tests/test_ollama_client.py)."""
 
 import httpx
 import pytest
@@ -123,7 +122,7 @@ async def test_repo_files_maps_real_repo_response_fields(monkeypatch):
     assert repo["parameter_size"] == "14.8B"
     assert repo["context_length"] == 32768
     assert repo["license"] == "apache-2.0"
-    # README.md (not gguf), the sharded "-of-" file, and the zero-size file are all excluded
+    # README.md (not gguf), the sharded "-of-" file and the zero-size file are excluded
     assert repo["files"] == [
         {
             "filename": "qwen2.5-14b-instruct-q4_k_m.gguf",
@@ -141,9 +140,9 @@ async def test_repo_files_maps_real_repo_response_fields(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_repo_files_extracts_the_real_lfs_sha256(monkeypatch):
-    """Known upfront from the same blobs=true call, no extra request — see
-    app.services.matricxon_direct_puller.MatricxonDirectPuller, which verifies a direct download against
-    this the same way Matricxon's own HFDownloader already does for its own pulls."""
+    """Known upfront from the same blobs=true call, no extra request; MatricxonDirectPuller verifies a direct
+    download against it like Matricxon's HFDownloader.
+    """
     calls: list = []
     body = {
         "gated": False,
@@ -186,8 +185,8 @@ async def test_repo_files_prefers_license_name_over_license(monkeypatch):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status_code", [401, 404])
 async def test_repo_files_treats_401_and_404_as_not_found(monkeypatch, status_code):
-    """Hugging Face's own API returns 401, not 404, for an unauthenticated request to a nonexistent repo
-    (confirmed live) — both must produce the same "not found" error."""
+    """Hugging Face returns 401, not 404, for an unauthenticated request to a nonexistent repo; both
+    must give the same "not found" error."""
     calls: list = []
     _patch_client(monkeypatch, calls, response=_FakeResponse(status_code, {"error": "Invalid username or password."}))
 
@@ -227,10 +226,10 @@ def test_is_projector_file_matches_mmproj_case_insensitively():
 
 @pytest.mark.asyncio
 async def test_repo_files_flags_a_projector_file_alongside_the_main_model(monkeypatch):
-    """Confirmed live: a "moondream2" mmproj sidecar inherited its sibling text model's own "phi2"/"1.4B" repo-
-    level metadata (see repo_files' own docstring on why that's repo-wide, not per-file) — is_projector is what
-    lets a caller (extended_model_catalog_service.ExtendedModelCatalog.add, the file-picker UI) avoid repeating
-    that."""
+    """Confirmed live: a "moondream2" mmproj sidecar inherited its sibling text model's repo-level "phi2"/"1.4B"
+    metadata (repo-wide, not per-file; see repo_files). is_projector lets callers (ExtendedModelCatalog.add, the file
+    picker) avoid repeating it.
+    """
     calls: list = []
     body = {
         "gated": False,

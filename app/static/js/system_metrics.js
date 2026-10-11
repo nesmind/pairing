@@ -1,10 +1,4 @@
-/**
- * System resource dashboard, for the Stats page's own "System" nav
- * entry (see stats.html/stats.js — a data-view slot inside that page,
- * same pattern as telemetry.js). Chart rendering lives in
- * system_charts.js; this file only fetches GET /api/system-metrics/summary
- * and wires the numbers/gauges into the DOM.
- */
+/* System resource dashboard for the Stats "System" entry (stats.html/stats.js data-view slot, like telemetry.js). Chart rendering is in system_charts.js; this file fetches GET /api/system-metrics/summary and wires numbers/gauges into the DOM. */
 
 function formatGB(bytes) {
   return (bytes / 1e9).toFixed(1);
@@ -38,9 +32,7 @@ function renderSystemGauges(summary) {
     `${formatGB(summary.disk_used_bytes)} / ${formatGB(summary.disk_total_bytes)} GB`;
 }
 
-/** Same color-per-gpu_index assignment renderGpuHistoryChart (system_charts.js) uses for its lines — kept in
- * sync by construction: both iterate gpu_index values in ascending order and cycle through GPU_LINE_COLORS by
- * position, and summary.gpus already comes back gpu_index-ordered from the API. */
+/* Same color-per-gpu_index assignment as renderGpuHistoryChart (system_charts.js): both iterate gpu_index ascending and cycle GPU_LINE_COLORS by position, and summary.gpus already arrives gpu_index-ordered. */
 function gpuColor(positionInSortedList) {
   return GPU_LINE_COLORS[positionInSortedList % GPU_LINE_COLORS.length];
 }
@@ -67,8 +59,7 @@ function renderGpuGauges(gpus) {
   });
 }
 
-/** The GPU history chart's color key — built dynamically (unlike the CPU/Memory chart's two hardcoded legend
- * entries in stats.html) since GPU count varies per machine. */
+/* The GPU history chart's color key, built dynamically (GPU count varies; the CPU/Memory legend is two fixed entries in stats.html). */
 function renderGpuLegend(gpus) {
   const el = document.getElementById("gpu-history-legend");
   el.innerHTML = "";
@@ -83,9 +74,8 @@ function renderGpuLegend(gpus) {
 function renderSystemStatTiles(summary) {
   const el = document.getElementById("system-stat-tiles");
   el.innerHTML = "";
-  // statTile is defined in stats.js — reused here rather than a third near-identical copy (telemetry.js already
-  // has its own, kept separate for that page's own reasons; this view lives on the same page as stats.js's
-  // Overview, so reusing its generic tile helper directly is the simpler choice).
+  // statTile is defined in stats.js and reused here (this view shares the page with its Overview) instead of a third
+  // copy; telemetry.js keeps its own.
   el.appendChild(statTile(summary.cpu_count, "CPU cores"));
   el.appendChild(statTile(summary.load_avg_1m != null ? summary.load_avg_1m.toFixed(2) : "—", "Load avg (1m)"));
   el.appendChild(statTile(`${formatGB(summary.mem_total_bytes)} GB`, "Total memory"));
@@ -102,8 +92,8 @@ async function loadSystemMetrics() {
     renderGpuGauges(summary.gpus);
     renderGpuLegend(summary.gpus);
     renderGpuHistoryChart(summary.gpu_history);
-    // Now called on a repeating timer (see stats.js's STATS_VIEW_REFRESH) — a transient failure must not leave
-    // a stale error banner shown forever once a later refresh actually succeeds.
+    // Called on a repeating timer (stats.js STATS_VIEW_REFRESH): a transient failure must not leave a stale error
+    // banner after a later refresh succeeds.
     errorEl.classList.add("hidden");
   } catch (err) {
     errorEl.textContent = err.message;

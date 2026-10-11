@@ -1,8 +1,9 @@
 """Carries tool calls out of an engine's chat stream without changing its text-only contract.
 
-`chat_stream` still yields text chunks only. A caller that offers tools puts `tools` (the tool
-definitions) and a `ToolCallSink` in `params` (like `request_id`); the engine client adds each
-`tool_calls` entry it sees to the sink, and the caller reads them once the stream ends."""
+`chat_stream` still yields text only. A caller offering tools puts `tools` (definitions) and a
+`ToolCallSink` in `params` (like `request_id`); the engine client adds each `tool_calls` entry to the sink and
+the caller reads them after the stream ends.
+"""
 
 from typing import Any
 

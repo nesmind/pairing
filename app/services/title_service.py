@@ -1,13 +1,7 @@
-"""
-Gives a brand-new conversation a real sidebar title instead of the
-"New chat" placeholder — either "simple" (instant local text processing,
-see maybe_set_title) or "smart" (asks the model itself, see
-maybe_generate_title_with_model), per the admin-configured mode (see
-app.services.chat_settings_service.get_title_mode). Split out of
-app/services/chat_service.py, whose build_reply_stream calls into
-whichever of these two fits, at the point that mode needs — this file
-existing is just what keeps both under CLAUDE.md's file-size rule, not a
-sign these two modes need to be assembled together at every call site.
+"""Gives a new conversation a real sidebar title instead of "New chat": "simple" (instant local text processing,
+maybe_set_title) or "smart" (asks the model, maybe_generate_title_with_model), per the admin mode
+(chat_settings_service.get_title_mode). Split from chat_service.py (build_reply_stream calls whichever fits)
+for the file-size rule; the two modes needn't be assembled together at call sites.
 """
 
 import asyncio
@@ -24,31 +18,21 @@ logger = logging.getLogger("llama_chat")
 
 _TITLE_MAX_LENGTH = 60
 
-# A fenced code block spans potentially many lines (re.DOTALL), so it
-# never survives into a one-line title at all; an inline code span
-# keeps its contents but loses the backticks, since "`foo`" as a title
-# reads worse than plain "foo" for something this short.
+# A fenced code block can span many lines (re.DOTALL) and never reaches a one-line title; an inline code span
+# keeps its contents but loses the backticks ("`foo`" reads worse than "foo").
 _CODE_FENCE_RE = re.compile(r"```.*?```", re.DOTALL)
 _INLINE_CODE_RE = re.compile(r"`([^`]*)`")
 
-# Matches a sentence-ending punctuation mark followed by whitespace or
-# end-of-string — used to prefer cutting a long message at a real
-# sentence boundary (see _summarize_as_title) rather than an arbitrary
-# character offset.
+# A sentence-ending mark followed by whitespace or end of string: lets _summarize_as_title cut a long message at a
+# sentence boundary, not an arbitrary offset.
 _SENTENCE_END_RE = re.compile(r"[.!?…](?:\s|$)")
 
 
 def _summarize_as_title(message: str) -> str:
-    """ "Simple" mode's title: entirely local string processing, no model
-    call. Strips markdown code (unreadable squeezed into one line),
-    collapses all whitespace (a multi-line pasted message becomes one
-    line), then keeps the message whole if it's already short, otherwise
-    keeps just its first sentence if that alone fits the length budget
-    (reads as an actual title rather than a mid-thought cutoff), and
-    failing that truncates at the last whole word that fits, with a
-    trailing "…". Being purely extractive means it needs no per-language
-    handling the way "smart" mode's prompt does — whatever language the
-    message itself is in is what ends up in the title, automatically.
+    """ "Simple" mode's title: local string processing, no model call. Strips markdown code, collapses whitespace
+    (a pasted multi-line message becomes one line), keeps a short message whole, else its first sentence if it
+    fits the budget (reads as a title, not a cutoff), else truncates at the last whole word with a trailing "…".
+    Being extractive, it needs no per-language handling: the title is in the message's language.
     """
     text = _CODE_FENCE_RE.sub(" ", message)
     text = _INLINE_CODE_RE.sub(r"\1", text)
@@ -70,17 +54,12 @@ def _summarize_as_title(message: str) -> str:
 
 
 def maybe_set_title(conversation: Conversation, first_user_message: str) -> None:
-    """ "Simple" title mode (see
-    app.services.chat_settings_service.get_title_mode) — the first time a
-    conversation gets a message, gives it a real title instead of the
-    "New chat" placeholder (see _summarize_as_title above). Plain and
-    synchronous — no I/O of its own, no separate commit: the caller
-    (chat_service.build_reply_stream) already commits alongside
-    everything else it saves for this turn. Safe to call on every
-    message, not just the first: the guard below is what actually limits
-    it to once, which — since this can't meaningfully fail the way a
-    model call could — also means a conversation that somehow never got
-    titled isn't stuck that way forever."""
+    """ "Simple" title mode (chat_settings_service.get_title_mode): gives a conversation's first message a title
+    instead of "New chat" (_summarize_as_title). Synchronous, no I/O or commit of its own
+    (chat_service.build_reply_stream
+    commits with the rest of the turn). Safe on every message: the guard below limits it to once and, as it can't
+    fail like a model call, a never-titled conversation isn't stuck that way.
+    """
     if conversation.title != "New chat":
         return
     conversation.title = _summarize_as_title(first_user_message)
@@ -89,45 +68,27 @@ def maybe_set_title(conversation: Conversation, first_user_message: str) -> None
 _HEBREW_LETTER_RE = re.compile(r"[֐-׿]")
 _LATIN_LETTER_RE = re.compile(r"[A-Za-z]")
 
-# "Smart" mode's budget for the model's own title-invention call. A
-# "thinking"-capable model reasons before ever writing its real answer,
-# and num_predict counts tokens spent reasoning too — a small model can
-# burn its *entire* budget (and, on slow hardware, a full minute or
-# more) reasoning about a one-line title and never reach any actual
-# title text at all. chat_stream (which chat_once below calls into)
-# already strips a model's raw reasoning out unconditionally for any
-# model the ML engine reports as thinking-capable (see
-# app/services/ollama_client.py's _strip_inline_thinking — confirmed
-# necessary for real against dicta-il/dictalm-3.0-1.7b-thinking), but
-# that doesn't help if reasoning simply doesn't *finish* within this
-# budget — there's no real title yet to strip down to in that case, only
-# a truncated fragment of reasoning, which _TITLE_MAX_WORDS below is
-# what actually catches. Generous specifically to make that rare: this
-# call runs *after* "done" is yielded (see chat_service.build_reply_stream),
-# so it's off the critical path — spending more tokens/time on it
-# doesn't block anything user-visible.
+# "Smart" mode's budget for the model's title call. A "thinking" model reasons before its answer, and
+# num_predict counts reasoning tokens: a small model can spend its *whole* budget (on slow hardware a minute
+# or more) on a one-line title and never write one. chat_stream (under chat_once) already strips raw reasoning
+# for models the engine reports thinking-capable (ollama_client's _strip_inline_thinking; needed for
+# dicta-il/dictalm-3.0-1.7b-thinking), but that doesn't help if reasoning doesn't *finish* in budget: only a
+# truncated fragment remains, which _TITLE_MAX_WORDS catches. Generous to make that rare: it runs *after*
+# "done" is yielded (chat_service.build_reply_stream), off the critical path.
 _TITLE_NUM_PREDICT = 1000
 
-# A title prompt explicitly asks for "max 6 words" (see
-# _build_title_prompt) — a real title honors that loosely; a response
-# many times longer is a reliable sign that reasoning got cut off by
-# _TITLE_NUM_PREDICT before ever reaching a real answer, not an
-# unusually verbose title. Comfortably above 6 to tolerate a model that
-# rounds up a little, nowhere near what truncated reasoning prose
-# actually looks like.
+# The title prompt asks for "max 6 words" (_build_title_prompt); a real title roughly honors it, and a response
+# many times longer means reasoning was cut off by _TITLE_NUM_PREDICT, not a verbose title. Comfortably above 6
+# for models that round up, far below truncated reasoning prose.
 _TITLE_MAX_WORDS = 12
 
 
 def _build_title_prompt(message: str) -> str:
-    """Builds "smart" mode's "invent a short title" instruction, phrased
-    in the same language as `message` where we can tell. This matters
-    more than it sounds: asking an English instruction like "reply in
-    Hebrew" for the title is unreliable — models tend to default back to
-    English for short-form output regardless. Writing the *instruction
-    itself* in Hebrew reliably keeps the model in Hebrew, since it just
-    continues in whatever language its immediate context is already in.
-    Only Hebrew gets this treatment for now (see ROADMAP.md for
-    extending the same pattern to other RTL/non-English languages)."""
+    """Builds "smart" mode's "invent a short title" instruction in the language of `message` where we can tell.
+    An English "reply in Hebrew" is unreliable (models default to English for short output); writing the
+    *instruction itself* in Hebrew keeps the model in Hebrew, which continues in its context's language. Hebrew
+    only for now.
+    """
     hebrew_count = len(_HEBREW_LETTER_RE.findall(message))
     latin_count = len(_LATIN_LETTER_RE.findall(message))
     if hebrew_count > latin_count:
@@ -148,15 +109,11 @@ async def maybe_generate_title_with_model(
     conversation: Conversation,
     first_user_message: str,
 ) -> None:
-    """ "Smart" title mode (see
-    app.services.chat_settings_service.get_title_mode) — asks the model
-    itself to invent a title, which can read more naturally than
-    _summarize_as_title's plain extraction, at the cost of a second,
-    slower generation call that's occasionally still unreliable (see the
-    sanity check below). Best-effort: any failure just leaves whatever
-    title is already there in place. Called *after* "done" is yielded
-    (see chat_service.build_reply_stream) so this never delays the reply
-    itself or blocks the Send button for the next message."""
+    """ "Smart" title mode (chat_settings_service.get_title_mode): asks the model for a title; reads more naturally
+    than _summarize_as_title but costs a second, slower call, occasionally unreliable (see the sanity check below).
+    Best-effort: any failure leaves the current title. Called *after* "done" (chat_service.build_reply_stream) so it
+    never delays the reply or blocks Send.
+    """
     if conversation.title != "New chat":
         return
     try:
@@ -174,11 +131,8 @@ async def maybe_generate_title_with_model(
             },
         )
         title = title.strip().strip('"').strip()
-        # A title this long is almost certainly truncated reasoning, not
-        # an unusually wordy title (see _TITLE_MAX_WORDS) — saving it
-        # anyway would leave the sidebar showing a chunk of the model's
-        # internal monologue instead of either a real title or the
-        # honest "New chat" placeholder.
+        # A title this long is almost certainly truncated reasoning (_TITLE_MAX_WORDS); saving it would show part of the
+        # model's internal monologue in the sidebar instead of a title or the honest "New chat".
         if title and len(title.split()) <= _TITLE_MAX_WORDS:
             conversation.title = title[:80]
             await db.commit()
@@ -186,30 +140,19 @@ async def maybe_generate_title_with_model(
         pass
 
 
-# Strong references to in-flight "smart" mode title-generation tasks —
-# asyncio only holds a *weak* reference to a bare asyncio.create_task()
-# result; with nothing else referencing the returned Task, it can be
-# garbage-collected mid-run, silently dropping the title generation it
-# was doing. Each task removes itself once it's done (success or
-# failure) via its own done-callback below, so this doesn't grow
-# forever.
+# Strong refs to in-flight "smart" title tasks: asyncio keeps only a weak reference to a bare create_task
+# result, so with nothing else referencing it the task could be garbage-collected mid-run and drop the title.
+# Each task removes itself via its done-callback.
 _background_title_tasks: set[asyncio.Task] = set()
 
 
 def schedule_smart_title_generation(conversation_id: str, first_user_message: str) -> None:
-    """Kicks off "smart" mode's title generation fully detached from the
-    current request/response (see maybe_generate_title_with_model, which
-    this wraps) — necessary, not just a nice-to-have: once "done" is
-    yielded, chat_service.build_reply_stream's generator only keeps
-    running as long as the underlying HTTP request/response stays alive,
-    and chat.js is deliberately written to disconnect right after
-    reading "done" — ASGI cancels the generator (and any `await` still
-    in flight in it, which a plain `await maybe_generate_title_with_model(...)`
-    here would have been) the moment that disconnect is detected,
-    silently dropping the title every time a client behaves exactly the
-    way it's now meant to. Runs against its own fresh session — the
-    request's `db` is tied to that same soon-to-be-cancelled scope, so
-    it can't be reused here either."""
+    """Starts "smart" title generation detached from the request/response (wraps maybe_generate_title_with_model).
+    Necessary: after "done", chat_service.build_reply_stream's generator lives only while the HTTP request
+    does, and chat.js deliberately disconnects right after "done", so ASGI cancels the generator (and a plain
+    `await maybe_generate_title_with_model(...)`), silently dropping the title every time. Uses its own session:
+    the request's `db` is tied to the soon-cancelled scope.
+    """
     task = asyncio.create_task(_generate_title_in_background(conversation_id, first_user_message))
     _background_title_tasks.add(task)
     task.add_done_callback(_background_title_tasks.discard)
@@ -222,11 +165,8 @@ async def _generate_title_in_background(conversation_id: str, first_user_message
             if conversation is not None:
                 await maybe_generate_title_with_model(db, conversation, first_user_message)
     except Exception:
-        # Broad on purpose: this is a detached background task with no
-        # caller left to propagate a failure to — an unhandled exception
-        # here would otherwise just vanish as an "exception was never
-        # retrieved" warning with no context, rather than something
-        # findable in the logs. maybe_generate_title_with_model already
-        # handles its own InferenceError; this is the backstop for anything
-        # else (a DB error, say).
+        # Broad on purpose: a detached task with no caller to propagate to; an unhandled exception would vanish as an
+        # "exception was never retrieved" warning without context instead of appearing in the logs.
+        # maybe_generate_title_with_model handles its own InferenceError; this backstops anything else (e.g. a DB
+        # error).
         logger.exception("Smart-mode title generation failed for conversation %s", conversation_id)

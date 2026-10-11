@@ -1,4 +1,4 @@
-"""A reply that used tools: the tool calls are stored on the message and sent live with the text."""
+"""A reply that used tools: the calls are stored on the message and sent live with the text."""
 
 import pytest
 from sqlalchemy import select

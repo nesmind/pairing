@@ -1,6 +1,7 @@
-"""Unit tests for app/services/matricxon_admin.py (the pull/delete service, not the router of the same name in
-app/routers/) — mirrors the HTTP-wiring style of tests/test_ollama_client.py, confirming pull/delete target
-matricxon_pool's primary host and surface a real error as MatricxonError."""
+"""Tests for services/matricxon_admin.py (the pull/delete service, not the router in app/routers/): the HTTP-wiring
+style of tests/test_ollama_client.py, confirming pull/delete target matricxon_pool's primary host and surface
+real errors as MatricxonError.
+"""
 
 import httpx
 import pytest
@@ -9,12 +10,42 @@ from app.services import matricxon_admin, matricxon_pool
 from app.services.matricxon_direct_puller import MatricxonDirectPuller
 
 
+@pytest.fixture(autouse=True)
+def _no_consensus_by_default(monkeypatch):
+    """Most tests are a plain non-cluster Matricxon: no lease, the primary host does everything."""
+
+    async def standalone(_lease):
+        return False, None
+
+    monkeypatch.setattr(matricxon_pool, "lease_holder", standalone)
+
+
+@pytest.mark.asyncio
+async def test_in_a_cluster_models_are_changed_by_the_lease_owner_and_refused_without_one(monkeypatch):
+    monkeypatch.setattr(matricxon_pool, "get_effective_hosts", lambda: ["http://primary:8420", "http://owner:8420"])
+    answers = {"holder": (True, "http://owner:8420")}
+
+    async def lease_holder(_lease):
+        return answers["holder"]
+
+    monkeypatch.setattr(matricxon_pool, "lease_holder", lease_holder)
+    assert await matricxon_admin._model_host() == "http://owner:8420"
+    answers["holder"] = (True, None)
+    with pytest.raises(matricxon_admin.MatricxonError, match="no quorum"):
+        await matricxon_admin._model_host()
+    answers["holder"] = (False, None)
+    assert await matricxon_admin._model_host() == "http://primary:8420"
+    with pytest.raises(matricxon_admin.MatricxonError, match="no quorum"):
+        answers["holder"] = (True, None)
+        await matricxon_admin.delete_model("some-model")
+
+
 @pytest.mark.asyncio
 async def test_pull_model_stream_uses_the_direct_puller_when_matricxon_is_local(monkeypatch):
-    """See app.services.matricxon_direct_puller's own module docstring: only usable (and only used) when
-    pAIring and Matricxon share a filesystem, i.e. matricxon_pool's effective hosts are exactly
-    [LOCAL_MATRICXON_HOST] — every other test in this file uses a host list that doesn't match this, so they
-    keep exercising the old proxy-through-/api/pull path unchanged (confirmed by them still passing)."""
+    """See matricxon_direct_puller: used only when pAIring and Matricxon share a filesystem, i.e. the effective hosts
+    are exactly [LOCAL_MATRICXON_HOST]. Other tests in this file use another host list and keep the
+    proxy-through-/api/pull path.
+    """
     monkeypatch.setattr(matricxon_pool, "get_effective_hosts", lambda: [matricxon_pool.LOCAL_MATRICXON_HOST])
 
     async def fake_pull_stream(self, tag):

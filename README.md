@@ -121,6 +121,11 @@ It is also important not to expose more models to users than the system RAM/VRAM
 - Can also run multiple copies of itself behind one URL, no reverse proxy needed.
 - Or, if you'd rather test it for enterprise use, use a reverse proxy (nginx, Caddy, ...) to balance across a ring of pAIring servers — that works too. All configurable directly from the UI.
 
+**Cluster management (Matricxon, BETA)**
+- Manage a Matricxon cluster from the **Cluster** page: several nodes share models and chat caches and agree on membership through built-in Paxos consensus.
+- Add and remove nodes
+- A live, advanced interactive map shows each node's role and status, from a few nodes to hundreds. Designed for hundreds of nodes
+
 **Connectors**
 - Extend the system with connectors, which add support for more inference engines, such as cloud services that offer GPU and serverless ML. pAIring is intended to run privately or locally without external services and providers (except for downloading models or outer MCP tools), but this is a much appreciated optional extra.
 - At the moment there is only one connector, for RunPod.

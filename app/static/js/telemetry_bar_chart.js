@@ -1,12 +1,6 @@
-/**
- * Requests-by-host bar chart for the Stats page's "Telemetry" view —
- * sibling of telemetry_charts.js (shared setup/axis helpers live
- * there), split out to stay under CLAUDE.md's 250-line cap.
- */
+/* Requests-by-host bar chart for the Stats "Telemetry" view; sibling of telemetry_charts.js (shared setup/axis helpers), split out to stay under CLAUDE.md's 250-line cap. */
 
-/** Renders OllamaTelemetrySummary.by_host as grouped bars (total request
- * count, with the error slice highlighted) — correct-looking for both a
- * single-host deployment (one bar) and a genuinely multi-host one. */
+/* Renders OllamaTelemetrySummary.by_host as grouped bars (total requests, error slice highlighted); fine for one host (one bar) or many. */
 function renderHostBarChart(hostStats) {
   const emptyEl = document.getElementById("telemetry-host-empty");
   const svgEl = document.getElementById("telemetry-host-chart");
@@ -32,7 +26,7 @@ function renderHostBarChart(hostStats) {
     .range([innerHeight, 0]);
 
   telemetryDrawAxes(g, xScale, yScale, innerHeight, (host) => {
-    // Hosts are full URLs (http://host:11434) — too wide for a tick label, so just the host:port part is shown.
+    // Hosts are full URLs (http://host:11434), too wide for a tick label, so only host:port shows.
     try {
       const u = new URL(host);
       return u.host;
@@ -57,7 +51,7 @@ function renderHostBarChart(hostStats) {
     .append("title")
     .text((h) => `${h.host}: ${h.request_count} request(s), ${h.error_count} error(s)`);
 
-  // The error slice, stacked at the bottom of the same bar, in red — 0-height and invisible when there are none.
+  // The error slice, stacked at the bottom of the bar in red; invisible (0 height) when there are none.
   bars
     .append("rect")
     .attr("x", (h) => xScale(h.host))

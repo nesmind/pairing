@@ -1,10 +1,5 @@
-"""
-GET/PUT for the current user's app-wide UI theme (see
-app/services/theme_service.py and app/static/css/themes.css). A
-separate router from app/routers/settings.py — that file is already at
-CLAUDE.md's line cap — but shares the same "/api/settings" prefix
-since, from the Settings page's point of view, this is just another
-per-user setting living next to the code theme.
+"""GET/PUT for the user's app-wide UI theme (services/theme_service.py, static/css/themes.css). Separate
+from settings.py (file-size cap) but under the same "/api/settings" prefix.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,7 +17,7 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 @router.get("/theme", response_model=UiTheme)
 async def get_theme(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    """The current user's own app-wide UI theme — shown/settable from Settings' Account tab."""
+    """The user's UI theme, settable from Settings' Account tab."""
     return UiTheme(theme=await theme_service.get_ui_theme(db, user))
 
 
@@ -32,7 +27,7 @@ async def set_theme(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Saves the current user's own UI theme — never affects any other user's view."""
+    """Saves the user's own UI theme."""
     valid_ids = {t["id"] for t in UI_THEMES}
     if body.theme not in valid_ids:
         raise HTTPException(status_code=400, detail=f'Unknown theme "{body.theme}".')

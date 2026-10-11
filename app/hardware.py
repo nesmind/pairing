@@ -1,12 +1,7 @@
-"""
-Local hardware detection, used to decide whether a given model in
-app.model_catalog can realistically run on this machine before letting
-someone select or download it (see app/routers/settings.py).
+"""Local hardware detection, to decide whether a catalog model can run here (app/routers/settings.py).
 
-Deliberately checks *total* capacity rather than momentarily-free
-memory: model card requirements ("needs 16GB RAM") are stated against
-total system memory, and gating on free memory would make a model
-flicker between available/blocked as unrelated processes use RAM.
+Checks *total* capacity, not free memory: model requirements are stated against total, and free
+memory would make models flicker between available and blocked.
 """
 
 import logging
@@ -21,18 +16,12 @@ logger = logging.getLogger("llama_chat")
 
 
 def get_system_ram_gb() -> float:
-    """Total physical RAM on this machine, in gigabytes (decimal GB —
-    matches how RAM is marketed/specified, e.g. "16GB")."""
+    """Total RAM in decimal GB."""
     return psutil.virtual_memory().total / 1_000_000_000
 
 
 def get_gpu_vram_gb() -> float:
-    """Total VRAM across any NVIDIA GPU(s), in gigabytes, or 0.0 if none
-    is present/detectable. Best-effort: this app runs chat models
-    through the ML engine regardless of whether a GPU exists, so a missing or
-    unparseable `nvidia-smi` just means "assume no GPU acceleration"
-    rather than an error.
-    """
+    """Total NVIDIA VRAM in GB, or 0.0 if none or undetectable (best-effort: models run without a GPU)."""
     try:
         output = subprocess.run(
             ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
@@ -49,29 +38,19 @@ def get_gpu_vram_gb() -> float:
         match = re.match(r"\s*([\d.]+)", line)
         if match:
             total_mb += float(match.group(1))
-    return total_mb / 1000  # nvidia-smi reports MiB-ish values; close enough for a gating check
+    return total_mb / 1000  # MiB-ish values; close enough for gating
 
 
 def available_capacity_gb() -> float:
-    """Total RAM plus any GPU VRAM — the pool of memory a model's
-    weights need to fit into (with the ML engine's usual CPU/GPU offloading)."""
+    """RAM plus any VRAM: the memory pool model weights must fit in."""
     return get_system_ram_gb() + get_gpu_vram_gb()
 
 
 def has_avx2() -> bool:
-    """Whether this CPU supports AVX2 — the de facto baseline modern
-    prebuilt PyPI wheels (numpy, torch, and anything depending on them,
-    like ComfyUI's own kornia dependency) are compiled assuming. Missing
-    it isn't a "runs slower" situation the way a missing GPU is: a CPU
-    without AVX2 executing an AVX2 instruction hard-crashes with SIGILL
-    ("Illegal instruction") the moment such code actually runs — confirmed
-    live on a 2011-era CPU here (see app.services.comfyui_installer's own
-    use of this, gating its install before wasting a multi-GB download/
-    pip install on a machine that would just crash once ComfyUI starts).
-    Checked via /proc/cpuinfo's own flags line — this app already only
-    targets Linux (see scripts/start.sh). Fails open (True) if the file
-    can't be read at all, rather than blocking an install over an
-    inconclusive check."""
+    """Whether the CPU supports AVX2. Prebuilt wheels (numpy, torch, ComfyUI's kornia) assume it; without
+    it they crash with SIGILL (seen on a 2011 CPU), so comfyui_installer gates on this before a big download.
+    Reads /proc/cpuinfo (Linux only); fails open (True) if unreadable.
+    """
     try:
         cpuinfo = Path("/proc/cpuinfo").read_text()
     except OSError:
@@ -80,25 +59,15 @@ def has_avx2() -> bool:
 
 
 def local_install_supported() -> bool:
-    """Whether this app's own ML engine and ComfyUI auto-installers (the
-    app.services.*_installer modules, all behind Settings > External
-    servers' "Install from GitHub" button) can run on this machine at
-    all. They assume a Linux host — one ML engine's pinned release asset
-    is a Linux-only build (no macOS/Windows equivalent this app fetches),
-    and this app's own process-management/deployment assumptions
-    throughout (scripts/start.sh, scripts/install_on_fresh_server.sh's
-    systemd unit) are Linux-only too. Exact, not a guess:
-    platform.system() reports the real OS this process is running on.
-    "Local" mode itself still works fine on any OS if the ML engine or
-    ComfyUI is installed by hand elsewhere and pointed at via "Enter its
-    path manually" — only the auto-download is gated by this."""
+    """Whether the auto-installers (app.services.*_installer, "Install from GitHub") can run here.
+    They assume Linux: a Linux-only pinned release asset, plus scripts/start.sh and the systemd unit.
+    Local mode still works elsewhere with a hand-installed engine ("Enter its path manually").
+    """
     return platform.system() == "Linux"
 
 
 def hardware_summary() -> dict:
-    """A snapshot of this machine's capacity, for both the gating check
-    and for display in Settings (e.g. "you have 16GB RAM, no GPU
-    detected")."""
+    """Snapshot of this machine's capacity, for gating and for display in Settings."""
     ram_gb = get_system_ram_gb()
     vram_gb = get_gpu_vram_gb()
     return {

@@ -1,10 +1,6 @@
-"""
-Settings > System > Database admin endpoints: read the currently
-configured backend, test a candidate connection before committing to
-it, build the schema (plus starter data) on an empty target, and save —
-which switches the live app over immediately, no restart required (see
-app/services/db_config_service.py for how). All admin-only; a wrong DB
-choice here has a much bigger blast radius than a wrong RAG limit.
+"""Settings > System > Database admin (admin-only): read the backend, test a candidate connection, build
+the schema and starter data on an empty target, and save, which switches the live app without a restart
+(app/services/db_config_service.py). A wrong choice here has a large blast radius.
 """
 
 import asyncio
@@ -42,18 +38,10 @@ async def build_database_schema(update: DbConfigUpdate, _admin: User = Depends(r
 
 @router.post("/internal-switch", response_model=OkResponse)
 async def internal_switch_database(body: InternalSwitchDatabaseRequest, request: Request) -> OkResponse:
-    """Called only by another local instance's own
-    app.services.instance_db_broadcast.broadcast_database_switch right
-    after an admin's live database switch — never by a browser, so no
-    require_admin session here. Deliberately placed under this router's
-    own "/api/settings/database" prefix, which
-    app.services.instance_proxy_http.EXEMPT_PREFIXES already covers (a
-    startswith() prefix match) — so this can never get load-balanced to
-    a random *different* instance the way an ordinary request would,
-    which matters here specifically: a request proxied from the primary
-    to a sibling always looks loopback-sourced to the sibling (the
-    primary's own httpx call originates from 127.0.0.1), which would
-    silently defeat the check below if this path could ever be proxied.
+    """Called only by another local instance's instance_db_broadcast.broadcast_database_switch after a live
+    switch, never by a browser. It sits under "/api/settings/database", covered by
+    instance_proxy_http.EXEMPT_PREFIXES, so it is never load-balanced to another instance: a proxied
+    request looks loopback-sourced to a sibling and would defeat the check below.
     """
     if request.client is None or request.client.host not in ("127.0.0.1", "::1"):
         raise HTTPException(status_code=403, detail="Internal endpoint — not reachable externally.")

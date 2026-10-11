@@ -1,9 +1,7 @@
-"""Unit tests for app/services/retention_poller.py — the periodic sweep
-that keeps telemetry_events/model_snapshots/system_metric_snapshots
-bounded for a process's entire uptime, not just between restarts (see
-that module's own docstring for why a startup-only prune wasn't enough).
-Uses the shared `db` fixture; conftest.py already patches
-retention_poller.AsyncSessionLocal at this module."""
+"""Tests for services/retention_poller.py, the periodic sweep keeping telemetry_events/model_snapshots/
+system_metric_snapshots bounded for the whole uptime, not just between restarts (see the module). Uses the
+shared `db` fixture; conftest.py patches retention_poller.AsyncSessionLocal.
+"""
 
 import asyncio
 from datetime import timedelta
@@ -70,9 +68,10 @@ async def test_prune_once_deletes_old_rows_and_keeps_recent_ones_across_all_thre
 
 @pytest.mark.asyncio
 async def test_prune_once_honors_an_admin_configured_retention_window(db):
-    """Not just the defaults — a shorter admin-set window (Settings > System) must take effect on the very next
-    sweep, no restart needed (see retention_settings_service.get_retention_settings' own docstring on why this
-    is read fresh every call rather than cached)."""
+    """Not just the defaults: a shorter admin-set window (Settings > System) takes effect on the next sweep with no
+    restart
+    (retention_settings_service.get_retention_settings is read fresh, not cached).
+    """
     await retention_settings_service.set_retention_settings(
         db, RetentionSettings(telemetry_days=1, system_metrics_days=1)
     )
@@ -97,7 +96,7 @@ async def test_prune_once_is_a_cheap_noop_when_nothing_is_stale(db):
     db.add(_recent_telemetry_event())
     await db.commit()
 
-    await retention_poller.prune_once()  # must not raise, must not touch the fresh row
+    await retention_poller.prune_once()
 
     rows = (await db.execute(select(TelemetryEvent))).scalars().all()
     assert len(rows) == 1
@@ -112,7 +111,7 @@ async def test_run_retention_poller_survives_a_sweep_failure(monkeypatch):
         calls += 1
         if calls == 1:
             raise RuntimeError("transient failure")
-        raise SystemExit  # stop the infinite loop cleanly once the second attempt has happened
+        raise SystemExit
 
     monkeypatch.setattr(retention_poller, "prune_once", fake_prune_once)
     monkeypatch.setattr(retention_poller, "SWEEP_INTERVAL_SECONDS", 0)

@@ -1,0 +1,36 @@
+<!-- Consensus timers: kept in the cluster's replicated config, so every voter uses the same ones at once
+     (cluster_timers.js). Needs consensus running and a quorum. -->
+<form id="cluster-timers-form" class="max-w-2xl space-y-3 rounded-lg border border-slate-800 bg-slate-900 px-4 py-3">
+  <div>
+    <p class="text-sm font-medium text-slate-100">Cluster timers</p>
+    <p class="text-xs text-slate-500">
+      How the voters notice a dead leader. A shorter election timeout replaces a failed leader sooner; a longer
+      one avoids needless elections on a slow or busy network or disk. Applied on every voter at once, no restart.
+    </p>
+  </div>
+  <p id="cluster-timers-off" class="hidden text-xs text-slate-400">Available once the cluster runs consensus (a node has joined and been activated).</p>
+  <p id="cluster-timers-quorum" class="hidden rounded-lg border border-red-800/60 bg-red-900/20 px-3 py-2 text-xs text-red-200">
+    No quorum: the timers cannot be changed until a majority of the voters is back.
+  </p>
+  <div id="cluster-timers-fields" class="grid items-start gap-3 sm:grid-cols-2">
+    <label class="block">
+      <span class="text-xs text-slate-400">Election timeout (seconds)</span>
+      <input id="cluster-election" type="number" step="0.1" min="0.5" max="60"
+        class="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-brand-500">
+      <span class="mt-1 block text-xs text-slate-500">0.5 &ndash; 60</span>
+    </label>
+    <label class="block">
+      <span class="text-xs text-slate-400">Heartbeat (seconds)</span>
+      <input id="cluster-heartbeat" type="number" step="0.05" min="0.05" max="5"
+        class="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-brand-500">
+      <span class="mt-1 block text-xs text-slate-500">0.05 &ndash; 5, at most a third of the election timeout</span>
+    </label>
+  </div>
+  <div class="flex flex-wrap items-center gap-3">
+    <button id="cluster-timers-save" type="submit"
+      class="rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">Save timers</button>
+    <button id="cluster-timers-fast" type="button" class="text-xs text-slate-400 hover:text-slate-200">Fast (1 / 0.2)</button>
+    <button id="cluster-timers-tolerant" type="button" class="text-xs text-slate-400 hover:text-slate-200">Tolerant (5 / 1)</button>
+    <span id="cluster-timers-note" class="text-xs text-slate-500"></span>
+  </div>
+</form>

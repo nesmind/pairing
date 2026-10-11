@@ -1,9 +1,6 @@
-"""
-The image-generation JSON API: submit a prompt, poll a job's status,
-list your own past generations, and fetch the resulting file. See
-app/services/image_generation_service.py for the actual generation
-lifecycle these wrap, and app/services/comfyui_client.py / sdcpp_client.py for the engine
-HTTP calls behind /checkpoints.
+"""Image-generation JSON API: submit a prompt, poll a job, list your generations, fetch the file.
+Lifecycle: app/services/image_generation_service.py; engine calls behind /checkpoints: comfyui_client.py,
+sdcpp_client.py.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -24,10 +21,8 @@ router = APIRouter(prefix="/api/image-generation", tags=["image-generation"])
 
 
 async def _get_own_job_or_404(db: AsyncSession, job_id: str, user: User) -> ImageGenerationJob:
-    """Folds "exists but not yours" into a plain 404 — same convention
-    conversation_service.get_accessible_conversation_or_404 uses, so a
-    caller can't distinguish "not found" from "not yours" and enumerate
-    other users' job ids."""
+    """ "Not yours" is a plain 404 (as conversation_service.get_accessible_conversation_or_404), so job ids can't be
+    enumerated."""
     job = await db.get(ImageGenerationJob, job_id)
     if job is None or job.owner_id != user.id:
         raise HTTPException(status_code=404, detail="Image generation job not found")
@@ -62,18 +57,15 @@ async def get_job(job_id: str, db: AsyncSession = Depends(get_db), user: User = 
 
 @router.post("/jobs/{job_id}/cancel", response_model=ImageGenerationJobOut)
 async def cancel_job(job_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    """Stops a queued or running generation (the engine is told to stop on the running instance's next poll — see
-    image_generation_service). Idempotent: a finished job is returned unchanged."""
+    """Stops a queued or running job (the engine is told on the instance's next poll). Idempotent for finished jobs."""
     return await image_generation_service.cancel_job(db, await _get_own_job_or_404(db, job_id, user))
 
 
 @router.get("/jobs/{job_id}/image")
 async def get_job_image(job_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    """The only way a generated image is ever served — not mounted under
-    /static, so access stays gated by ownership, same reasoning as
-    app/routers/chat.py's get_attachment. Always PNG: ComfyUI's own
-    SaveImage node (see comfyui_client's workflow template) writes PNGs,
-    and this app wrote the file itself — no guessing needed."""
+    """The only way generated images are served (not under /static), gated by ownership like chat.py's
+    get_attachment. Always PNG (written by this app).
+    """
     job = await _get_own_job_or_404(db, job_id, user)
     if job.image_path is None:
         raise HTTPException(status_code=404, detail="This job has no generated image yet")
@@ -97,7 +89,7 @@ async def delete_job(job_id: str, db: AsyncSession = Depends(get_db), user: User
 
 @router.get("/checkpoints", response_model=CheckpointList)
 async def list_checkpoints(db: AsyncSession = Depends(get_db), _user: User = Depends(get_current_user)):
-    """Models of whichever image engine is active (see Settings > Image's engine picker)."""
+    """Models of the active image engine."""
     engine = await image_engine_service.get_active_image_engine(db)
     try:
         if engine == "sdcpp":

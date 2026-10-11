@@ -1,14 +1,8 @@
-"""Schemas for the Matricxon process-supervision admin feature (Settings >
-External servers) — see app/services/matricxon_process.py for the
-supervisor that finds/starts/stops the actual sibling matricxon checkout
-these describe (via its own scripts/start.sh|stop.sh, not a binary this
-app launches directly — see project_dir's own docstring below), and
-app/services/matricxon_pool.py / matricxon_client.py for the separate
-"talk to its HTTP API" half. Mirrors app.schemas.ollama_server_config.
-OllamaServerConfig's shape closely, with binary_path replaced by
-project_dir — Matricxon has no standalone binary to point at (see
-../matricxon/scripts/start.sh, a thin `uvicorn` launcher over a Python
-venv, not a self-contained executable)."""
+"""Schemas for the Matricxon process-supervision admin (Settings > External servers). Supervisor:
+services/matricxon_process.py (runs the sibling checkout's scripts/start.sh|stop.sh, no binary);
+HTTP half: matricxon_pool.py / matricxon_client.py. Mirrors OllamaServerConfig with project_dir
+instead of binary_path (Matricxon is a Python venv launched by a `uvicorn` script).
+"""
 
 from typing import Literal
 
@@ -18,108 +12,101 @@ from app.schemas.common import MAX_REMOTE_HOSTS, ServerMode
 
 
 class MatricxonServerConfig(BaseModel):
-    """Admin-configured from Settings > External servers > Matricxon.
-    Every local-mode field is optional — None means "use Matricxon's own
-    built-in default" (see ../matricxon/app/config.py's Settings)."""
+    """Admin-configured. Local-mode fields are optional: None = Matricxon's own default (../matricxon/app/config.py
+    Settings)."""
 
     mode: ServerMode = "local"
     remote_hosts: list[str] = Field(default_factory=list, max_length=MAX_REMOTE_HOSTS)
-    # Path to the Matricxon project checkout (containing scripts/start.sh
-    # etc) — the closest local-mode equivalent to OllamaServerConfig's
-    # binary_path, but a directory, not an executable: see
-    # app.services.matricxon_process._find_project_dir, which checks this
-    # before falling back to the sibling "../matricxon" checkout this
-    # app's own development layout already uses. None means "auto-detect".
+    # Matricxon checkout (with scripts/start.sh): a directory, unlike Ollama's binary_path.
+    # matricxon_process._find_project_dir checks it before the sibling "../matricxon". None = auto-detect.
     project_dir: str | None = None
-    # Where Matricxon stores installed models — passed to scripts/start.sh as MATRICXON_MODELS_DIR
-    # (see app.services.matricxon_process._build_env) and also where
-    # app.services.matricxon_direct_puller writes a directly-pulled model in local mode. None
-    # means "use Matricxon's own default inside the project directory above" (../matricxon/app/
-    # config.py's Settings.models_dir, "./data/models" relative to its own cwd). Changing this
-    # does not move already-downloaded models.
+    # Where installed models are stored: MATRICXON_MODELS_DIR for scripts/start.sh and where
+    # matricxon_direct_puller writes in local mode. None = Matricxon's default ("./data/models" in its project).
+    # Changing it moves nothing.
     models_path: str | None = None
-    # Local-mode only, ignored in "remote" mode — passed to matricxon's own scripts/start.sh as
-    # MATRICXON_MAX_LOADED_MODELS (see app.services.matricxon_process._build_env).
+    # Local mode only: MATRICXON_MAX_LOADED_MODELS (matricxon_process._build_env).
     max_loaded_models: int | None = None
-    # Local-mode only — how many minutes an idle model stays in RAM before Matricxon unloads it (sent as
-    # MATRICXON_DEFAULT_KEEP_ALIVE_SECONDS, minutes * 60). None means "use matricxon's own default"
-    # (Settings.default_keep_alive_seconds, 5 minutes). Unloading also drops the chat's prompt cache, so the next
-    # message reloads the model and re-processes the whole conversation — a longer value avoids that at the cost
-    # of holding the model's RAM while idle. Bounded to 1 minute - 24 hours.
+    # Local mode only: minutes an idle model stays in RAM (MATRICXON_DEFAULT_KEEP_ALIVE_SECONDS = minutes * 60;
+    # None = 5 minutes). Unloading drops the chat's prompt cache, so the next message re-processes the whole
+    # conversation; longer avoids that at the cost of RAM. 1 minute to 24 hours.
     keep_alive_minutes: int | None = Field(default=None, ge=1, le=1440)
-    # Local-mode only — concurrent-user tuning, each None meaning "use matricxon's own default" (see
-    # ../matricxon/app/config.py): how many conversations' caches each loaded model keeps so users sharing a model
-    # don't overwrite each other's (MATRICXON_PROMPT_CACHE_SLOTS, default 4), the memory those caches may use
-    # together in MB (MATRICXON_PROMPT_CACHE_BUDGET_MB, default 2048; whichever limit is hit first evicts the least
-    # recently used conversation), and how many replies run at once on one model, their decode steps batched into
-    # one forward pass (MATRICXON_MAX_DECODE_BATCH, default 8; more users than this wait in line).
+    # Local mode only, concurrent-user tuning (None = Matricxon's default): conversation caches per loaded
+    # model (MATRICXON_PROMPT_CACHE_SLOTS, 4), memory for them in MB (MATRICXON_PROMPT_CACHE_BUDGET_MB, 2048;
+    # the first limit hit evicts the least recently used), and concurrent replies per model with batched
+    # decode steps (MATRICXON_MAX_DECODE_BATCH, 8; others queue).
     prompt_cache_slots: int | None = Field(default=None, ge=1, le=64)
     prompt_cache_budget_mb: int | None = Field(default=None, ge=64, le=1_048_576)
     max_decode_batch: int | None = Field(default=None, ge=1, le=64)
-    # Local-mode only — passed as MATRICXON_MEMORY_SAFETY_MARGIN. Defaults to 1.2, matching matricxon's own
-    # Settings.memory_safety_margin (1.2x — see ../matricxon/app/config.py); None (a blank form field) means "use
-    # matricxon's own built-in default". Bounded to the same 1.1-1.8 range matricxon's own Settings field
-    # enforces server-side (below 1.1 stops meaning anything as a *safety* margin; above 1.8 has no evidence
-    # behind it) — validated here too so a bad value is rejected at Save time with a clear message instead of
-    # silently failing matricxon's own env-var validation on the next restart.
+    # Local mode only: MATRICXON_MEMORY_SAFETY_MARGIN, default 1.2 (Matricxon's Settings.memory_safety_margin);
+    # None = its default. Limited to 1.1-1.8 like Matricxon, validated here so Save rejects bad values instead of
+    # failing at the next restart.
     memory_safety_margin: float | None = Field(default=1.2, ge=1.1, le=1.8)
-    # Local-mode only — passed as MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE. Mirrors matricxon's own
-    # Settings.enable_quantized_native_compute (../matricxon/app/config.py) default of True — see that
-    # field's own docstring for what it trades off (real quantized-native compute, never materializing a full
-    # dequantized weight; fast with the native C kernels below, much slower with the Numba ones).
+    # Local mode only: MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE (default True, as Matricxon's Settings):
+    # computes on quantized weights without a full dequantized copy; fast with the native C kernels, much slower with
+    # Numba.
     enable_quantized_native_compute: bool = True
-    # Local-mode only — passed as MATRICXON_GEMV_BACKEND. Mirrors matricxon's own Settings.gemv_backend: which
-    # kernels run those quantized weights — "native" (the default), matricxon's own C integer kernels (compiled
-    # with the machine's gcc on first start, falling back to numba if that fails), or "numba". Only has an
-    # effect with enable_quantized_native_compute on.
+    # Local mode only: MATRICXON_GEMV_BACKEND: "native" (default; C integer kernels compiled with gcc on first
+    # start, falls back to numba) or "numba". Needs enable_quantized_native_compute.
     gemv_backend: Literal["numba", "native"] = "native"
-    # Local-mode only — passed as MATRICXON_TORCH_THREADS: CPU threads for both PyTorch and the native C kernels
-    # (matricxon's own Settings.torch_threads). None means "every core" (matricxon's own default). Fewer threads
-    # also means less heat - this project's own laptop runs at 2 for exactly that reason.
+    # Local mode only: MATRICXON_TORCH_THREADS, CPU threads for PyTorch and the native kernels. None = every core.
+    # Fewer threads means less heat.
     torch_threads: int | None = Field(default=None, ge=1, le=256)
-    # Local-mode only — passed as MATRICXON_DEVICE: "cpu" (default) or "cuda"/"cuda:N". Matricxon's GPU mode is
-    # EXPERIMENTAL (written without GPU hardware, never run on one — see ../matricxon/ROADMAP.md): a GPU that isn't
-    # there makes Matricxon fail at startup instead of silently running on the CPU.
+    # Local mode only: MATRICXON_DEVICE, "cpu" (default) or "cuda"/"cuda:N". GPU mode is EXPERIMENTAL (never run
+    # on GPU hardware, see../matricxon/ROADMAP.md); a missing GPU fails startup instead of falling back to CPU.
     device: str = Field(default="cpu", pattern=r"^(cpu|cuda(:\d+)?)$")
-    # Local-mode only — passed as MATRICXON_GPU_WEIGHT_MODE, only meaningful with a cuda device: "dequantized"
-    # (default; weights in bf16/fp16 in VRAM, fastest, ~2 bytes per parameter) or "packed" (supported quantized
-    # types stay quantized in VRAM and are dequantized per call — far less VRAM, slower per token).
+    # Local mode only, cuda only: MATRICXON_GPU_WEIGHT_MODE, "dequantized" (default; bf16/fp16 in VRAM, fastest,
+    # ~2 bytes/param) or "packed" (quantized in VRAM, dequantized per call; less VRAM, slower).
     gpu_weight_mode: Literal["dequantized", "packed"] = "dequantized"
-    # Local-mode only — passed as MATRICXON_LOG_LEVEL. Mirrors matricxon's own Settings.log_level (same file):
-    # 0 = warnings/errors only, 1 = coarse per-request pipeline milestones, 2 = adds a per-decoder-layer trace.
+    # Local mode only: MATRICXON_LOG_LEVEL (as Matricxon's Settings.log_level): 0 warnings/errors, 1 per-request
+    # milestones, 2 adds a per-layer trace.
     log_level: int = Field(default=0, ge=0, le=2)
-    # Overrides for app.services.matricxon_installer's own install_stream
-    # — kept for shape-parity with OllamaServerConfig/ComfyUIProcessConfig,
-    # but not yet functional: Matricxon isn't published on GitHub yet (see
-    # matricxon_installer's own docstring), so these fields have nothing
-    # real to point at until a release exists.
+    # Local mode only: where saved chat caches live (MATRICXON_PROMPT_CACHE_DIR; key and policy files beside it).
+    # None = default inside the project. In a cluster it is the shared folder (Cluster page); existing files are not
+    # moved.
+    prompt_cache_path: str | None = None
+    # Joiner nodes added on the Cluster page; the host pool uses them with the local or remote host(s).
+    cluster_hosts: list[str] = Field(default_factory=list, max_length=MAX_REMOTE_HOSTS)
+    # How other nodes reach THIS Matricxon (MATRICXON_ADVERTISE_URL, e.g. "http://10.0.0.5:8420"). With cluster
+    # mode on, it makes this node the first voter.
+    advertise_url: str | None = None
+    # The node that starts the cluster, chosen on the Cluster page with the shared folders (one of the hosts); None
+    # until chosen.
+    first_node: str | None = None
+    # Local mode only: MATRICXON_CLUSTER_ROLE (Cluster page on/off): "off" standalone; "seed" the existing install
+    # a cluster grows from. Nodes are fresh installs only, never merged (../matricxon/docs/CLUSTER_STORAGE.md).
+    # Applies at next start.
+    cluster_role: Literal["off", "seed", "joiner"] = "off"
+    # Signs pAIring's admin calls to Matricxon (MATRICXON_ADMIN_SECRET on each node). None = nodes are
+    # unprotected. Encrypted at rest (settings_service); never sent to the browser.
+    admin_secret: str | None = None
+    # Nodes that only vote (Matricxon node_kind "voter"): listed with the other nodes but never given chats.
+    voter_hosts: list[str] = Field(default_factory=list, max_length=MAX_REMOTE_HOSTS)
+    # Overrides for matricxon_installer.install_stream; kept for parity with Ollama/ComfyUI but not functional
+    # yet (Matricxon isn't published on GitHub).
     install_repo: str | None = None
     install_version: str | None = None
 
     @model_validator(mode="after")
     def _fall_back_to_local_when_remote_has_no_hosts(self) -> "MatricxonServerConfig":
-        """See OllamaServerConfig's identical validator for the full reasoning."""
+        """See OllamaServerConfig's validator."""
         if self.mode == "remote" and not self.remote_hosts:
             self.mode = "local"
         return self
 
 
 class MatricxonAutoDetectedPath(BaseModel):
-    """What app.services.matricxon_process._find_project_dir resolves to
-    right now with no admin override — Settings > External servers shows
-    this as the project_dir field's own placeholder, mirroring
-    OllamaAutoDetectedPath's identical purpose for binary_path."""
+    """What matricxon_process._find_project_dir resolves to with no override; the project_dir placeholder
+    (like OllamaAutoDetectedPath).
+    """
 
     path: str | None = None
-    # What app.services.matricxon_process.auto_detect_models_dir() resolves to — the models_path
-    # field's own placeholder, same "show what blank actually resolves to" idea as `path` above.
+    # What matricxon_process.auto_detect_models_dir resolves to; the models_path placeholder.
     models_path: str | None = None
 
 
 class MatricxonServerStatus(BaseModel):
-    """GET .../status response — mirrors OllamaServerStatus's exact
-    shape. `pid` is read from Matricxon's own run/matricxon.pid (written
-    by scripts/start.sh) rather than tracked independently."""
+    """GET.../status, same shape as OllamaServerStatus. `pid` is read from Matricxon's run/matricxon.pid (written by
+    scripts/start.sh)."""
 
     running: bool
     installed: bool = False

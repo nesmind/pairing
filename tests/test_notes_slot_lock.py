@@ -1,4 +1,4 @@
-"""Persona/rules/skill of a chat can only change before its first message (app/routers/notes.py)."""
+"""Persona/rules/skill of a chat can change only before its first message (routers/notes.py)."""
 
 import pytest
 from fastapi import HTTPException
@@ -14,7 +14,7 @@ async def test_slots_are_editable_only_while_the_chat_has_no_messages(db, user):
     await db.commit()
     await db.refresh(conversation, ["messages"])
 
-    await _require_slot_edit_rights(conversation, user)  # fresh chat: fine
+    await _require_slot_edit_rights(conversation, user)
 
     db.add(Message(conversation_id=conversation.id, role="user", content="hi", sender_id=user.id))
     await db.commit()

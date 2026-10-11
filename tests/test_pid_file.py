@@ -14,4 +14,4 @@ def test_write_stores_this_processs_pid_and_remove_deletes_it(tmp_path):
 
     pid_file.remove()
     assert not path.exists()
-    pid_file.remove()  # already gone: no error
+    pid_file.remove()

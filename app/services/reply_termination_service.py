@@ -7,9 +7,8 @@ from app.models import Message
 from app.services import reply_broadcast_service, reply_cancellation_service, reply_cross_instance_service
 from app.services.inference_client import stop_model
 
-# Same reasoning as reply_generation_service._background_generation_tasks:
-# asyncio only holds a *weak* reference to a bare asyncio.create_task()
-# result. Each task removes itself via its own done-callback.
+# As reply_generation_service._background_generation_tasks: asyncio keeps only a weak reference to a bare
+# create_task result. Each task removes itself via its done-callback.
 _background_tasks: set[asyncio.Task] = set()
 
 
@@ -38,9 +37,8 @@ async def _persist_cancelled_reply(message_id: str, model: str, full_reply: str,
     async with AsyncSessionLocal() as db:
         message = await db.get(Message, message_id)
         if message is not None:
-            # If message is None, the conversation (and this row with it) was
-            # deleted outright — there's nothing left to write, but the ML engine
-            # still needs the stop signal below regardless.
+            # If message is None the conversation (and row) was deleted: nothing to write, but the engine still needs
+            # the stop signal below.
             await mark_error(
                 db, message, full_reply, conversation_id, "Cancelled: left the chat before this reply finished."
             )

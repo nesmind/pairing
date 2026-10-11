@@ -1,33 +1,26 @@
 #!/usr/bin/env bash
+# Sets up pAIring on a fresh Debian (or Ubuntu) server: system packages, a Python venv and a systemd service. Each step
+# says what it will do and checks that it worked, so a failure shows where it stopped.
 #
-# Sets up pAIring itself on a fresh Debian (or Ubuntu) server: system
-# packages, a Python venv, and a systemd service for the app. Every step
-# prints what it's about to do and checks it worked before moving on, so a
-# failure points at exactly where things stopped rather than leaving you
-# to guess.
+# Copy the project over first:
 #
-#     rsync -av --exclude .venv --exclude data --exclude models \
-#         /path/to/pAIring/ youruser@newserver:/opt/pairing/
+#   rsync -av --exclude.venv --exclude data --exclude models \
+#     /path/to/pAIring/ youruser@newserver:/opt/pairing/
 #
-# (knowledge/ is included by default — drop the --exclude for it too if
-# you'd rather start with an empty knowledge base on the new server.
-# data/ is excluded since it's regenerated fresh; models/ is excluded
-# since copying potentially 100+GB of weights over the network isn't
-# worth it — pull them again on the new server instead.
+# (knowledge/ is copied by default; exclude it too to start with an empty knowledge base. data/ is excluded since it is
+# regenerated; models/ since copying 100+GB of weights isn't worth it: pull them again on the new server.)
 #
-# Then, ON THE NEW SERVER, from inside that copied folder:
+# Then, ON THE NEW SERVER, from the copied folder:
 #
-#     sudo bash scripts/install_on_fresh_server.sh
+#   sudo bash scripts/install_on_fresh_server.sh
 #
-# Safe to re-run: every step below checks whether it's already done
-# before doing it again.
+# Safe to re-run: each step checks whether it is already done.
 
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Small helpers for readable, consistent output — every real step below is
-# wrapped in one of these so progress reads as a clear narrated log instead
-# of a wall of raw command output.
+# Small helpers for readable, consistent output: every step below uses one, so progress reads as a narrated log instead
+# of raw command output.
 # ---------------------------------------------------------------------------
 step()    { printf '\n\033[1;34m==>\033[0m %s\n' "$1"; }
 info()    { printf '    %s\n' "$1"; }
@@ -67,7 +60,7 @@ success "Detected: $PRETTY_NAME"
 step "2. Installing system packages (python3, venv, build tools)"
 # ---------------------------------------------------------------------------
 apt-get update -qq
-# git/cmake/build-essential: for Settings > Image > "Build from source" (stable-diffusion.cpp), optional but cheap
+# git/cmake/build-essential: for Settings > Image > "Build from source" (stable-diffusion.cpp); optional but cheap
 apt-get install -y -qq python3 python3-venv python3-pip rsync git cmake build-essential
 success "System packages installed."
 
@@ -117,17 +110,16 @@ if [ -f "$APP_DIR/.env" ] && grep -qE '^SECRET_KEY=.+' "$APP_DIR/.env" 2>/dev/nu
 else
     NEW_SECRET="$(sudo -u "$APP_USER" "$APP_DIR/.venv/bin/python" -c 'import secrets; print(secrets.token_hex(32))')"
     if [ -f "$APP_DIR/.env" ] && grep -qE '^SECRET_KEY=' "$APP_DIR/.env" 2>/dev/null; then
-        # An empty "SECRET_KEY=" placeholder line exists (e.g. copied
-        # from .env.example) — replace it in place rather than
-        # appending a second, conflicting SECRET_KEY line.
+        # An empty "SECRET_KEY=" placeholder exists (e.g. copied from .env.example): replace it in place instead of
+        # appending a second, conflicting line.
         sed -i "s|^SECRET_KEY=.*|SECRET_KEY=$NEW_SECRET|" "$APP_DIR/.env"
     else
         echo "SECRET_KEY=$NEW_SECRET" >> "$APP_DIR/.env"
     fi
     success "Generated a new SECRET_KEY in $APP_DIR/.env"
 fi
-# .env holds SECRET_KEY and (if configured) the MySQL password — owner-only, applied unconditionally (not just
-# on first creation) so a pre-existing .env brought over from another server gets its permissions fixed too.
+# .env holds SECRET_KEY and (if set) the MySQL password, so make it owner-only. Applied every run, so a .env brought
+# from another server gets fixed too.
 chown "$APP_USER":"$APP_USER" "$APP_DIR/.env"
 chmod 600 "$APP_DIR/.env"
 

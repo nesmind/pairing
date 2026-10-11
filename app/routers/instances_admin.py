@@ -1,9 +1,5 @@
-"""
-Settings > System > Local instances admin endpoints: how many local
-app-process instances should be running (1-8), and their current
-observed status. See app/services/instance_service.py for the
-supervisor logic — changing the count here takes effect immediately
-(siblings spawned/terminated live), no restart required.
+"""Settings > System > Local instances: how many app processes run (1-8) and their status. Supervisor:
+app/services/instance_service.py; changes apply live, no restart.
 """
 
 from fastapi import APIRouter, Depends, HTTPException

@@ -1,7 +1,6 @@
-"""Unit tests for app/services/runpod_client.py — the RunPod Serverless
-OpenAI-compatible HTTP calls. httpx itself is mocked (via respx-free monkeypatching
-of httpx.AsyncClient) rather than hitting the real RunPod API — mirrors
-tests/test_ollama_client.py's own "the HTTP boundary is the seam" convention."""
+"""Tests for services/runpod_client.py (the RunPod Serverless OpenAI-compatible HTTP calls). httpx is mocked
+by monkeypatching httpx.AsyncClient, not respx, like tests/test_ollama_client.py: the HTTP boundary is the seam.
+"""
 
 import httpx
 import pytest
@@ -301,9 +300,10 @@ async def test_test_connection_reports_a_network_error(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_test_connection_does_not_require_a_ready_cache_entry():
-    """Unlike list_models/chat_stream/check_health, test_connection takes the candidate config directly and
-    must work even when connector_config_cache has nothing saved yet — that's the whole point of testing a
-    config *before* it's allowed to become ready."""
+    """Unlike list_models/chat_stream/check_health, test_connection takes the candidate config directly and must work
+    with
+    nothing saved in connector_config_cache: the point of testing a config *before* it may become ready.
+    """
     assert connector_config_cache.get_config("runpod") == {}
     passed, message = await runpod_client.test_connection({})
     assert passed is False

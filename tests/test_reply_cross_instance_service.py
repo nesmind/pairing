@@ -1,9 +1,7 @@
-"""Unit tests for app/services/reply_cross_instance_service.py — the
-database-fallback helpers reply_generation_service relies on so a
-delete_message call served by a *different* sibling instance (see
-app.services.instance_pool) isn't completely invisible to a reply's own
-generation task. See that module's own docstring for the full picture;
-these tests cover each helper in isolation."""
+"""Tests for services/reply_cross_instance_service.py, the DB-fallback helpers reply_generation_service uses so a
+delete_message served by a *different* sibling instance (instance_pool) isn't invisible to a reply's generation task.
+Each helper is covered in isolation (see the module).
+"""
 
 import asyncio
 
@@ -40,26 +38,18 @@ async def test_refresh_or_none_returns_none_for_a_hard_deleted_row(db, user):
     db.add(message)
     await db.commit()
 
-    # Performed through a *separate* session, matching how this actually
-    # happens in production (refresh_or_none is always called from a
-    # session that never touched the delete itself — see
-    # reply_cross_instance_service's own docstring). Reusing `db` for
-    # both the delete and the refresh_or_none call below would detach
-    # `message` from `db`'s own identity map once the cascade-delete
-    # commits, which raises a different (and here, irrelevant)
-    # InvalidRequestError instead of exercising the real "row is gone"
-    # path this test is actually after.
+    # Through a *separate* session, as in production (refresh_or_none runs in a session that never touched the
+    # delete). Reusing `db` for both would detach `message` from its identity map on the cascade-delete commit,
+    # raising a different, irrelevant InvalidRequestError instead of the real "row is gone" path.
     other_session_factory = async_sessionmaker(db.bind, expire_on_commit=False)
     async with other_session_factory() as other_db:
         other_conversation = await other_db.get(Conversation, conversation.id)
-        # conversation.messages (lazy="selectin") was loaded empty when
-        # `conversation` was first committed above, before `message` was
-        # added directly via db.add() — the ORM's own cascade delete
-        # below only touches what's in that *in-memory* collection, so
-        # without this refresh it wouldn't know to delete `message` at
-        # all.
+        # conversation.messages (selectin) was loaded empty when `conversation` was first committed, before `message`
+        # was
+        # added via db.add; the ORM cascade below touches only the *in-memory* collection, so without this refresh it
+        # wouldn't delete `message`.
         await other_db.refresh(other_conversation, attribute_names=["messages"])
-        await other_db.delete(other_conversation)  # cascades to the message row too
+        await other_db.delete(other_conversation)
         await other_db.commit()
 
     assert await reply_cross_instance_service.refresh_or_none(db, message) is None
@@ -93,11 +83,10 @@ def test_terminal_event_for_error_and_complete():
 
 @pytest.mark.asyncio
 async def test_watch_for_deletion_cancels_the_task_once_the_row_is_marked_deleted(db, user):
-    """The core regression case: a reply's own generation task is stuck
-    (e.g. a slow cold model load, no chunks yet — reply_generation_service's
-    own flush-point check never even runs) when an admin deletes it —
-    the watchdog must notice via the database directly and cancel the
-    task, regardless of which instance actually served the delete."""
+    """The core regression: a reply's generation task is stuck (e.g. a slow cold model load, no chunks yet, so
+    reply_generation_service's flush-point check never runs) when an admin deletes it. The watchdog must notice via
+    the DB and cancel the task, whichever instance served the delete.
+    """
     conversation = await conversation_service.create_conversation(db, ConversationCreate(model="fake-model"), user)
     message = Message(conversation_id=conversation.id, role="assistant", content="", status="streaming")
     db.add(message)
@@ -111,7 +100,7 @@ async def test_watch_for_deletion_cancels_the_task_once_the_row_is_marked_delete
         reply_cross_instance_service.watch_for_deletion(message.id, task, poll_interval=0.05)
     )
 
-    await asyncio.sleep(0.1)  # let the watchdog get at least one poll in
+    await asyncio.sleep(0.1)
     message.status = "deleted"
     await db.commit()
 
@@ -150,8 +139,7 @@ async def test_watch_for_deletion_cancels_when_the_row_is_gone_entirely(db, user
     db.add(message)
     await db.commit()
     message_id = message.id
-    # See test_refresh_or_none_returns_none_for_a_hard_deleted_row's own
-    # comment on why this is needed before the cascade delete below.
+    # See test_refresh_or_none_returns_none_for_a_hard_deleted_row on why this is needed before the cascade delete.
     await db.refresh(conversation, attribute_names=["messages"])
 
     async def stuck_forever():
@@ -163,7 +151,7 @@ async def test_watch_for_deletion_cancels_when_the_row_is_gone_entirely(db, user
     )
 
     await asyncio.sleep(0.1)
-    await db.delete(conversation)  # cascades: the message row disappears outright
+    await db.delete(conversation)
     await db.commit()
 
     with pytest.raises(asyncio.CancelledError):

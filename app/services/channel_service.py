@@ -1,10 +1,6 @@
-"""
-Business logic behind app/routers/channels.py: admin CRUD for channels
-and their membership, plus the permission check
-(can_manage_channel_conversation) that app/services/conversation_service.py
-and app/services/note_service.py use to gate a channel conversation's
-model/persona/rules/skill against everyone but admins and that specific
-channel's managers.
+"""Logic for app/routers/channels.py: admin CRUD for channels and membership, plus
+can_manage_channel_conversation, which conversation_service.py and note_service.py use to restrict a
+channel's model/persona/rules/skill to admins and its managers.
 """
 
 from fastapi import HTTPException
@@ -19,13 +15,9 @@ from app.services.settings_service import get_default_model, get_default_params
 
 
 def can_manage_channel_conversation(conversation: Conversation, user: User) -> bool:
-    """True if `user` may change `conversation`'s model/params or its
-    pinned persona/rules/skill notes — global admins always can; anyone
-    else needs to be flagged is_manager on the specific channel this
-    conversation belongs to. Assumes `conversation.channel` is already
-    loaded (true for anything fetched via
-    conversation_service.get_accessible_conversation_or_404, since
-    Conversation.channel and Channel.members are both lazy="selectin")."""
+    """True if `user` may change the conversation's model/params or pinned notes: admins, or managers
+    (is_manager) of its channel. Assumes `conversation.channel` is loaded (lazy="selectin").
+    """
     if user.role == "admin":
         return True
     if conversation.channel is None:
@@ -35,17 +27,10 @@ def can_manage_channel_conversation(conversation: Conversation, user: User) -> b
 
 
 async def _validate_membership(db: AsyncSession, member_ids: list[str], manager_ids: set[str]) -> list[User]:
-    """Shared validation for create/update: at least one manager is
-    required, every member id must be a real user, every manager id must
-    also be a member, and every manager must currently hold the
-    "channel_manager" role (see app/schemas/user.py) — that role is what
-    makes a user *eligible* to be flagged as a manager; being flagged on
-    a specific channel is what actually grants the rights (see
-    can_manage_channel_conversation). Only reached when membership is
-    actually being set/changed (create always calls this; update only
-    calls it when body.member_user_ids was sent), so a rename-only PATCH
-    never re-triggers this requirement against a channel's existing,
-    already-valid membership."""
+    """Shared create/update validation: at least one manager, every member a real user, every manager a member
+    holding the "channel_manager" role (eligibility; flagging on the channel grants the rights). Run on create,
+    and on update only when member_user_ids was sent, so rename-only edits skip it.
+    """
     if not manager_ids:
         raise HTTPException(status_code=400, detail="A channel needs at least one manager.")
     if manager_ids - set(member_ids):
@@ -80,10 +65,7 @@ async def list_channels(db: AsyncSession) -> list[Channel]:
 
 
 async def list_channels_for_user(db: AsyncSession, user: User) -> list[Channel]:
-    """The channels `user` is a member of, for the sidebar (see
-    app/routers/channels.py's GET /api/channels). Membership-only — a
-    global admin who isn't a member of a given channel doesn't see it
-    here, by design."""
+    """The channels `user` belongs to (sidebar). Membership only: non-member admins don't see it."""
     return (
         (
             await db.execute(
@@ -103,26 +85,24 @@ async def get_channel_or_404(db: AsyncSession, channel_id: str) -> Channel:
 
 
 async def create_channel(db: AsyncSession, body: ChannelCreate, creator: User) -> Channel:
-    """Creates the channel, its one shared Conversation (started with
-    `creator`'s own default model/params — same convention
-    conversation_service.create_conversation uses for a brand-new
-    personal chat), and its initial membership, all in one transaction."""
+    """Creates the channel, its shared Conversation (with `creator`'s default model/params, like
+    conversation_service.create_conversation) and initial membership in one transaction.
+    """
     manager_ids = set(body.manager_user_ids)
     members = await _validate_membership(db, body.member_user_ids, manager_ids)
     await _assert_name_available(db, body.name)
 
     channel = Channel(name=body.name)
     db.add(channel)
-    await db.flush()  # assigns channel.id for the conversation/members below
+    await db.flush()  # assigns channel.id
 
-    # Deferred import: note_service itself imports this module (for can_manage_channel_conversation
-    # below), so importing it back at module level here would be circular.
+    # Deferred import: note_service imports this module (can_manage_channel_conversation), so a top-level import would
+    # be circular.
     from app.services import note_service
 
-    # get_default_model is a raw stored preference with no installed-check of its own — see
-    # conversation_service.create_conversation's identical resolve_installed_model call for why a channel's
-    # brand-new shared conversation needs the same fallback (creator's stored default routinely goes stale:
-    # an admin switching the active engine, or simply deleting a model, both leave it pointed at nothing).
+    # get_default_model is a stored preference with no installed-check; apply the same fallback as
+    # conversation_service.create_conversation's resolve_installed_model (defaults go stale after an engine
+    # switch or deleted model).
     params = await note_service.seed_initial_disabled_notes(db, creator, await get_default_params(db, creator))
     db.add(
         Conversation(
@@ -136,16 +116,14 @@ async def create_channel(db: AsyncSession, body: ChannelCreate, creator: User) -
 
     await db.commit()
     await db.refresh(channel)
-    # The channel's notes are configured once, here (copied from the creator's defaults; see freeze_channel_notes).
+    # The channel's notes are configured once here, copied from the creator's defaults (freeze_channel_notes).
     await note_service.freeze_channel_notes(db, channel.conversation, body.name, creator.id)
     await db.commit()
     return channel
 
 
 async def update_channel(db: AsyncSession, channel: Channel, body: ChannelUpdate) -> Channel:
-    """Renames the channel and/or replaces its membership wholesale (see
-    ChannelUpdate's docstring on why member/manager updates are a full
-    replace, not a diff)."""
+    """Renames the channel and/or replaces membership wholesale (see ChannelUpdate)."""
     if body.name is not None and body.name != channel.name:
         await _assert_name_available(db, body.name, exclude_channel_id=channel.id)
         channel.name = body.name
@@ -167,41 +145,28 @@ async def update_channel(db: AsyncSession, channel: Channel, body: ChannelUpdate
                 await db.delete(row)
 
     await db.commit()
-    # attribute_names=["members"] (not a bare refresh()): a bare
-    # db.refresh() expires *all* of channel's relationship attributes,
-    # including ones this function never touched (like `conversation`)
-    # and, critically, doesn't safely repopulate them afterward under
-    # AsyncSession — the very next access (channel_service.to_channel_out,
-    # called by the router right after this returns) would then attempt
-    # a synchronous lazy load outside of an awaited context and crash
-    # with sqlalchemy.exc.MissingGreenlet. Naming exactly the one
-    # relationship this function actually changed avoids expiring
-    # anything else, and IS safely reloaded here since it's awaited.
+    # attribute_names=["members"] rather than a bare refresh: that expires all relationships (e.g. `conversation`)
+    # and under AsyncSession the next access (channel_service.to_channel_out) would lazy-load outside an await
+    # (MissingGreenlet). Naming the one changed relationship avoids it.
     await db.refresh(channel, attribute_names=["members"])
     return channel
 
 
 async def delete_channel(db: AsyncSession, channel: Channel) -> None:
-    """Permanently deletes the channel, its shared conversation (and that
-    conversation's messages/note_pins), and its membership rows — all via
-    cascades declared on Channel/Conversation (see app/models/channel.py,
-    app/models/conversation.py). There's no undo.
+    """Permanently deletes the channel, its conversation (messages, note_pins) and membership via cascades
+    (models/channel.py, models/conversation.py). No undo.
 
-    The ORM cascade has no idea attachment files exist on disk at all —
-    removed explicitly first, same as
-    conversation_service.delete_conversation's identical treatment for a
-    personal conversation. `channel.conversation` is lazy="selectin", so
-    this is safe to read with no extra query."""
+    Attachment files are removed explicitly first (the cascade ignores disk), as in
+    conversation_service.delete_conversation. `channel.conversation` is selectin-loaded.
+    """
     chat_attachment_service.delete_conversation_attachments(channel.conversation.id)
     await db.delete(channel)
     await db.commit()
 
 
 def to_channel_out(channel: Channel) -> ChannelOut:
-    # `m.user` reads as None for a membership row whose user no longer exists — user_service.delete_user cleans
-    # these up on delete now, but a stray one (confirmed live: this crashed the entire admin Channels list over
-    # one bad row, not just that one channel) shouldn't take the whole list down with it. Skipped rather than
-    # shown with a fake placeholder username — it's not a real member of anything anymore.
+    # `m.user` is None for a membership whose user is gone (user_service.delete_user now cleans these; one such
+    # row once crashed the admin Channels list). Skip it rather than show a fake member.
     return ChannelOut(
         id=channel.id,
         name=channel.name,

@@ -1,8 +1,5 @@
-"""
-Shared pytest fixtures: an isolated in-memory SQLite database per test,
-using the app's real async engine/session machinery (see
-app/database.py) so service-layer tests exercise the exact same query
-style production code does.
+"""Shared pytest fixtures: an isolated in-memory SQLite database per test, using the app's real async
+engine/session machinery (app/database.py) so service tests run the same queries as production.
 """
 
 import pytest
@@ -29,39 +26,45 @@ from app.services.auth_service import hash_password
 
 @pytest.fixture(autouse=True)
 def _tests_never_resolve_the_real_matricxon_checkout(monkeypatch, tmp_path):
-    """matricxon_process falls back to the sibling ../matricxon checkout when no project_dir override is given,
-    and saving a Matricxon config (the admin router tests do) writes that checkout's own .env
-    (matricxon_process.write_env_file). Without this, a full test run silently overwrote a developer's real
-    matricxon .env with test values (found 2026-10-01: MATRICXON_MODELS_DIR=/data/m, a changed margin, which
-    then crashed matricxon's own startup validation). Pointing the default at an empty directory makes every
-    test that doesn't pass its own project_dir (or patch this itself) see "not installed" instead."""
+    """matricxon_process falls back to the sibling../matricxon checkout without a project_dir, and saving a
+    Matricxon config (admin router tests) writes that checkout's.env (write_env_file). A full test run once
+    overwrote a developer's real matricxon.env (MATRICXON_MODELS_DIR=/data/m and a changed margin
+    crashed matricxon's startup validation). Pointing the default at an empty directory makes tests without their
+    own project_dir see "not installed".
+    """
     monkeypatch.setattr(matricxon_process, "_DEFAULT_PROJECT_DIR", tmp_path / "no-matricxon-checkout")
+
+
+@pytest.fixture(autouse=True)
+def _tests_never_write_to_the_real_cluster(monkeypatch):
+    """Cluster settings go through whichever voter answers (ClusterSettings.status). With no mock transport or hosts
+    that is the live cluster (a test wrote fake cluster/paths folders into it). Without a mock there is no
+    voter.
+    """
+    from app.services.cluster_settings import ClusterSettings
+
+    real = ClusterSettings.status
+
+    async def guarded(self, host):
+        return None if self._transport is None and self._hosts is None else await real(self, host)
+
+    monkeypatch.setattr(ClusterSettings, "status", guarded)
 
 
 @pytest.fixture(autouse=True)
 def _model_install_checks_do_not_hit_a_real_engine(monkeypatch):
     """conversation_service.create_conversation/update_conversation and channel_service.create_channel (via
-    model_catalog_service.resolve_installed_model) all now validate a model tag against whichever engine is
-    actually installed before accepting it — see conversation_service's own module docstring for the real bug
-    this closed (a stale stored default, or an explicit request, could otherwise point a conversation at a
-    model that doesn't exist). Both checks would otherwise be a real, unmocked network call from every test in
-    this suite that creates a conversation, most of which use "fake-model"/some other placeholder tag purely as
-    setup and aren't testing this validation itself.
+    model_catalog_service.resolve_installed_model) validate a model tag against the installed engine; unmocked
+    that is a real network call from every test creating a conversation, most using "fake-model" as setup.
 
-    Two different defaults for two different call sites, both module-local bindings (see this project's own
-    "module-split import binding" convention — patching model_catalog_service's copy never affects
-    conversation_service's separately-imported one, and vice versa):
-      - conversation_service.installed_chat_models (the *explicit* body.model check, create and update alike)
-        defaults to treating "fake-model" as installed, since that's the placeholder the overwhelming majority
-        of this suite's fixtures already use.
-      - model_catalog_service.installed_chat_models (what resolve_installed_model itself reads, for the
-        *default*-model path only) defaults to an empty list, which makes resolve_installed_model a pure no-op
-        that returns whatever it was given unchanged (see its own fallback chain) — preserving this suite's
-        existing "whatever get_default_model returns is used as-is" expectations.
+    Two defaults for two call sites, both module-local bindings (patching model_catalog_service's copy doesn't
+    affect conversation_service's):
+      - conversation_service.installed_chat_models (the *explicit* body.model check, create and update) treats
+        "fake-model" as installed, the placeholder most fixtures use.
+      - model_catalog_service.installed_chat_models (read by resolve_installed_model for the *default* path) is an
+        empty list, so resolve_installed_model returns its input unchanged, keeping "get_default_model is used as-is".
 
-    A test that specifically wants to exercise "not installed"/"falls back to something else" behavior
-    overrides either with its own more specific monkeypatch.setattr, same as
-    tests/test_conversation_service.py's own update_conversation tests already did before this fixture existed.
+    A test of "not installed"/fallback overrides either with its own monkeypatch.setattr.
     """
 
     async def fake_conversation_service_installed():
@@ -76,34 +79,17 @@ def _model_install_checks_do_not_hit_a_real_engine(monkeypatch):
 
 @pytest_asyncio.fixture
 async def db(monkeypatch) -> AsyncSession:
-    """A fresh in-memory SQLite database for a single test — created
-    from scratch and torn down afterwards, so tests never share state or
-    depend on run order.
+    """A fresh in-memory SQLite database per test, created and torn down, sharing no state and not order-dependent.
 
-    Every conversation's reply is now generated by a fully detached
-    background task (see app.services.reply_generation_service) that
-    opens its own AsyncSessionLocal() rather than reusing the request's
-    (here, the test's own `db`) session — by default that would be the
-    app's real database, not this test's isolated one. Pointing it at a
-    session factory bound to this same in-memory engine is what lets a
-    test that drains build_reply_stream to completion see the background
-    task's writes through this same `db` fixture, with no per-test
-    wiring needed. A test that needs to simulate a *second*, later
-    session (e.g. after this one is gone) still builds its own separate
-    engine, same as before — this only covers the common case of
-    "finish generating and read the result back." Patched in
-    reply_termination_service and reply_cross_instance_service too (not
-    just reply_generation_service): `from app.database import
-    AsyncSessionLocal` binds an independent name in *each* module's own
-    namespace, so patching one module's copy never affects another's —
-    both handle their own piece of a cancelled/cross-instance-deleted
-    reply (split out of reply_generation_service, see that module's own
-    docstring). image_generation_service gets the same treatment for the
-    same reason — its own background job task also opens a fresh
-    AsyncSessionLocal() rather than reusing this fixture's session, and
-    so do ollama_ps_poller/matricxon_ps_poller (each engine's own periodic /api/ps poll),
-    system_metrics_poller (its periodic CPU/RAM/disk sample), and
-    retention_poller (its periodic prune of all of these, plus telemetry_events).
+    Replies are generated by a detached task (reply_generation_service) that opens its own AsyncSessionLocal
+    (by default the real database, not this isolated one). Pointing it at a factory bound to this engine lets a
+    test that drains build_reply_stream see the task's writes through this `db`. A test needing a *second*, later
+    session builds its own engine.
+
+    Patched in reply_termination_service and reply_cross_instance_service too: `from app.database import
+    AsyncSessionLocal` binds a name in *each* module, so patching one never affects another. Same for
+    image_generation_service (its job task), ollama_ps_poller/matricxon_ps_poller, system_metrics_poller and
+    retention_poller.
     """
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
@@ -126,8 +112,7 @@ async def db(monkeypatch) -> AsyncSession:
 
 @pytest_asyncio.fixture
 async def user(db: AsyncSession) -> User:
-    """A single ordinary (non-admin) user, persisted, for tests that
-    need a real owner_id to attach rows to."""
+    """One ordinary (non-admin) persisted user, for tests needing a real owner_id."""
     u = User(username="alice", password_hash=hash_password("alice-pw"), role="user")
     db.add(u)
     await db.commit()
@@ -146,11 +131,9 @@ async def admin_user(db: AsyncSession) -> User:
 
 @pytest_asyncio.fixture
 async def channel_manager_user(db: AsyncSession) -> User:
-    """A user holding the "channel_manager" role — eligible to be
-    flagged as a manager on a specific channel (see
-    app/services/channel_service.py). Holding this role alone grants no
-    rights on any given channel; it only makes the user a valid pick for
-    that channel's manager_user_ids."""
+    """A user with the "channel_manager" role: eligible to be flagged manager on a channel
+    (channel_service.py). The role alone grants no rights; it only makes them a valid manager_user_ids pick.
+    """
     u = User(username="carol", password_hash=hash_password("carol-pw"), role="channel_manager")
     db.add(u)
     await db.commit()

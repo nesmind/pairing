@@ -1,5 +1,4 @@
-"""Request/response shapes for app/routers/chat.py and the message list
-under app/routers/conversations.py."""
+"""Request/response shapes for app/routers/chat.py and the message list in app/routers/conversations.py."""
 
 from datetime import datetime
 
@@ -9,11 +8,10 @@ from pydantic import BaseModel, ConfigDict
 class AttachmentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    # The only one the frontend actually fetches from
-    # (GET /api/chat/attachments/{id}).
+    # The only one the frontend fetches (GET /api/chat/attachments/{id}).
     url: str
     filename: str
-    # "image"/"text" — picks how chat.js renders it.
+    # "image"/"text": how chat.js renders it.
     type: str
 
 
@@ -24,76 +22,50 @@ class MessageOut(BaseModel):
     role: str
     content: str
     sources: list[str] | None = None
-    # Tool calls (MCP) the reply made, in order — see Message.tool_events; null when it used none.
+    # MCP tool calls the reply made, in order (Message.tool_events); null if none.
     tool_events: list[dict] | None = None
-    # Populated only for a "user"-role message sent with one or more
-    # files attached (see app.services.chat_attachment_service and
-    # app.models.conversation.Message.attachments) — empty for every
-    # other message.
+    # Only for "user" messages sent with files (chat_attachment_service, Message.attachments).
     attachments: list[AttachmentOut] = []
-    # "streaming"/"complete"/"error"/"deleted" — see
-    # app/models/conversation.py: Message.status. "deleted" only ever
-    # appears via GET /messages/latest (see
-    # conversation_service.get_messages_since): GET /messages filters it
-    # out entirely (see conversation_service.visible_messages), so a
-    # fresh load never shows one — only an already-open poll needs to see
-    # the transition, to remove a bubble it already rendered.
+    # "streaming"/"complete"/"error"/"deleted" (Message.status). "deleted" appears only via GET /messages/latest
+    # (conversation_service.get_messages_since); GET /messages filters it (visible_messages). Open polls need
+    # it to remove a rendered bubble.
     status: str = "complete"
-    # The real reason a status="error" message failed (see
-    # app.models.conversation.Message.error_message — set once, by
-    # reply_termination_service.mark_error) — null for every non-error message, and for an error row written
-    # before this field existed (no backfill was possible — see that migration's own message). chat.js shows
-    # this in place of its own generic "didn't finish" notice whenever it's present.
+    # The real failure reason of a status="error" message (Message.error_message, set by
+    # reply_termination_service.mark_error); null otherwise and for older errors (no backfill). chat.js shows
+    # it instead of its generic notice.
     error_message: str | None = None
-    # Who sent this message, formatted for display (username, plus
-    # first/last name if either is set — see app/models/conversation.py:
-    # Message.sender_display_name) — a real value for every "user"-role
-    # message (personal chat included), but the frontend only ever shows
-    # it as a text label for a channel's shared conversation (see
-    # chat.js: selectConversation); null for every "assistant"/"system"
-    # message.
+    # Sender label (username plus first/last name; Message.sender_display_name) for every "user" message, but
+    # the frontend shows it only in channels (chat.js selectConversation). Null for assistant/system.
     sender_display_name: str | None = None
-    # The sender's small round avatar (see Message.sender_avatar_url) —
-    # null when they haven't uploaded a picture, in which case the
-    # frontend renders sender_initials as a plain-letter circle instead
-    # (see chat.js: renderAvatar). Both are null for an "assistant"/
-    # "system" message, which the frontend never shows an avatar for.
+    # The sender's avatar (Message.sender_avatar_url); if null, chat.js renders sender_initials as a letter
+    # circle (renderAvatar). Both null for assistant/system.
     sender_avatar_url: str | None = None
     sender_initials: str | None = None
-    # "user" or "assistant" when this message was shared into a channel from a private chat (the role the
-    # original had there - see app.models.conversation.Message.shared_from); null for every normal message.
-    # chat.js shows a small "Shared from a private chat" remark under such a bubble.
+    # "user" or "assistant" if shared into a channel from a private chat (Message.shared_from); null normally.
+    # chat.js shows a "Shared from a private chat" remark.
     shared_from: str | None = None
-    # The raw id behind sender_display_name/sender_avatar_url above —
-    # lets chat.js's "click an avatar to see more" modal fetch
-    # GET /api/account/{id} for that specific sender (see
-    # app/routers/account.py's get_public_profile).
+    # The id behind sender_display_name/sender_avatar_url; chat.js's avatar-click modal fetches GET
+    # /api/account/{id} (routers/account.py get_public_profile).
     sender_id: str | None = None
     created_at: datetime
 
 
 class MessagesLatestResponse(BaseModel):
-    """GET /api/conversations/{id}/messages/latest — "cheap" channel
-    delivery mode's poll endpoint (see
-    app.services.chat_settings_service.get_channel_delivery_mode and
-    conversation_service.get_messages_since). Returns only messages new
-    or changed since `since`, not the full history on every tick."""
+    """GET /api/conversations/{id}/messages/latest, the "cheap" channel delivery poll
+    (chat_settings_service.get_channel_delivery_mode, conversation_service.get_messages_since): only
+    messages new or changed since `since`.
+    """
 
     messages: list[MessageOut]
-    # Echoed back by the poller as its next request's `since` — using
-    # the server's own clock rather than the client's own avoids any
-    # poll gaps or duplicate fetches from client/server clock skew.
+    # Sent back as the next `since`; the server's clock avoids client skew gaps or duplicates.
     server_time: datetime
 
 
 class DeleteMessageResponse(BaseModel):
-    """DELETE /api/conversations/{id}/messages/{message_id} — echoes back
-    every message id actually soft-deleted (see
-    conversation_service.delete_message), not just the one the caller
-    asked for: deleting a "user" message with a still-streaming reply
-    takes that reply down too, and chat.js needs both ids to remove both
-    bubbles from the deleter's own tab immediately, rather than waiting
-    for the next poll/live-watch tick to notice the second one."""
+    """DELETE /api/conversations/{id}/messages/{message_id}: every soft-deleted id
+    (conversation_service.delete_message).
+    Deleting a "user" message takes its streaming reply too; chat.js needs both ids to remove both bubbles at once.
+    """
 
     deleted_message_ids: list[str]
 

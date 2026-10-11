@@ -1,19 +1,8 @@
-"""
-CRUD for a user's own Notes, including which of their conversations each
-note is pinned to (as persona/rules/skill — see
-app/services/note_service.py for how a pin actually reaches the model,
-and app/services/chat_service.py for where that happens).
+"""CRUD for a user's own Notes, including which conversations each is pinned to as persona/rules/skill
+(app/services/note_service.py, chat_service.py).
 
-A note's text and its pins always save together in one request (see
-note_service.sync_pins) rather than through a separate pin/unpin
-endpoint per conversation — the Notes page's single Save button sends
-the note's current title/content plus the full set of conversations it
-should be pinned to, and the whole thing is reconciled server-side in
-one go.
-
-Every endpoint requires a logged-in user and every query is scoped to
-that user's own notes/conversations — the same ownership pattern as
-app/routers/conversations.py.
+A note's text and pins save together in one request (note_service.sync_pins): the Notes page's single
+Save sends the title/content and the full pin set. Scoped to the user's own notes, like conversations.py.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -38,10 +27,9 @@ router = APIRouter(prefix="/api/notes", tags=["notes"])
 
 
 async def _get_owned_note_or_404(db: AsyncSession, note_id: str, user: User) -> Note:
-    """Mirrors app.services.conversation_service.get_accessible_conversation_or_404
-    — 404 (not 403) whether the note doesn't exist or just isn't the
-    caller's, so a caller can't distinguish the two and enumerate other
-    users' notes."""
+    """404 (not 403) for missing or foreign notes, so ids can't be enumerated
+    (as conversation_service.get_accessible_conversation_or_404).
+    """
     note = (await db.execute(select(Note).where(Note.id == note_id, Note.owner_id == user.id))).scalar_one_or_none()
     if note is None:
         raise HTTPException(status_code=404, detail="Note not found")
@@ -49,14 +37,10 @@ async def _get_owned_note_or_404(db: AsyncSession, note_id: str, user: User) -> 
 
 
 async def _require_slot_edit_rights(conversation, user: User) -> None:
-    """The 3 slot-mutating endpoints below (update/use-default/turn-off)
-    need more than read access: a personal conversation's owner always
-    has full rights (unchanged from before channels existed), but a
-    channel's shared conversation can only have its pinned persona/
-    rules/skill changed by an admin or that channel's manager — a plain
-    member can read the slots (get_slots below) but not edit them. Nobody can once the chat has a message:
-    the persona/rules/skill sit at the start of the prompt, so changing them makes the model re-read the
-    whole conversation."""
+    """Slot edits need more than read access: a personal chat's owner has full rights; a channel's slots
+    change only by an admin or its manager (members can read via get_slots). Nobody can once the chat has a
+    message: persona/rules/skill start the prompt, so changing them re-reads the whole conversation.
+    """
     if conversation_service.visible_messages(conversation):
         raise HTTPException(
             status_code=409, detail="Persona, rules and skill can only change before the first message."
@@ -70,10 +54,9 @@ async def _require_slot_edit_rights(conversation, user: User) -> None:
 
 @router.get("/default-notes-enabled", response_model=DefaultNotesEnabledConfig)
 async def get_default_notes_enabled_setting(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    """The current user's own preference (Settings > Account, under the Theme section) for
-    whether a brand-new chat/channel of theirs starts with persona/rules/skill defaults on or
-    off — available to every logged-in user, not just admins, since it only ever affects that
-    user's own future chats (same reasoning as the theme preference right above it in Settings)."""
+    """The user's own preference (Settings > Account) for whether new chats/channels start with persona/rules/skill
+    defaults on. Open to all users; it only affects their own chats.
+    """
     return DefaultNotesEnabledConfig(enabled=await default_notes_setting.get_default_notes_enabled(db, user))
 
 
@@ -83,19 +66,16 @@ async def set_default_notes_enabled_setting(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Saves the current user's own preference — never affects any other user's chats, and never
-    retroactively changes any conversation that already exists (see
-    note_service.seed_initial_disabled_notes's own docstring for why this is seeded once, at
-    creation time, rather than checked live)."""
+    """Saves the user's own preference; never affects others or existing conversations
+    (seeded once at creation, see note_service.seed_initial_disabled_notes).
+    """
     await default_notes_setting.set_default_notes_enabled(db, user, body.enabled)
     return body
 
 
 @router.get("", response_model=list[NoteOut])
 async def list_notes(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    """Newest-first list of the current user's own notes, each with its
-    pins — lets the Notes page show "pinned to <chat>" chips without a
-    separate request per note."""
+    """The user's notes, newest first, with pins (avoids a request per note for "pinned to <chat>" chips)."""
     notes = (
         (await db.execute(select(Note).where(Note.owner_id == user.id).order_by(Note.updated_at.desc())))
         .scalars()
@@ -106,10 +86,9 @@ async def list_notes(db: AsyncSession = Depends(get_db), user: User = Depends(ge
 
 @router.get("/slots/{conversation_id}", response_model=list[NoteSlotOut])
 async def get_slots(conversation_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    """The 3 persona/rules/skill slots for one conversation, in a fixed
-    order — powers the chat page's icons (see chat.js:
-    loadPinnedBadges/openSlotEditor). `active: false` means no icon
-    should show for that slot."""
+    """The 3 persona/rules/skill slots of a conversation in fixed order, for chat.js's icons
+    (loadPinnedBadges/openSlotEditor). `active: false` = no icon.
+    """
     conversation = await conversation_service.get_accessible_conversation_or_404(db, conversation_id, user)
     return [
         await note_slot_service.resolve_slot(db, conversation, user, pin_type) for pin_type in note_service.NOTE_SLOTS
@@ -124,12 +103,9 @@ async def update_slot(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Edits this slot's content — see note_slot_service.update_slot_content
-    for the only_this_chat=False (default: updates the shared note
-    everywhere) vs. True (private per-chat fork, this endpoint's only
-    behavior before that field existed) split. Also clears the slot
-    from `disabled_default_notes` if it had been turned off, since
-    saving new content here obviously means it's back on."""
+    """Edits the slot's content (note_slot_service.update_slot_content): only_this_chat=False (default) updates
+    the shared note, True makes a per-chat fork. Also clears the slot from `disabled_default_notes`.
+    """
     if pin_type not in note_service.NOTE_SLOTS:
         raise HTTPException(status_code=404, detail="Unknown slot")
     conversation = await conversation_service.get_accessible_conversation_or_404(db, conversation_id, user)
@@ -153,9 +129,7 @@ async def use_default_slot(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Reverts this slot to the shared default — removes any per-chat
-    override pin and clears the slot from `disabled_default_notes` —
-    regardless of which of those two states it's currently in."""
+    """Reverts the slot to the shared default: removes any per-chat pin and clears `disabled_default_notes`."""
     if pin_type not in note_service.NOTE_SLOTS:
         raise HTTPException(status_code=404, detail="Unknown slot")
     conversation = await conversation_service.get_accessible_conversation_or_404(db, conversation_id, user)
@@ -185,10 +159,9 @@ async def turn_off_slot(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Turns this slot off for this conversation only — no icon, and it
-    contributes nothing to the prompt (see
-    app.services.note_service.resolve_conversation_notes) — until
-    use_default_slot or update_slot brings it back."""
+    """Turns the slot off for this conversation only: no icon, nothing in the prompt
+    (note_service.resolve_conversation_notes) until use_default_slot or update_slot.
+    """
     if pin_type not in note_service.NOTE_SLOTS:
         raise HTTPException(status_code=404, detail="Unknown slot")
     conversation = await conversation_service.get_accessible_conversation_or_404(db, conversation_id, user)
@@ -218,7 +191,7 @@ async def create_note(
 ):
     note = Note(owner_id=user.id, title=body.title, content=body.content)
     db.add(note)
-    await db.flush()  # assigns note.id so sync_pins can attach pins to it below
+    await db.flush()  # assigns note.id for sync_pins
     await note_service.sync_pins(db, note, user, body.pins)
     await db.commit()
     await db.refresh(note)

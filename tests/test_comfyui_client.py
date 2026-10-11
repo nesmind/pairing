@@ -1,10 +1,8 @@
-"""Unit tests for app/services/comfyui_client.py — the ComfyUI HTTP
-wrapper. Every httpx call is monkeypatched; no real ComfyUI instance is
-reachable in this environment. submit_job/list_checkpoints route through
-app.services.comfyui_pool's HostPool (see tests/test_comfyui_pool.py and
-tests/test_server_pool.py for that logic itself) — with only the default
-single configured host in play here, pool routing is transparent to
-these tests beyond submit_job now returning (host, prompt_id)."""
+"""Tests for services/comfyui_client.py (the ComfyUI HTTP wrapper). Every httpx call is monkeypatched; no real
+ComfyUI is reachable. submit_job/list_checkpoints route through comfyui_pool's HostPool (tests/test_comfyui_pool.py,
+tests/test_server_pool.py); with the single default host the pool is transparent beyond submit_job returning (host,
+prompt_id).
+"""
 
 import copy
 
@@ -121,7 +119,7 @@ async def test_submit_job_returns_the_host_and_prompt_id(monkeypatch):
     }
     host, prompt_id = await comfyui_client.submit_job(params)
     assert prompt_id == "abc123"
-    assert host  # whichever host the pool picked
+    assert host
 
 
 @pytest.mark.asyncio

@@ -1,9 +1,10 @@
-"""The tools of every enabled MCP server, shaped the way the model is offered them.
+"""The tools of every enabled MCP server, shaped as the model is offered them.
 
-Tool names are `<server>__<tool>` so two servers can't clash and a call is routed back to the right
-server. Each server's tool list is cached for a minute per instance (a cache miss only costs a request),
-keyed on the server's saved settings so editing a server never serves a stale list. A server that fails is remembered
-as empty for a few seconds, so a dead one doesn't add its timeout to every reply."""
+Names are `<server>__<tool>`, so servers can't clash and a call routes back to its server. Each server's tool
+list is cached a minute per instance (a miss costs one request), keyed on the server's saved settings so edits
+never serve a stale list. A failing server is remembered as empty for a few seconds, so a dead one doesn't add its
+timeout to every reply.
+"""
 
 import asyncio
 import json
@@ -26,14 +27,14 @@ _CACHE_SECONDS = 60.0
 LIST_TIMEOUT_SECONDS = 15.0  # asking a server for its tools (a tool call uses the server's own timeout)
 _FAILURE_CACHE_SECONDS = 15.0
 _MAX_NAME = 64
-_MAX_TOOL_DESCRIPTION = 400  # tool definitions are re-sent (and re-read) every round, so keep them short
+_MAX_TOOL_DESCRIPTION = 400  # definitions are re-sent and re-read every round: keep them short
 _MAX_PARAM_DESCRIPTION = 160
 _cache: dict[str, tuple[float, tuple, list[McpToolInfo]]] = {}
 
 
 @dataclass(frozen=True)
 class ExposedTool:
-    name: str  # what the model sees: <server>__<tool>
+    name: str
     server_name: str
     tool_name: str
     description: str
@@ -61,7 +62,7 @@ def _clip(text: str, limit: int) -> str:
 
 
 def _shortened(schema: Any) -> Any:
-    """The schema with every long parameter `description` clipped (a copy; the cached one is untouched)."""
+    """The schema with long parameter `description`s clipped (a copy; the cached one is untouched)."""
     if isinstance(schema, dict):
         return {
             key: _clip(value, _MAX_PARAM_DESCRIPTION)
@@ -113,7 +114,7 @@ class McpToolCatalog:
 
     @staticmethod
     async def probe(name: str, url: str, headers: dict[str, str]) -> McpTestResult:
-        """Connects right now (no cache) for the admin's "Test connection" button."""
+        """Connects now (no cache) for the admin's "Test connection"."""
         connection = McpConnection(url, headers, timeout=LIST_TIMEOUT_SECONDS)
         try:
             found = await connection.inspect()

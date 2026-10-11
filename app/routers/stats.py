@@ -1,11 +1,5 @@
-"""GET /api/stats/summary — real usage numbers for the Stats page's
-default dashboard view (see app/services/stats_service.py for the
-aggregation queries and app/templates/stats.html for the page this
-serves). Admin-only — unlike the Notes/Images links it used to sit
-alongside in chat.html's sidebar, this page also covers the Telemetry
-and System views (ML engine call data, this machine's own CPU/RAM/disk),
-which read as more operational/infra-facing than something every
-regular user should see by default.
+"""GET /api/stats/summary: usage numbers for the Stats dashboard (services/stats_service.py, stats.html).
+Admin-only: the page also covers Telemetry and System views, which are operational.
 """
 
 from fastapi import APIRouter, Depends

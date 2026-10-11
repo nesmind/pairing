@@ -1,10 +1,6 @@
-"""
-The chat page's 3 persona/rules/skill icons: resolving and editing one
-slot at a time for a single conversation — a narrower, simpler view than
-app/services/note_service.py's general Notes-page CRUD/pin-syncing/
-prompt-building, split out purely to stay under CLAUDE.md's file-size
-rule. Depends on note_service for the shared constants/lookups
-(DEFAULT_NOTE_SEEDS, get_default_note) both files need.
+"""The chat page's 3 persona/rules/skill icons: resolving and editing one slot of one conversation. A narrower
+view than note_service.py's CRUD/pin-syncing/prompt-building, split for the file-size rule. Shares
+DEFAULT_NOTE_SEEDS and get_default_note with note_service.
 """
 
 from sqlalchemy import select
@@ -16,25 +12,19 @@ from app.services.note_service import DEFAULT_NOTE_SEEDS, default_notes_owner_id
 
 
 def save_disabled_slots(conversation: Conversation, disabled: set[str]) -> None:
-    """Reassigns conversation.params as a whole new dict (rather than
-    mutating the existing one in place) — SQLAlchemy's plain JSON column
-    type doesn't track in-place mutation of the dict it holds, only
-    reassignment, the same reason PATCH /api/conversations/{id} already
-    replaces `params` wholesale instead of editing individual keys."""
+    """Reassigns conversation.params as a new dict: SQLAlchemy's plain JSON column doesn't track in-place edits
+    (PATCH /api/conversations/{id} also replaces `params` wholesale).
+    """
     conversation.params = {**(conversation.params or {}), "disabled_default_notes": sorted(disabled)}
 
 
 async def resolve_slot(db: AsyncSession, conversation: Conversation, user: User, pin_type: str) -> NoteSlotOut:
-    """The single primary note for one slot on one conversation — see
-    NoteSlotOut's docstring for how this differs from the general,
-    combine-everything view note_service.resolve_conversation_notes
-    gives app/services/chat_service.py.
+    """The single primary note of a slot on a conversation (see NoteSlotOut vs. note_service.resolve_conversation_notes'
+    combine-everything view for chat_service).
 
-    Always returns a title/content when the user has a default note for
-    this slot, even if the slot is currently turned off (`active=False`)
-    — so the chat page's icon can stay in place (just faded) instead of
-    disappearing, and its editor panel always has something sensible to
-    show/re-enable rather than a blank textarea."""
+    Always returns a title/content when the user has a default note, even when the slot is off (`active=False`),
+    so the icon stays (faded) and the editor has content to re-enable, not a blank textarea.
+    """
     pin = (
         await db.execute(
             select(NotePin).where(NotePin.conversation_id == conversation.id, NotePin.pin_type == pin_type),
@@ -74,34 +64,26 @@ async def update_slot_content(
     content: str,
     only_this_chat: bool,
 ) -> None:
-    """The save behind PUT /api/notes/slots/{conversation_id}/{pin_type}
-    — chat page's slot editor, gated by its "Only for this chat"
-    checkbox (only_this_chat).
+    """The save behind PUT /api/notes/slots/{conversation_id}/{pin_type} (the slot editor's "Only for this chat"
+    checkbox).
 
-    Unchecked (the default): updates `user`'s shared *default* note for
-    this slot directly, so the new content is visible in every one of
-    their chats, not just this one — and removes any per-chat override
-    already pinned here, so this conversation immediately reflects the
-    new global content instead of silently keeping stale pinned text
-    underneath it (resolve_slot/note_service.resolve_conversation_notes
-    already fall back to the default note once there's no pin, so
-    nothing else needs to change for that).
+    Unchecked (default): updates `user`'s shared *default* note, visible in all their chats, and removes any
+    per-chat override here so this chat reflects it at once (resolve_slot/resolve_conversation_notes fall back
+    to the default when there is no pin).
 
-    Checked: forks/edits a private note pinned to *only* this
-    conversation, never touching the shared default or any other chat
-    — this endpoint's only behavior before the checkbox existed.
+    Checked: forks/edits a private note pinned only to this conversation; the pre-checkbox behavior.
 
-    Doesn't commit — the caller does, alongside whatever else it also
-    saves in the same request (see app/routers/notes.py:update_slot,
-    which also clears disabled_default_notes)."""
+    Doesn't commit; the caller does with its other changes (routers/notes.py update_slot also clears
+    disabled_default_notes).
+    """
     pin = (
         await db.execute(
             select(NotePin).where(NotePin.conversation_id == conversation.id, NotePin.pin_type == pin_type),
         )
     ).scalar_one_or_none()
 
-    # A channel's notes belong to the channel, not to whoever edits: its default notes are one stable
-    # member's (see default_notes_owner_id), so an edit there is always pinned to the channel itself.
+    # A channel's notes belong to the channel: its default notes are one stable member's (default_notes_owner_id),
+    # so edits always pin to the channel.
     only_this_chat = only_this_chat or conversation.channel_id is not None
     if only_this_chat:
         if pin is not None:
@@ -122,9 +104,7 @@ async def update_slot_content(
 
     default_note = await get_default_note(db, user.id, pin_type)
     if default_note is None:
-        # Shouldn't normally happen — seed_default_notes guarantees one
-        # per slot for every user — but fail safe (create it) rather
-        # than silently doing nothing.
+        # Shouldn't happen (seed_default_notes guarantees one per slot), but create it rather than silently do nothing.
         default_title, _ = DEFAULT_NOTE_SEEDS[pin_type]
         default_note = Note(owner_id=user.id, title=default_title, content=content, default_type=pin_type)
         db.add(default_note)

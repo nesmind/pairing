@@ -1,9 +1,4 @@
-/**
- * The RAG embedding model's stages for the Stats page's "Visual chat workflow" diagram — the lane behind
- * the second "ML engine" node in workflow_diagram_data.js (an encoder-only model: it reads the whole text
- * at once and returns one vector, no generation). Same helpers/shape as workflow_diagram_ml.js, so load
- * this after it; nodes are narrower so the five fit inside the RAG column without widening the diagram.
- */
+/* The RAG embedding model's stages for the Stats "Visual chat workflow" diagram: the lane behind the second "ML engine" node in workflow_diagram_data.js (an encoder-only model that reads the whole text at once and returns one vector). Same helpers/shape as workflow_diagram_ml.js, so load after it; nodes are narrower so five fit in the RAG column. */
 
 const WORKFLOW_ML_EMBED_NODES = [
   mlNode(

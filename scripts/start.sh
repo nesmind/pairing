@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Starts pAIring detached (works on Linux and macOS). The server writes its own PID file (run/pairing.pid),
-# which stop.sh and status.sh read.
+# Starts pAIring detached (Linux and macOS). The server writes its own PID file (run/pairing.pid), read by stop.sh and
+# status.sh.
 #
 # Usage: bash scripts/start.sh
 set -euo pipefail
@@ -8,7 +8,7 @@ set -euo pipefail
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$APP_DIR"
 
-# Colored like uvicorn's own "INFO:" lines (plain text when not a terminal).
+# Colored like uvicorn's "INFO:" lines (plain when not a terminal).
 if [ -t 1 ]; then G=$'\033[32m'; R=$'\033[31m'; N=$'\033[0m'; else G=""; R=""; N=""; fi
 info() { printf '%sINFO:%s %s\n' "$G" "$N" "$*"; }
 err() { printf '%sERROR:%s %s\n' "$R" "$N" "$*"; }
@@ -53,7 +53,7 @@ disown
 
 for _ in $(seq 1 40); do
     [[ -f "$PID_FILE" ]] && break
-    # Died during startup (bad config, import error...) - stop waiting.
+    # Died during startup (bad config, import error...): stop waiting.
     kill -0 "$SERVER_PID" 2>/dev/null || break
     sleep 0.25
 done

@@ -1,4 +1,4 @@
-"""Unit tests for app/services/system_metrics_service.py."""
+"""Tests for services/system_metrics_service.py."""
 
 from datetime import timedelta
 
@@ -82,9 +82,8 @@ async def test_history_is_bounded_to_the_lookback_window(db):
 
     summary = await system_metrics_service.get_system_metrics_summary(db)
 
-    # The stale point is outside the 1-hour lookback window and excluded from history — but "latest" is still
-    # correct (a separate query, not derived from the bounded/windowed history list — see that function's own
-    # comment on why).
+    # The stale point is outside the 1-hour lookback and excluded from history, but "latest" is still correct (a
+    # separate query, not derived from the windowed history; see that function).
     assert len(summary.history) == 1
     assert summary.history[0].cpu_percent == 15.0
     assert summary.cpu_percent == 15.0
@@ -110,14 +109,14 @@ async def test_history_point_count_is_capped(db, monkeypatch):
     summary = await system_metrics_service.get_system_metrics_summary(db)
 
     assert len(summary.history) == 3
-    # The cap must never cost us the true latest value — see the "latest" query's own comment.
+    # The cap must never cost the true latest value (see the "latest" query).
     assert summary.cpu_percent == 0.0
 
 
 @pytest.mark.asyncio
 async def test_gpus_reflects_only_the_newest_poll_cycle(db):
-    """Two GPUs sampled together (same polled_at) at an older poll, then a newer poll with updated values —
-    only the newest poll's rows should come back, not a stale/newer mix."""
+    """Two GPUs sampled together (same polled_at) at an older poll, then a newer poll: only the newest poll's rows come
+    back, not a stale/newer mix."""
     older = utcnow() - timedelta(seconds=30)
     newer = utcnow()
     db.add_all(
@@ -133,7 +132,7 @@ async def test_gpus_reflects_only_the_newest_poll_cycle(db):
     summary = await system_metrics_service.get_system_metrics_summary(db)
 
     assert len(summary.gpus) == 2
-    assert [g.gpu_index for g in summary.gpus] == [0, 1]  # ordered by gpu_index
+    assert [g.gpu_index for g in summary.gpus] == [0, 1]
     assert [g.utilization_percent for g in summary.gpus] == [45.0, 55.0]
 
 

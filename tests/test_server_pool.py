@@ -1,8 +1,6 @@
-"""Unit tests for app/services/server_pool.py's generic HostPool — the
-"fewest in-flight, health-aware" selection/cooldown/failover algorithm
-shared by app/services/ollama_pool.py and app/services/comfyui_pool.py.
-Exercised directly against a fresh HostPool instance here so this logic
-is only ever tested once, not duplicated per wrapper module."""
+"""Tests for services/server_pool.py's HostPool, the "fewest in-flight, health-aware" selection/cooldown/failover
+shared by ollama_pool.py and comfyui_pool.py. Tested directly on a fresh HostPool, once, not per wrapper.
+"""
 
 import httpx
 import pytest
@@ -39,7 +37,7 @@ def test_pick_host_prefers_fewest_in_flight(pool):
 
 def test_pick_host_excludes_given_hosts(pool):
     h1, h2, h3 = pool.get_hosts()
-    pool._states[h1].in_flight = 0  # would otherwise win
+    pool._states[h1].in_flight = 0
     assert pool.pick_host(exclude=frozenset({h1})) in (h2, h3)
 
 
@@ -55,7 +53,7 @@ def test_mark_recovered_clears_cooldown_immediately(pool):
     pool.mark_failure(h1)
     assert pool.pick_host() != h1
     pool.mark_recovered(h1)
-    assert pool.pick_host() == h1  # first in list, tied in-flight, no longer cooling
+    assert pool.pick_host() == h1
 
 
 def test_pick_host_falls_back_to_something_when_every_host_is_cooling(pool):
@@ -68,8 +66,8 @@ def test_pick_host_falls_back_to_something_when_every_host_is_cooling(pool):
 def test_set_hosts_does_not_reset_state_of_hosts_still_present(pool):
     h1 = pool.get_hosts()[0]
     pool.mark_failure(h1)
-    pool.set_hosts(pool.get_hosts())  # re-saving the same list
-    assert pool.pick_host() != h1  # cooldown survived
+    pool.set_hosts(pool.get_hosts())
+    assert pool.pick_host() != h1
 
 
 @pytest.mark.asyncio
@@ -222,9 +220,8 @@ class _FakeHealthResponse:
 
 
 class _FakeHealthClient:
-    """Stands in for httpx.AsyncClient in check_hosts's own probe: only
-    the hosts in `up` respond 200, everything else raises a connection
-    error — no real network involved."""
+    """Stands in for httpx.AsyncClient in check_hosts's probe: only hosts in `up` return 200; the rest raise a
+    connection error."""
 
     def __init__(self, up: set[str]):
         self._up = up
@@ -261,7 +258,6 @@ async def test_ping_host_reports_a_reachable_host_as_healthy(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_ping_host_reports_an_unreachable_host_as_unhealthy(monkeypatch):
-    # An arbitrary candidate URL that was never added to any pool —
-    # exactly the "check before you save" case check-host endpoints use.
+    # An arbitrary candidate URL never added to any pool: the "check before you save" case of check-host endpoints.
     monkeypatch.setattr(httpx, "AsyncClient", lambda **_kw: _FakeHealthClient(set()))
     assert await ping_host("http://down:1", httpx.Timeout(1.0), path="/api/tags") is False

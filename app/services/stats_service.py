@@ -1,13 +1,7 @@
-"""Usage-stats aggregation for the Stats page's default dashboard view
-(GET /api/stats/summary, see app/routers/stats.py). Every number here is
-computed with a SQL-level func.count()/group_by() query — never a full
-table scan pulled into Python (see app/services/user_service.py's
-active_admin_count for the existing count-query precedent this mirrors)
-— since messages/chunks can get large in a long-running deployment.
-Covers only what's already modeled (see app/models/__init__.py): no new
-tracking/analytics tables. A conversation with model=None (never
-started) is excluded from by_model rather than shown as a fake "(none)"
-bucket.
+"""Usage-stats aggregation for the Stats dashboard (GET /api/stats/summary, routers/stats.py). Every number is a
+SQL func.count/group_by query, never a table scan pulled into Python (like user_service.active_admin_count),
+as messages/chunks grow large. Covers only what's modeled (models/__init__.py): no new tracking tables. A
+conversation with model=None (never started) is excluded from by_model rather than shown as a fake "(none)" bucket.
 """
 
 from datetime import timedelta
@@ -27,10 +21,8 @@ from app.schemas import (
     UserStats,
 )
 
-# How far back a message's own updated_at (see app/models/conversation.py's
-# Message.updated_at doc comment — bumped on every streamed-content flush,
-# not just on creation) still counts as "posting last minute" for the Stats
-# page's "Live conversations" section below.
+# How far back a message's updated_at (Message.updated_at: bumped on every streamed-content flush, not just
+# creation) still counts as "posting last minute" for the Stats "Live conversations" section.
 _RECENTLY_ACTIVE_WINDOW = timedelta(minutes=5)
 
 
@@ -96,16 +88,11 @@ async def _knowledge_base_stats(db: AsyncSession) -> KnowledgeBaseStats:
 
 
 async def _live_conversation_stats(db: AsyncSession) -> LiveConversationStats:
-    """Live here means only what's actually observable server-side — no
-    per-viewer presence/scrolling tracking exists anywhere in this app.
-    streaming_now = a reply is literally mid-generation right now
-    (Message.status == "streaming", i.e. "waiting for model reply").
-    recently_active = some message in the conversation changed within
-    _RECENTLY_ACTIVE_WINDOW (Message.updated_at, which is bumped on every
-    streamed-content flush too — see its own doc comment — so this also
-    captures "posting last minute" without needing a separate signal).
-    total is the union of both sets, not their sum, since a conversation
-    can satisfy both at once."""
+    """ "Live" means only what's observable server-side (no presence tracking). streaming_now: a reply is
+    mid-generation (Message.status == "streaming"). recently_active: a message changed within
+    _RECENTLY_ACTIVE_WINDOW (updated_at is bumped on streamed flushes too). total is the union, not the sum, as a
+    conversation can be both.
+    """
     streaming_ids = (
         (await db.execute(select(Message.conversation_id).where(Message.status == "streaming").distinct()))
         .scalars()
@@ -132,8 +119,7 @@ async def _live_conversation_stats(db: AsyncSession) -> LiveConversationStats:
 
 
 async def get_stats_summary(db: AsyncSession) -> StatsSummary:
-    """The one entry point app/routers/stats.py calls — assembles every
-    section above."""
+    """The one entry point routers/stats.py calls; assembles every section above."""
     return StatsSummary(
         conversations=await _conversation_stats(db),
         messages=await _message_stats(db),

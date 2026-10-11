@@ -24,9 +24,7 @@
     </div>
   </header>
 
-  <!-- Tab nav: /settings (every account, admins too) has Models, Behavior, Knowledge and Account; /admin-settings
-       (admins only) has Models, System, External servers, MCP servers, Users and Channels. Panels not listed
-       for a page stay in the DOM, hidden and never reachable, so settings.js keeps finding the elements it binds. -->
+  <!-- Tab nav: /settings (every account, admins too) has Models, Behavior, Knowledge and Account; /admin-settings (admins only) has Models, System, External servers, MCP servers, Users and Channels. Panels not listed for a page stay in the DOM, hidden and unreachable, so settings.js still finds the elements it binds. -->
   <div class="border-b border-slate-800 px-4">
     <nav class="mx-auto max-w-3xl flex gap-1 -mb-px">
       <button type="button" data-tab="model"
@@ -72,31 +70,15 @@
   </div>
 
   <div class="flex-1 overflow-y-auto [scrollbar-gutter:stable]">
-    <!-- Model tab: picks the default model new chats start with — an
-         existing conversation's model is changed from that chat's own
-         model badge instead (see chat.html/chat.js), not from here, so
-         this tab needs no "editing settings for" target picker at all
-         (unlike Behavior below, it only ever means one thing). No save
-         bar of its own either — selecting a model here saves itself
-         immediately (see settings.js: saveModelSelection), same as it
-         always has. Split out of what used to be one combined "Model &
-         behavior" tab — Behavior's own shared save-bar no longer needs
-         its old blockedByModels check, since it doesn't touch the model
-         at all anymore. -->
+    <!-- Model tab: picks the default model new chats start with. An existing conversation's model changes from that chat's model badge (chat.html/chat.js), so this tab needs no target picker (unlike Behavior below) and no save bar: selecting a model saves at once (settings.js saveModelSelection). Split out of the former combined "Model & behavior" tab, so Behavior's save-bar no longer needs its blockedByModels check. -->
     <div id="tab-model" class="mx-auto max-w-3xl px-4 py-8 space-y-8">
       {% if not admin_page %}
       <p class="text-xs text-warning-400 bg-slate-900 border border-warning-500/50 rounded-lg px-3 py-2">
         Updates here affect your own settings and will not affect other users.
       </p>
       {% endif %}
-      <!-- Browse more models: the small hand-curated list below (app/model_catalog.py) stays fixed; this is the
-           separate, admin-extensible catalog behind app/services/extended_model_catalog_service.py. Open by
-           default (see settings.js: initModelTab preloads it, same as expanding it manually would) and placed
-           above the default-model picker - the search box is the first thing on the tab, not the last. Hidden
-           entirely (see initModelTab) when the active engine's own capabilities.model_management is False - a
-           connector like RunPod manages its own model(s) remotely, with no Hugging Face catalog to browse. -->
-      <!-- Admin-only: hidden for regular users via a wrapper div rather than removed from the DOM, since
-           settings.js binds listeners to these elements unconditionally at load. -->
+      <!-- Browse more models: the small hand-curated list below (app/model_catalog.py) stays fixed; this is the admin-extensible catalog behind app/services/extended_model_catalog_service.py. Open by default (settings.js initModelTab preloads it) and placed above the default-model picker so the search box comes first. Hidden (initModelTab) when the active engine's capabilities.model_management is False: a connector like RunPod manages its models remotely, with no Hugging Face catalog to browse. -->
+      <!-- Admin-only: hidden for regular users via a wrapper div, not removed, since settings.js binds listeners to these elements unconditionally at load. -->
       <div{% if not is_admin %} class="hidden"{% endif %}>
       <section id="browse-more-models-section" class="space-y-3">
         <button type="button" id="browse-more-models-toggle"
@@ -112,13 +94,7 @@
           </p>
 
           {% if is_admin %}
-          <!-- Admin-only, three steps: search Hugging Face for a repo, pick a repo to see its real GGUF files
-               (both read-only — see app/services/huggingface_client.py), then Add a specific file, which
-               re-verifies it from scratch server-side rather than trusting this search/file-list round trip (see
-               extended_model_catalog_service.add_model's own docstring on why). All three route through the same
-               admin-configured outbound proxy as the Ollama/ComfyUI installers (Admin settings > System), and need a
-               real internet connection or that proxy to succeed — unless the resulting tag is already installed
-               on this machine, which skips the network round trip entirely for Add. -->
+          <!-- Admin-only, three steps: search Hugging Face for a repo, pick a repo to see its GGUF files (both read-only; app/services/huggingface_client.py), then Add a file, which re-verifies server-side instead of trusting the earlier round trip (extended_model_catalog_service.add_model). All three use the admin-configured outbound proxy, as the Ollama/ComfyUI installers (Admin settings > System), and need internet or that proxy, except Add for a tag already installed here, which skips the network. -->
           <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
             <label class="block text-xs font-medium text-slate-400">Search Hugging Face</label>
             <div class="flex items-center gap-2">
@@ -134,13 +110,10 @@
             </p>
             <p id="hf-search-status" class="text-xs text-slate-500"></p>
 
-            <!-- Repo search results: click a repo to load its file list below (see settings.js). -->
+            <!-- Repo search results: click a repo to load its file list below (settings.js). -->
             <div id="hf-search-results" class="hidden space-y-1.5"></div>
 
-            <!-- File picker for whichever repo was just clicked above — each file gets its own Add button.
-                 Its own status line (hf-repo-files-status) sits right below it, not the search-step one above —
-                 confirmed live: "Adding…"/"Loading files…" showing only in hf-search-status (well above this
-                 panel) was invisible once an admin had scrolled down to actually click something down here. -->
+            <!-- File picker for the repo just clicked above, each file with its own Add button. Its status line (hf-repo-files-status) sits right below it, not in the search step's hf-search-status: "Adding…"/"Loading files…" there was invisible once an admin scrolled down to click here. -->
             <div id="hf-repo-files" class="hidden rounded-md bg-slate-950 border border-slate-800 px-3 py-3 space-y-2"></div>
             <p id="hf-repo-files-status" class="text-xs text-slate-500"></p>
           </div>
@@ -156,6 +129,11 @@
         <h2 class="text-sm font-semibold text-slate-200">Installed models</h2>
         {% if admin_page %}
         <p class="text-xs text-slate-500 -mt-2">Models available for the active inference engine — the one you select on external servers tab becomes the default engine for the UI. Please note that each inference engine has its own separate models repository.</p>
+        <!-- Shown by settings_quorum.js while the Matricxon cluster has no quorum (downloads need it). -->
+        <p id="model-quorum-warning" class="hidden rounded-lg border border-red-800/60 bg-red-900/20 px-4 py-2 text-xs text-red-200">
+          The Matricxon cluster has no quorum (a majority of its voters is not reachable), so model downloads will
+          fail until it is back. Chats keep working. See Cluster &gt; Nodes.
+        </p>
         {% endif %}
 
         <div id="model-field">
@@ -189,11 +167,7 @@
         </div>
       </section>
 
-      <!-- Embedding model: powers the Knowledge base (RAG) feature on the Knowledge tab, never used for chat —
-           kept as its own small section here rather than mixed into the chat-model catalog above (see
-           app.model_catalog.EMBEDDING_CATALOG's own docstring for why it's a wholly separate list). Rendered on the
-           admin page only (an admin's own /settings page doesn't get the embedding and diffusion sections either);
-           regular users see their chat models only. -->
+      <!-- Embedding model: powers the Knowledge base (RAG) feature, never chat; its own small section, not mixed into the chat-model catalog (app.model_catalog.EMBEDDING_CATALOG is a separate list). Rendered on the admin page only (/settings gets no embedding or diffusion sections); regular users see chat models only. -->
       {% if admin_page %}
       <div>
       <section class="space-y-3 border-t border-slate-800 pt-6">
@@ -202,10 +176,7 @@
         <div id="embedding-model-catalog" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
       </section>
 
-      <!-- Diffusion models: the image models for the Images page — same list whichever chat engine is active. They
-           install into the stable-diffusion.cpp models folder, never into Ollama/Matricxon (see
-           app/services/image_model_service.py). Image repos found through "Browse more models" land here.
-           Wired by app/static/js/settings_diffusion_models.js. -->
+      <!-- Diffusion models: image models for the Images page, the same list for either chat engine. They install into the stable-diffusion.cpp models folder, never Ollama/Matricxon (app/services/image_model_service.py). Image repos found via "Browse more models" land here. Wired by app/static/js/settings_diffusion_models.js. -->
       <section id="diffusion-models-section" class="space-y-3 border-t border-slate-800 pt-6">
         <h2 class="text-sm font-semibold text-slate-200">Diffusion models</h2>
         <p class="text-xs text-slate-500 -mt-2">Image generation models for the Images page (stable-diffusion.cpp) — installed into its own models folder, not Ollama/Matricxon. Search Hugging Face under Browse more models to add more.</p>
@@ -219,21 +190,10 @@
 
     {% if not admin_page %}
     <!-- Behavior, Knowledge and Account: the user-level tabs, only on /settings (settings.js checks for tab-behavior). -->
-    <!-- Behavior tab: generation parameters, per target (a specific
-         conversation, or "Defaults for new chats") — unlike Model above,
-         saving here for an existing conversation changes its live
-         behavior immediately (already-sent messages included, since
-         these are read fresh on the next reply), while saving under
-         "Defaults for new chats" only ever affects a chat created from
-         that point on (see settings.js: loadTarget's per-target hint
-         text). Shares its save-bar with Knowledge below (both edit the
-         same currentParams for the target picked here). -->
+    <!-- Behavior tab: generation parameters per target (a conversation, or "Defaults for new chats"). Unlike Model above, saving for an existing conversation changes its behavior at once (read fresh on the next reply), while saving "Defaults for new chats" affects only chats created afterward (settings.js loadTarget's per-target hint). Shares its save-bar with Knowledge below (both edit the same currentParams). -->
     <div id="tab-behavior" class="hidden mx-auto max-w-3xl px-4 py-8 space-y-10">
 
-      <!-- Which conversation these params apply to. The "no models installed" banner sits inside this first section,
-           not as a sibling above it: a hidden sibling still gives the next one space-y's top margin, which pushed
-           this tab's title lower than every other tab's. Same banner as the Model tab's own #model-unavailable
-           (see settings.js: loadTarget). -->
+      <!-- Which conversation these params apply to. The "no models installed" banner sits inside this first section, not as a sibling above: a hidden sibling still gives the next one space-y's top margin, pushing this tab's title lower than the others. Same banner as the Model tab's #model-unavailable (settings.js loadTarget). -->
       <section>
         <div id="behavior-model-unavailable" class="hidden mb-4 text-xs text-warning-400 bg-slate-900 border border-warning-500/50 rounded-lg px-3 py-2">
           System is not configured for models yet, ask your admin.
@@ -255,18 +215,7 @@
         <div id="param-sliders" class="space-y-5"></div>
       </section>
 
-      <!-- Save bar: shared by Behavior and Knowledge (both edit the
-           same currentParams for the target picked above) — hidden on
-           the admin-only tabs, which save their own changes inline.
-           This is its default (Behavior) position; settings.js
-           physically relocates this same element to just above the
-           "Knowledge base" section while that tab is active, and back
-           here otherwise — see activateTab(). It deliberately has no
-           mx-auto/max-w-3xl/px-4 of its own: it's always a direct child
-           of whichever tab div is currently showing it, and that tab
-           div already provides all of that — adding it again here would
-           double up the left padding and misalign it from the tab's own
-           section titles. -->
+      <!-- Save bar shared by Behavior and Knowledge (both edit the same currentParams); hidden on admin-only tabs, which save inline. This is its default (Behavior) position; settings.js moves it just above the "Knowledge base" section while that tab is active and back otherwise (activateTab). It has no mx-auto/max-w-3xl/px-4 of its own: it is a direct child of the showing tab div, which already provides them, and repeating them would double the left padding and misalign it from the section titles. -->
       <div id="save-bar" class="pt-2 flex items-center gap-3">
         <button id="save-btn" class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
           Save changes
@@ -275,13 +224,10 @@
       </div>
     </div>
 
-    <!-- Knowledge tab: RAG chunk count + the shared knowledge base status.
-         Available to every user, not just admin — everyone can tune how
-         many chunks their own chats retrieve. Operates on the same
-         conversation/defaults target picked on the Behavior tab. -->
+    <!-- Knowledge tab: RAG chunk count + shared knowledge base status. Available to every user (everyone can tune how many chunks their chats retrieve). Operates on the conversation/defaults target picked on Behavior. -->
     <div id="tab-knowledge" class="hidden mx-auto max-w-3xl px-4 py-8 space-y-8">
       <div data-group="rag" class="space-y-8">
-      <!-- Why Knowledge is unavailable (RAG off, no embedding model…) — first thing on the tab so it's seen at once. -->
+      <!-- Why Knowledge is unavailable (RAG off, no embedding model…), first on the tab so it is seen at once. -->
       <div id="rag-unavailable" hidden class="hidden text-xs text-warning-400 bg-slate-900 border border-warning-500/50 rounded-lg px-3 py-2">
         <span id="rag-unavailable-reason">No embedding model found yet — ask admin.</span>
       </div>
@@ -302,14 +248,7 @@
         </div>
       </section>
 
-      <!-- Knowledge base: not tied to any one conversation, so it saves
-           itself (upload/delete) rather than going through the Save
-           button. Every chat automatically searches whatever's in
-           scope for its owner — an upload is ingested immediately,
-           there's nothing else to trigger. Only "My documents"
-           (private) is exposed here for now — the shared/global scope
-           still exists server-side (see app/rag.py) but has no UI yet;
-           file management there will get its own pass later. -->
+      <!-- Knowledge base: not tied to a conversation, so it saves itself (upload/delete), not via the Save button. Every chat searches what's in scope for its owner; an upload is ingested at once. Only "My documents" (private) is exposed for now; the shared/global scope exists server-side (app/rag.py) but has no UI yet. -->
       <section id="knowledge-base-section" class="space-y-4">
         <h2 class="text-sm font-semibold text-slate-200">Knowledge base</h2>
         <p class="text-xs text-slate-500 -mt-3">
@@ -320,8 +259,7 @@
           <code class="font-mono">.json</code> — up to 5 files per upload.
         </p>
 
-        <!-- Your quota: what the admin allows this account (Admin settings > System > RAG limits) and how much of it is
-             used. Filled by settings.js: renderKnowledgeSummary. -->
+        <!-- Your quota: what the admin allows this account (Admin settings > System > RAG limits) and how much is used. Filled by settings.js renderKnowledgeSummary. -->
         <div id="rag-quota" class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-2">
           <div class="flex items-center justify-between text-xs">
             <span class="font-semibold uppercase tracking-wide text-slate-400">Your quota</span>
@@ -333,12 +271,7 @@
           <ul id="rag-quota-details" class="text-xs text-slate-500 space-y-0.5 list-disc pl-4"></ul>
         </div>
 
-        <!-- My documents: private, visible only to your own chats. Five
-             separate file pickers rather than one multi-select input, so
-             each file gets its own visible row and its own progress bar
-             — embedding a file can take a long time on slow hardware,
-             and one shared bar for a whole batch made it unclear which
-             file (if any) was actually still moving. -->
+        <!-- My documents: private, visible only to your chats. Five file pickers rather than one multi-select, so each file has its own row and progress bar; embedding can be slow on weak hardware, and one shared bar left it unclear which file was still moving. -->
         <div class="space-y-2">
           <div class="flex items-center justify-between">
             <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-400">My documents</h3>
@@ -394,10 +327,7 @@
 
     </div>
 
-    <!-- Account tab: everyone gets this, not just admin — starting with
-         your own password; a natural place for more personal-account
-         preferences later. Saves inline (its own status text), no use
-         for the shared save-bar. -->
+    <!-- Account tab: for everyone, starting with your password, and room for more personal preferences. Saves inline (own status text), so no use for the shared save-bar. -->
     <div id="tab-account" class="hidden mx-auto max-w-3xl px-4 py-8 space-y-8">
       <section class="space-y-3">
         <h2 class="text-sm font-semibold text-slate-200">Profile</h2>
@@ -581,10 +511,7 @@
     {% endif %}
 
     {% if is_admin %}
-    <!-- System tab: admin-only. Hardware/Ollama info plus the shared
-         model catalog's Pull/Uninstall/Hide actions live on the Model
-         tab's own picker itself (visible to admin there too) — this
-         tab is just environment context. -->
+    <!-- System tab: admin-only. Hardware/Ollama info; the shared model catalog's Pull/Uninstall/Hide actions live in the Model tab's picker (visible to admins there), so this tab is environment context. -->
     <div id="tab-system" class="hidden mx-auto max-w-3xl px-4 py-8 space-y-8">
       <section class="space-y-3">
         <h2 class="text-sm font-semibold text-slate-200">Environment</h2>
@@ -1084,14 +1011,9 @@
       {% include "_mcp_global_switch.html" %}
     </div>
 
-    <!-- External servers tab: admin-only. Ollama and ComfyUI each get an
-         identical-shape subsection — local (this app owns the process:
-         start/stop + a few important tunable parameters) or remote (up
-         to 12 external hosts, load-balanced). See
-         app/routers/ollama_admin.py / comfyui_admin.py. -->
+    <!-- External servers tab: admin-only. Ollama and ComfyUI get identically shaped subsections: local (this app owns the process: start/stop + key tunables) or remote (up to 12 load-balanced hosts). See app/routers/ollama_admin.py / comfyui_admin.py. -->
     <div id="tab-external-servers" class="hidden mx-auto max-w-3xl px-4 py-8 space-y-8">
-      <!-- Which kind of server to configure; only that group's sections below are shown (see
-           app/static/js/settings_group_select.js). More groups can be added as options. -->
+      <!-- Which kind of server to configure; only that group's sections below show (app/static/js/settings_group_select.js). More groups can be added as options. -->
       <section class="space-y-3">
         <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 flex items-center gap-3">
           <label for="external-group-select" class="text-sm text-slate-300 shrink-0">Configure</label>
@@ -1104,9 +1026,7 @@
       </section>
 
       <div data-group="models" class="space-y-8">
-      <!-- Which engine (below) actually serves chat/embedding requests right now — see
-           app.services.engine_service. Each engine below is still independently configurable/startable
-           regardless of this choice; only this picker decides which one is live. -->
+      <!-- Which engine (below) serves chat/embedding requests now (app.services.engine_service). Each engine stays independently configurable/startable; only this picker decides which is live. -->
       <section class="space-y-3">
         <h2 class="text-sm font-semibold text-slate-200">Active engine</h2>
         <p class="text-xs text-slate-500 -mt-2">
@@ -1151,10 +1071,7 @@
           <div data-mode-section="local" class="space-y-3">
             <p data-field="status-line" class="text-xs text-slate-400 font-mono"></p>
 
-            <!-- Visible regardless of install state (see applyServerVisibility's own comment on why) — an
-                 admin can see what's installed and reinstall a different version/repo later, not just the first
-                 time. Hidden only in manual-path-entry mode, where "Install"/"Reinstall" would silently replace
-                 a path the admin deliberately pointed elsewhere with this app's own managed install instead. -->
+            <!-- Visible whatever the install state (see applyServerVisibility), so an admin can see what's installed and reinstall another version/repo later. Hidden only in manual-path-entry mode, where "Install"/"Reinstall" would replace a path the admin deliberately pointed elsewhere with the managed install. -->
             <div data-field="install-controls" class="space-y-3">
               <div data-field="install-idle" class="space-y-2">
                 <div class="flex items-center gap-3">
@@ -1292,6 +1209,11 @@
               <option value="local">Local — this app manages the process</option>
               <option value="remote">Remote — external server(s)</option>
             </select>
+            <p class="mt-1 text-xs text-slate-500">
+              Local: this app starts, stops and configures Matricxon. Remote: it only talks to the nodes and never
+              starts, stops or configures them. In a cluster, switch to Remote once the first node should be like
+              the others; no node is lost by switching.
+            </p>
           </div>
 
           <div data-mode-section="local" class="space-y-3">
@@ -1359,9 +1281,17 @@
                 <input data-field="project_dir" type="text" placeholder="auto-detected sibling checkout" title="Path to your Matricxon project checkout — the folder containing scripts/start.sh. Leave blank to auto-detect the sibling ../matricxon checkout next to this app."
                   class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
               </div>
-              <div>
+              <p id="matricxon-paths-managed" class="hidden rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-400">
+                Cluster mode is on: the models and saved-chat-cache folders are managed on the Cluster page.
+              </p>
+              <div data-cluster-managed>
                 <label class="block text-xs font-medium text-slate-400 mb-1">Models directory (optional)</label>
                 <input data-field="models_path" type="text" placeholder="<project directory>/data/models" title="Where Matricxon stores installed models (MATRICXON_MODELS_DIR) — also where pAIring writes a model it downloads directly in local mode. Leave blank to use Matricxon's own default inside the project directory above. Changing this does not move already-downloaded models."
+                  class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
+              </div>
+              <div data-cluster-managed>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Saved chat caches directory (optional)</label>
+                <input data-field="prompt_cache_path" type="text" placeholder="<project directory>/data/prompt_cache" title="Where Matricxon keeps its saved chat caches (MATRICXON_PROMPT_CACHE_DIR); the cache key and policy files live next to it. In a cluster this must be a folder every node can reach (see the Cluster page). Leave blank to use Matricxon's own default. Changing this does not move existing cache files; it takes effect at the next Matricxon start."
                   class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
               </div>
               <div class="grid grid-cols-2 gap-3">
@@ -1375,9 +1305,7 @@
                   <input data-field="memory_safety_margin" type="number" min="1.1" max="1.8" step="0.1" placeholder="1.2" title="How much headroom Matricxon requires beyond a model's exact memory footprint before allowing it to load (e.g. 1.2 = needs 1.2x the model's size free). Lower values allow loading larger models but risk swapping/OOM; must be between 1.1 and 1.8. Default 1.2 — leave blank for Matricxon's own default (also 1.2)."
                     class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
                 </div>
-                <!-- One combined control: the kernels choice only means anything with quantized native compute on,
-                     so it sits right beside that checkbox and is disabled while it's off (see settings.js:
-                     syncMatricxonKernelSelect). -->
+                <!-- One combined control: the kernels choice matters only with quantized native compute on, so it sits beside that checkbox and is disabled while it's off (settings.js syncMatricxonKernelSelect). -->
                 <div class="col-span-2">
                   <label class="block text-xs font-medium text-slate-400 mb-1">Quantized native compute</label>
                   <div class="flex items-center gap-3 rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5">
@@ -1455,9 +1383,14 @@
           </div>
 
           <div data-mode-section="remote" class="hidden space-y-2">
-            <p class="text-xs text-slate-500">Up to 120 hosts — load-balanced across whichever is least busy.</p>
+            <p class="text-xs text-slate-500" id="matricxon-hosts-hint">Up to 120 hosts — load-balanced across whichever is least busy.</p>
+            <!-- While cluster mode is on, settings_cluster_managed.js hides the editor and shows the nodes here. -->
+            <div id="matricxon-hosts-managed" class="hidden space-y-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-400">
+              <p>Cluster mode is on: the nodes are managed on the Cluster page (add, remove, reset, voters).</p>
+              <ul id="matricxon-hosts-managed-list" class="font-mono text-slate-300"></ul>
+            </div>
             <div data-field="remote-hosts-list" class="space-y-1.5"></div>
-            <button type="button" data-action="add-host"
+            <button type="button" data-action="add-host" id="matricxon-add-host"
               class="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 transition-colors">
               + Add host
             </button>
@@ -1484,9 +1417,7 @@
       </div>
 
       <div data-group="image" class="hidden space-y-8">
-      <!-- stable-diffusion.cpp is the only selectable image engine (app.services.image_engine_service.
-           ENABLED_IMAGE_ENGINES), so there is no engine picker. ComfyUI's section below is switched off with a Jinja
-           comment until its integration is removed for good. -->
+      <!-- stable-diffusion.cpp is the only selectable image engine (app.services.image_engine_service.ENABLED_IMAGE_ENGINES), so there is no engine picker. ComfyUI's section below is switched off with a Jinja comment until its integration is removed. -->
       {% include "_sdcpp_server.html" %}
 
       {# ComfyUI — disabled; the section stays here only until its removal.
@@ -1617,14 +1548,12 @@
       </div>
     </div>
 
-    <!-- MCP servers tab: the tool servers every user's chats can use (Admin settings > System has the on/off switch and
-         the limits). Wired by app/static/js/settings_mcp_servers.js. -->
+    <!-- MCP servers tab: the tool servers every user's chats can use (Admin settings > System has the on/off switch and limits). Wired by app/static/js/settings_mcp_servers.js. -->
     <div id="tab-mcp-servers" class="hidden mx-auto max-w-3xl px-4 py-8 space-y-8">
       {% include "_mcp_servers.html" %}
     </div>
 
-    <!-- Users tab: admin-only account management (moved out of System
-         into its own tab since it's a distinct concern). -->
+    <!-- Users tab: admin-only account management, in its own tab (a separate concern from System). -->
     <div id="tab-users" class="hidden mx-auto max-w-3xl px-4 py-8 space-y-3">
       <div class="flex items-center justify-between">
         <h2 class="text-sm font-semibold text-slate-200">Users</h2>
@@ -1687,10 +1616,7 @@
       </div>
     </div>
 
-    <!-- Channels tab: admin-only. A channel is a shared group chat — its
-         member/manager picker is built entirely in JS (see settings.js:
-         buildChannelForm) since it needs to stay usable with a large
-         (1000+) user list, which a plain hardcoded <select> doesn't. -->
+    <!-- Channels tab: admin-only. A channel is a shared group chat; its member/manager picker is built in JS (settings.js buildChannelForm) to stay usable with 1000+ users, which a plain <select> isn't. -->
     <div id="tab-channels" class="hidden mx-auto max-w-3xl px-4 py-8 space-y-3">
       <div class="flex items-center justify-between">
         <h2 class="text-sm font-semibold text-slate-200">Channels</h2>
@@ -1716,6 +1642,9 @@
 <script src="/static/js/theme.js?v={{ static_version }}"></script>
 <script src="/static/js/settings.js?v={{ static_version }}"></script>
 <script src="/static/js/settings_cache_persistence.js?v={{ static_version }}"></script>
+{% if admin_page %}<script src="/static/js/settings_cluster_managed.js?v={{ static_version }}"></script>
+<script src="/static/js/settings_images_check.js?v={{ static_version }}"></script>{% endif %}
+{% if admin_page %}<script src="/static/js/settings_quorum.js?v={{ static_version }}"></script>{% endif %}
 {% if is_admin %}<script src="/static/js/settings_mcp_servers.js?v={{ static_version }}"></script>{% endif %}
 <script src="/static/js/settings_diffusion_models.js?v={{ static_version }}"></script>
 <script src="/static/js/settings_context_window.js?v={{ static_version }}"></script>

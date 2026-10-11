@@ -1,10 +1,7 @@
-"""RunPodEngine — the InferenceEngine adapter around app.services.runpod_client. Every
-method forwards by module reference, looked up again on every call (never bound to a
-local name), matching every other engine adapter's monkeypatch-testability
-convention (see base.py's own docstring). No local process, no host pool — see
-app.services.connectors and app.services.connector_config_cache for how this
-engine's live config (endpoint ID, API key, model) reaches runpod_client without a
-db session anywhere on this call path."""
+"""RunPodEngine: InferenceEngine adapter over runpod_client. Forwards by module reference, looked up per
+call (monkeypatch-testable, see base.py). No local process or host pool; its live config (endpoint ID, API
+key, model) reaches runpod_client without a db session via services.connectors / connector_config_cache.
+"""
 
 from collections.abc import AsyncGenerator
 
@@ -40,8 +37,8 @@ class RunPodEngine(InferenceEngine):
         return await runpod_client.check_health()
 
     async def is_ready(self) -> bool:
-        """Not ready until an admin has saved valid config for the RunPod connector, enabled it, and it's passed
-        a "Test connection" check on the Connectors page (see app.services.connector_config_cache)."""
+        """Not ready until an admin saved valid RunPod config, enabled it and passed "Test connection"
+        (connector_config_cache)."""
         return connector_config_cache.is_ready("runpod")
 
     async def test_connection(self, config: dict[str, str]) -> tuple[bool, str]:

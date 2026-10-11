@@ -1,11 +1,7 @@
-"""
-Generic read/write for one or more KEY=value lines in a .env file, leaving every other line
-(comments, other settings, their order) untouched. Used by app/services/db_config_url.py —
-bootstrap-level settings (DATABASE_URL, AUTO_MIGRATE) live in this app's own .env rather than the
-AppSetting DB table because they're needed before, or independently of, this app's own database
-connection — and by app/services/matricxon_process.py, to write MATRICXON_* overrides into
-Matricxon's own .env file (a different path — see write_env_values' own docstring on why that one
-needs to work regardless of which path started the Matricxon process).
+"""Reads/writes KEY=value lines in a .env file, leaving other lines (comments, settings, order) untouched.
+Used by db_config_url.py (bootstrap settings DATABASE_URL, AUTO_MIGRATE live in .env, not the AppSetting
+table, since they're needed before or independent of the DB) and matricxon_process.py (MATRICXON_*
+overrides in Matricxon's own .env, which must work however the process starts; see write_env_values).
 """
 
 from pathlib import Path
@@ -31,11 +27,10 @@ def write_env_value(key: str, value: str, path: Path | None = None) -> None:
 
 
 def write_env_values(values: dict[str, str | None], path: Path | None = None) -> None:
-    """Same single-key guarantee write_env_value already gave, extended to write several keys in one
-    read/modify/write pass rather than one file rewrite per key. A `None` value removes that key's
-    line entirely instead of writing an empty `KEY=` one — used when a config field is cleared back
-    to "use the engine's own built-in default": leaving a stale `KEY=` line behind would keep
-    overriding it even after the admin unset it."""
+    """Like write_env_value but several keys in one read/modify/write pass. A `None` value removes the line
+    instead of writing `KEY=`: used when a field is cleared to the engine's default, since a stale `KEY=` would still
+    override it.
+    """
     path = path or ENV_PATH
     lines = path.read_text().splitlines() if path.exists() else []
     remaining = dict(values)

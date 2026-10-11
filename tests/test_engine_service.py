@@ -1,5 +1,5 @@
-"""Unit tests for app/services/engine_service.py — persistence + the in-process cache current_engine() reads on
-every hot-path inference_client call."""
+"""Tests for services/engine_service.py: persistence and the in-process cache current_engine reads on every hot-path
+inference_client call."""
 
 import pytest
 
@@ -8,8 +8,7 @@ from app.services import engine_service
 
 @pytest.fixture(autouse=True)
 def reset_cache():
-    """Each test gets a clean in-process cache — engine_service._cached_engine is module-level state that would
-    otherwise leak between tests."""
+    """A clean in-process cache per test: engine_service._cached_engine is module-level state that would leak."""
     engine_service._cached_engine = engine_service.DEFAULT_ENGINE
     yield
     engine_service._cached_engine = engine_service.DEFAULT_ENGINE
@@ -36,7 +35,7 @@ async def test_set_active_engine_updates_the_in_process_cache_immediately(db):
 @pytest.mark.asyncio
 async def test_load_cache_from_db_populates_the_cache_from_a_saved_value(db):
     await engine_service.set_active_engine(db, "ollama")
-    engine_service._cached_engine = "matricxon"  # simulate a sibling instance that hasn't refreshed yet
+    engine_service._cached_engine = "matricxon"
     await engine_service.load_cache_from_db(db)
     assert engine_service.current_engine() == "ollama"
 

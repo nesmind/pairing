@@ -1,8 +1,7 @@
-"""Unit tests for app/services/title_service.py: "simple" mode's pure
-text-summarization helper plus "smart" mode's model-based generator, its
-sanity guard against truncated reasoning, and the fire-and-forget
-scheduling that keeps it running after the request that triggered it has
-already ended."""
+"""Tests for services/title_service.py: "simple" mode's pure summarization helper, "smart" mode's model-based
+generator with its truncated-reasoning guard, and the fire-and-forget scheduling that keeps it running after its request
+ends.
+"""
 
 import asyncio
 
@@ -56,9 +55,8 @@ def test_summarize_as_title_falls_back_to_new_chat_for_empty_input():
 
 
 def test_summarize_as_title_preserves_non_english_text_as_is():
-    """No model call means no per-language handling is needed either —
-    whatever language the message itself is in just carries straight
-    through, unlike "smart" mode's model-prompted approach below."""
+    """No model call, so no per-language handling: whatever language the message is in carries through, unlike "smart"
+    mode's model-prompted approach."""
     text = "מה בירת צרפת?"
     assert _summarize_as_title(text) == text
 
@@ -89,12 +87,10 @@ async def test_maybe_generate_title_with_model_accepts_a_short_title(db, monkeyp
 
 @pytest.mark.asyncio
 async def test_maybe_generate_title_with_model_rejects_truncated_reasoning_as_a_title(db, monkeypatch):
-    """Regression test: a "thinking" model whose reasoning doesn't finish
-    within the title-generation token budget never reaches its real
-    answer — chat_once then just returns a fragment of that raw
-    reasoning instead of a title. Saving it anyway would leave the
-    sidebar showing a chunk of the model's internal monologue rather
-    than either a real title or the honest "New chat" placeholder."""
+    """Regression: a "thinking" model whose reasoning doesn't finish within the title token budget never reaches its
+    answer, and chat_once returns a fragment of raw reasoning. Saving it would show part of the model's internal
+    monologue in the sidebar instead of a real title or the honest "New chat".
+    """
 
     async def fake_chat_once(*_args, **_kwargs):
         return (
@@ -124,16 +120,10 @@ async def test_maybe_generate_title_with_model_does_not_overwrite_an_existing_ti
 
 @pytest.mark.asyncio
 async def test_schedule_smart_title_generation_survives_after_the_caller_moves_on(monkeypatch):
-    """Regression test: title generation used to run as a plain `await`
-    inside chat_service.build_reply_stream, *after* its "done" event was
-    yielded. But chat.js is deliberately written to stop reading that
-    response right after "done" — and once the client disconnects, ASGI
-    cancels the still-running generator, silently killing that `await`
-    before the model call could ever finish. schedule_smart_title_generation
-    must run as a task fully independent of whatever called it, so it
-    keeps going (and actually lands the title) even after the caller's
-    own scope — simulated here as a `with`-like session that's already
-    closed by the time the task runs — has completely gone away.
+    """Regression: title generation ran as a plain `await` in chat_service.build_reply_stream *after* "done", but
+    chat.js stops reading right after "done" and ASGI then cancels the generator, killing that `await` before the model
+    call finished. schedule_smart_title_generation must run independently of its caller, landing the title even after
+    the caller's scope (simulated as an already-closed `with`-like session) is gone.
     """
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
@@ -151,9 +141,8 @@ async def test_schedule_smart_title_generation_survives_after_the_caller_moves_o
         setup_db.add(conversation)
         await setup_db.commit()
         conversation_id = conversation.id
-    # The session that created the conversation is closed by now — the
-    # scheduled task must open its own, exactly like a real request's
-    # session being gone by the time this runs for real.
+    # The session that created the conversation is closed: the scheduled task must open its own, like a real request's
+    # session gone by then.
 
     schedule_smart_title_generation(conversation_id, "What is the capital of France?")
     assert title_service._background_title_tasks, "expected a task to have been scheduled"
@@ -168,9 +157,8 @@ async def test_schedule_smart_title_generation_survives_after_the_caller_moves_o
 
 @pytest.mark.asyncio
 async def test_schedule_smart_title_generation_does_not_block_the_caller(monkeypatch):
-    """schedule_smart_title_generation must return immediately, before
-    the model call it kicks off has even started — that's the whole
-    point of it being a background task rather than a plain `await`."""
+    """schedule_smart_title_generation must return at once, before the model call it starts has begun: the point of a
+    background task over a plain `await`."""
     started = asyncio.Event()
     release = asyncio.Event()
 
@@ -193,8 +181,8 @@ async def test_schedule_smart_title_generation_does_not_block_the_caller(monkeyp
         await setup_db.commit()
         conversation_id = conversation.id
 
-    schedule_smart_title_generation(conversation_id, "hello")  # must not hang here
-    assert not started.is_set()  # the model call hasn't even started yet
+    schedule_smart_title_generation(conversation_id, "hello")
+    assert not started.is_set()
 
     release.set()
     await asyncio.gather(*title_service._background_title_tasks)

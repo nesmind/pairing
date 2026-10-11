@@ -1,9 +1,10 @@
-"""The tools one chat offers its model: a list saved the first time the chat uses tools and kept after that.
+"""The tools one chat offers its model: saved the first time the chat uses tools, then kept.
 
-The tool definitions sit at the very start of the prompt, so changing them makes the engine re-read the whole
-chat. An admin adding or removing a tool must not do that to every chat, so a chat keeps the list it started
-with. A tool removed since then stays in the list, and a call to it gets a clear "no longer available" result.
-New tools reach a chat only when its person asks (`refresh`); new chats start from the current tools."""
+Tool definitions start the prompt, so changing them makes the engine re-read the whole chat. A chat keeps
+its starting list so admin changes don't do that to every chat. A removed tool stays listed and a call
+gets a "no longer available" result. New tools reach a chat only on request (`refresh`); new chats start
+from the current tools.
+"""
 
 from dataclasses import dataclass
 from typing import Any
@@ -19,7 +20,7 @@ UNAVAILABLE = "The tool {name} is no longer available (an administrator removed 
 
 @dataclass(frozen=True)
 class ChatTool:
-    """A tool as this chat knows it: the saved definition, plus the live tool that runs it (None once removed)."""
+    """A tool as this chat knows it: the saved definition plus the live tool that runs it (None once removed)."""
 
     name: str
     server_name: str
@@ -46,7 +47,7 @@ class ChatToolSet:
 
     @staticmethod
     def snapshot_of(live: list[ExposedTool]) -> list[dict[str, Any]]:
-        """The saved form of a tool list, in a fixed order so it never reorders by accident."""
+        """The saved form of a tool list, in fixed order."""
         return [
             {"name": t.name, "server": t.server_name, "tool": t.tool_name, "spec": t.definition()}
             for t in sorted(live, key=lambda t: t.name)
@@ -65,8 +66,7 @@ class ChatToolSet:
     async def for_chat(
         self, conversation_id: str | None, saved: list[dict[str, Any]], live: list[ExposedTool]
     ) -> list[ChatTool]:
-        """This chat's tools. With nothing saved yet, saves the current ones (the chat is fresh as far as tools
-        go, so nothing is lost) - unless there are none."""
+        """This chat's tools. With nothing saved, saves the current ones (unless none)."""
         if not saved:
             if not live:
                 return []

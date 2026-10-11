@@ -1,7 +1,7 @@
-"""Unit tests for app/services/matricxon_direct_puller.py. Every network-touching dependency
-(HuggingFaceCatalogSearch.repo_files, gguf_probe.probe_metadata, httpx.AsyncClient,
-MatricxonDirectPuller._get_config, matricxon_process.resolve_project_dir) is monkeypatched, so no real
-Hugging Face, Matricxon, or database call happens here."""
+"""Tests for services/matricxon_direct_puller.py. Network dependencies (HuggingFaceCatalogSearch.repo_files,
+gguf_probe.probe_metadata, httpx.AsyncClient, MatricxonDirectPuller._get_config,
+matricxon_process.resolve_project_dir) are patched: no real Hugging Face, Matricxon or DB call.
+"""
 
 import asyncio
 import json
@@ -29,7 +29,7 @@ _REPO_FILES = {
         }
     ],
 }
-_CONTENT = b"fake gguf bb"  # 12 bytes, matches _REPO_FILES's size_bytes
+_CONTENT = b"fake gguf bb"
 
 
 async def _async_return(value):
@@ -84,8 +84,8 @@ class _FakeAsyncClient:
 
 
 def _patch_config(monkeypatch, **overrides) -> MatricxonServerConfig:
-    """Stands in for the real DB-backed MatricxonServerConfig fetch (MatricxonDirectPuller._get_config
-    opens its own AsyncSessionLocal — see that method's own docstring) — no real database involved here."""
+    """Stands in for the DB-backed MatricxonServerConfig fetch (MatricxonDirectPuller._get_config opens its own
+    AsyncSessionLocal)."""
     config = MatricxonServerConfig(**overrides)
     monkeypatch.setattr(MatricxonDirectPuller, "_get_config", staticmethod(lambda: _async_return(config)))
     return config
@@ -144,9 +144,9 @@ async def test_pull_stream_leaves_no_partial_file_behind_on_success(monkeypatch,
 
 @pytest.mark.asyncio
 async def test_pull_stream_uses_a_configured_models_path_directly(monkeypatch, tmp_path):
-    """When models_path is set, it's used as-is (no /data/models suffix appended) and
-    matricxon_process.resolve_project_dir is never even consulted — this is the actual fix for the
-    field's own bug: models silently landing wherever the old hardcoded guess pointed."""
+    """When models_path is set it's used as is (no /data/models suffix) and matricxon_process.resolve_project_dir is
+    never consulted: the fix for models landing wherever the old hardcoded guess pointed.
+    """
     monkeypatch.setattr(
         HuggingFaceCatalogSearch, "repo_files", staticmethod(lambda repo_id, proxy_url: _async_return(_REPO_FILES))
     )
@@ -174,9 +174,8 @@ async def test_pull_stream_uses_a_configured_models_path_directly(monkeypatch, t
 
 @pytest.mark.asyncio
 async def test_pull_stream_honors_a_configured_project_dir_override(monkeypatch, tmp_path):
-    """The other real bug this closes: _resolve_dest used to always call the no-override
-    auto_detect_project_dir(), silently ignoring whatever project_dir the admin had already saved —
-    now it's threaded through to matricxon_process.resolve_project_dir instead."""
+    """_resolve_dest always called the no-override auto_detect_project_dir, ignoring a saved project_dir; it now goes
+    through resolve_project_dir."""
     monkeypatch.setattr(
         HuggingFaceCatalogSearch, "repo_files", staticmethod(lambda repo_id, proxy_url: _async_return(_REPO_FILES))
     )
@@ -226,8 +225,9 @@ async def test_pull_stream_raises_and_cleans_up_on_a_sha256_mismatch(monkeypatch
 
 
 def test_match_finds_a_short_human_friendly_suffix_by_substring():
-    """Confirmed live (2026-09-21): a real curated default_models.json tag's suffix ("Q8_0") is much shorter
-    than the real file's own stem ("all-MiniLM-L6-v2.Q8_0") — an exact-stem check alone would miss it."""
+    """Confirmed live: a curated default_models.json suffix ("Q8_0") is much shorter than the file's
+    stem ("all-MiniLM-L6-v2.Q8_0"); an exact-stem check alone would miss it.
+    """
     files = [{"filename": "all-MiniLM-L6-v2.Q8_0.gguf"}, {"filename": "all-MiniLM-L6-v2.Q4_K_M.gguf"}]
     assert MatricxonDirectPuller._match("Q8_0", files)["filename"] == "all-MiniLM-L6-v2.Q8_0.gguf"
 
@@ -249,8 +249,8 @@ def test_match_raises_when_the_suffix_is_ambiguous():
 
 
 class TestDescribe:
-    """Real bug found live (2026-09-22): a transient httpx failure stringified to an empty message,
-    surfacing as "download of ... failed: " with nothing after the colon — no clue what actually failed."""
+    """Found: a transient httpx failure stringified to "", surfacing as "download of... failed: " with
+    no clue what failed."""
 
     def test_uses_the_exceptions_own_message_when_it_has_one(self):
         assert MatricxonDirectPuller._describe(ValueError("boom")) == "boom"
@@ -304,9 +304,9 @@ async def test_pull_stream_raises_for_a_non_hf_tag(bad_tag):
 
 @pytest.mark.asyncio
 async def test_pull_stream_skips_the_download_when_the_file_already_exists(monkeypatch, tmp_path):
-    """The real case this guards against: a concurrent pull of the exact same tag already finished while this
-    one was waiting for the coordinator's lock (see MatricxonDirectPuller's own module docstring on the real
-    bug — an orphaned, still-running pull racing a retry — this and the lock together prevent)."""
+    """Guards a concurrent pull of the same tag that finished while this one waited for the coordinator's lock (see
+    the module docstring: an orphaned pull racing a retry; this and the lock prevent it).
+    """
     _patch_success(monkeypatch, tmp_path)
     gguf_path = tmp_path / "data" / "models" / "hf.co" / "org" / "repo" / "model-q4_k_m.gguf"
     gguf_path.parent.mkdir(parents=True)
@@ -328,9 +328,9 @@ async def test_pull_stream_skips_the_download_when_the_file_already_exists(monke
 
 @pytest.mark.asyncio
 async def test_pull_stream_serializes_two_concurrent_pulls_of_the_same_tag(monkeypatch, tmp_path):
-    """Two real concurrent MatricxonDirectPuller().pull_stream(_TAG) calls (not just one retried after the
-    other) must not both write the same .partial file — the second one waits for the coordinator's lock, then
-    finds the file already there and skips straight to "already downloaded" instead of racing the first."""
+    """Two real concurrent pull_stream(_TAG) calls must not both write the same.partial: the second waits for the
+    lock, then finds the file and skips to "already downloaded".
+    """
     _patch_success(monkeypatch, tmp_path)
 
     async def _drain(tag):
@@ -339,7 +339,7 @@ async def test_pull_stream_serializes_two_concurrent_pulls_of_the_same_tag(monke
     results = await asyncio.gather(_drain(_TAG), _drain(_TAG))
 
     statuses = [{p["status"] for p in result} for result in results]
-    # Exactly one of the two actually downloaded; the other found it already there.
+    # Exactly one downloaded; the other found it there.
     assert any("already downloaded" in s for s in statuses)
     assert all("success" in s for s in statuses)
     gguf_path = tmp_path / "data" / "models" / "hf.co" / "org" / "repo" / "model-q4_k_m.gguf"
@@ -348,8 +348,8 @@ async def test_pull_stream_serializes_two_concurrent_pulls_of_the_same_tag(monke
 
 @pytest.mark.asyncio
 async def test_pull_stream_cleans_up_the_partial_file_on_cancellation(monkeypatch, tmp_path):
-    """A client disconnecting mid-download (see this module's own docstring on the real bug this — and a
-    matching fix on Matricxon's own side — closes) must not leave a half-written .partial file behind."""
+    """A client disconnecting mid-download (see the module docstring; Matricxon has a matching fix) must not leave a
+    half-written.partial."""
     monkeypatch.setattr(
         HuggingFaceCatalogSearch, "repo_files", staticmethod(lambda repo_id, proxy_url: _async_return(_REPO_FILES))
     )
@@ -359,7 +359,7 @@ async def test_pull_stream_cleans_up_the_partial_file_on_cancellation(monkeypatc
     class _HangingStreamResponse(_FakeStreamResponse):
         async def aiter_bytes(self, chunk_size):
             yield self._content[:4]
-            await asyncio.sleep(3600)  # never actually reached — the task is cancelled first
+            await asyncio.sleep(3600)
 
     class _HangingClient(_FakeAsyncClient):
         def stream(self, _method, _url):

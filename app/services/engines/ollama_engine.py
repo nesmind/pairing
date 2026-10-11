@@ -1,8 +1,7 @@
-"""OllamaEngine — the InferenceEngine adapter around app.services.ollama_client/
-ollama_admin/ollama_pool. Every method forwards by module reference, looked up again
-on every call (never bound to a local name), so the existing test suite's
-`monkeypatch.setattr(ollama_client, "list_models", ...)`-style patches keep working
-unchanged."""
+"""OllamaEngine: InferenceEngine adapter over ollama_client/ollama_admin/ollama_pool. Forwards by module
+reference, looked up per call (never bound), so tests' `monkeypatch.setattr(ollama_client, "list_models",...)` keep
+working.
+"""
 
 from collections.abc import AsyncGenerator
 
@@ -43,7 +42,7 @@ class OllamaEngine(InferenceEngine):
         return await ollama_client.embed(text, model)
 
     async def stop_model(self, model: str, request_id: str | None = None) -> None:
-        # Ollama can only unload the whole model (no per-request cancel), so the id is unused here.
+        # Ollama can only unload the whole model (no per-request cancel), so the id is unused.
         await ollama_client.stop_model(model)
 
     def pull_model_stream(self, tag: str) -> AsyncGenerator[dict, None]:

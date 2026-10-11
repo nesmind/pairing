@@ -1,23 +1,11 @@
-"""
-Routes chat/embedding requests across Ollama host(s) — a thin,
-Ollama-flavored wrapper around app/services/server_pool.py's generic
-HostPool (the actual selection/cooldown/failover algorithm lives there
-now, shared with app/services/comfyui_pool.py). Every public function
-name here is unchanged from before that extraction, so none of this
-module's own callers (app/services/ollama_client.py,
-app/routers/health.py) needed to change their own call shape — only how
-the pool's host list gets populated does.
+"""Routes chat/embedding requests across Ollama host(s): a thin wrapper around server_pool.HostPool (the
+selection/cooldown/failover algorithm, shared with comfyui_pool.py). Public names are unchanged, so callers
+(ollama_client.py, routers/health.py) were unaffected by that extraction.
 
-The live host list is admin-configured from Settings > External servers
-(see app.services.settings_service.get_ollama_server_config) — "local"
-mode resolves to LOCAL_OLLAMA_HOST alone (the one process this app
-itself manages, see app/services/ollama_process.py); "remote" mode
-resolves to the admin's own configured remote_hosts list instead. Cached
-here via refresh_from_config rather than re-read from the DB on every
-chat request (this sits on the hot generation path) — loaded once at
-startup (see app.services.startup_service) and refreshed immediately
-whenever the admin saves a change, the same write-through pattern
-app.services.instance_pool.set_cached_proxy_mode already uses.
+The host list is admin-configured (Settings > External servers, settings_service.get_ollama_server_config):
+"local" resolves to LOCAL_OLLAMA_HOST alone (the process ollama_process.py manages), "remote" to the
+admin's remote_hosts. Cached via refresh_from_config, not read from the DB per chat request (hot path):
+loaded at startup (startup_service) and refreshed on every admin save, like instance_pool.set_cached_proxy_mode.
 """
 
 import httpx
@@ -25,29 +13,24 @@ import httpx
 from app.schemas import OllamaServerConfig
 from app.services.server_pool import HostPool, ping_host
 
-# The one process this app itself manages (see app/services/ollama_process.py) always binds to Ollama's own
-# built-in default — that supervisor never passes an explicit host/port to the `ollama serve` subprocess it
-# launches — so this is a fixed fact, not a deployment setting: no .env/environment variable feeds it, and there
-# is no UI field for it either (mirrors app.config.COMFYUI_HOST's identical "deployment fact, not admin-editable"
-# reasoning). "Remote" mode's hosts, by contrast, are fully admin-editable — see OllamaServerConfig.remote_hosts.
+# The managed process binds Ollama's built-in default (ollama_process never passes host/port to `ollama
+# serve`), so this is a fixed fact, not a setting: no env var or UI field (like app.config.COMFYUI_HOST).
+# "Remote" hosts are admin-editable (OllamaServerConfig.remote_hosts).
 LOCAL_OLLAMA_HOST = "http://localhost:11434"
 
 _HEALTH_CHECK_TIMEOUT = httpx.Timeout(3.0, connect=2.0)
 _COOLDOWN_SECONDS = 30.0
 
 _pool = HostPool(cooldown_seconds=_COOLDOWN_SECONDS)
-# A single-host pool by default (matching this module's own pre-tab
-# behavior) so anything calling pick_host before the first
-# refresh_from_config (startup_service runs it early, but tests/tools
-# importing this module directly shouldn't hit an empty pool) still works.
+# A single-host pool by default so pick_host works before the first refresh_from_config (startup_service runs
+# it early, but tests/tools importing this module shouldn't see an empty pool).
 _pool.set_hosts([LOCAL_OLLAMA_HOST])
 
 
 def refresh_from_config(config: OllamaServerConfig) -> None:
-    """Recomputes the live host list from `config` — call this whenever
-    the admin saves Settings > External servers > Ollama (see
-    app/routers/ollama_admin.py) or at startup (see
-    app.services.startup_service.run_startup_tasks)."""
+    """Recomputes the live host list from `config`; call on admin save (routers/ollama_admin.py) or at startup
+    (startup_service.run_startup_tasks).
+    """
     hosts = config.remote_hosts if config.mode == "remote" else [LOCAL_OLLAMA_HOST]
     _pool.set_hosts(hosts)
 
@@ -78,16 +61,13 @@ async def stream_with_failover(make_stream):
 
 
 async def check_hosts() -> dict[str, bool]:
-    """Pings every currently-configured host (Ollama's own cheap
-    `GET /api/tags`) — see HostPool.check_hosts and
-    app/routers/health.py, the only caller."""
+    """Pings every configured host (Ollama's cheap `GET /api/tags`); see HostPool.check_hosts, routers/health.py (only
+    caller)."""
     return await _pool.check_hosts(_HEALTH_CHECK_TIMEOUT, path="/api/tags")
 
 
 async def check_host(host: str) -> bool:
-    """Same probe as check_hosts, for one arbitrary host that isn't
-    necessarily saved to the live pool yet — Settings > External servers
-    uses this to let an admin verify a remote-mode candidate URL is
-    actually reachable before saving the form (see
-    app/routers/ollama_admin.py's check_host endpoint)."""
+    """Same probe as check_hosts for one arbitrary, possibly unsaved host; Settings > External servers verifies a
+    remote URL before saving (routers/ollama_admin.py check_host).
+    """
     return await ping_host(host, _HEALTH_CHECK_TIMEOUT, path="/api/tags")

@@ -1,8 +1,9 @@
 """Runs a reply with tools: model -> tool calls -> run them on their MCP servers -> model again.
 
-`ToolLoop.run` is a drop-in for `chat_stream` that also yields one dict per finished tool call, so the
-caller can show and store it. After the admin's max rounds (Settings > System) the model is asked to answer without
-tools, so a model that keeps calling tools can't run forever."""
+`ToolLoop.run` replaces `chat_stream` and also yields one dict per finished tool call, for the caller to show
+and store. After the admin's max rounds (Settings > System) the model must answer without tools, so a model
+that keeps calling tools can't run forever.
+"""
 
 import json
 import time
@@ -96,7 +97,7 @@ class ToolLoop:
 
 
 def _without_repeats(calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """A model sometimes repeats the very same call within one turn; running it twice only costs time."""
+    """A model sometimes repeats the same call in one turn; running it twice only costs time."""
     seen: set[tuple[str, str]] = set()
     unique = []
     for call in calls:
@@ -121,8 +122,9 @@ def _arguments(raw: Any) -> dict[str, Any]:
 async def tool_stream_or_none(
     db: AsyncSession, model: str, messages: list[dict], params: dict[str, Any]
 ) -> AsyncIterator[str | dict[str, Any]] | None:
-    """The tool-using reply stream for this request, or None when it should be a plain chat:
-    the conversation didn't ask for tools, no MCP server offers any, or the model can't use them."""
+    """The tool-using reply stream, or None for a plain chat: the conversation didn't ask for tools, no MCP server
+    offers any, or the model can't use them.
+    """
     if not params.get("use_tools") or not await mcp_settings_service.get_enabled(db):
         return None
     live = await McpToolCatalog(db).tools()
@@ -138,9 +140,10 @@ _capabilities: tuple[float, list[dict]] | None = None
 
 
 async def _model_can_use_tools(model: str) -> bool:
-    """False only when the engine reports capabilities for this model and "tools" isn't among them
-    (Matricxon does; Ollama's model list doesn't, so there it is tried and falls back if refused).
-    The model list is cached briefly so a tool reply doesn't pay for an extra engine call."""
+    """False only when the engine reports capabilities for this model and "tools" isn't among them (Matricxon does;
+    Ollama's model list doesn't, so it is tried and falls back if refused). The model list is cached briefly so a
+    tool reply doesn't pay for an extra engine call.
+    """
     global _capabilities
     now = time.monotonic()
     if _capabilities is None or _capabilities[0] < now:

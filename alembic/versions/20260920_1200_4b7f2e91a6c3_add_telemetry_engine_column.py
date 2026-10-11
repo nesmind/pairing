@@ -2,18 +2,15 @@
 
 Revision ID: 4b7f2e91a6c3
 Revises: 7a3e9c1d5f22
-Create Date: 2026-09-20 12:00:00.000000
+Create Date: 12:00:00.000000
 
-Both tables predate Matricxon support (see app/models/telemetry.py's own docstring) — every row written so far
-is implicitly Ollama's, since app.services.ollama_telemetry/ollama_ps_poller were the only writers that existed.
-`server_default="ollama"` backfills every existing row correctly on upgrade, not just new ones going forward.
+Existing rows are Ollama's (the only earlier writers); server_default="ollama" backfills them.
 """
 
 import sqlalchemy as sa
 
 from alembic import op
 
-# revision identifiers, used by Alembic.
 revision = "4b7f2e91a6c3"
 down_revision = "7a3e9c1d5f22"
 branch_labels = None

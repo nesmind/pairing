@@ -1,5 +1,5 @@
-"""Unit tests for app/services/sdcpp_installer.py — GitHub is faked with httpx.MockTransport and a real in-memory
-zip; nothing touches the network."""
+"""Tests for services/sdcpp_installer.py: GitHub is faked with httpx.MockTransport and a real in-memory zip; no
+network."""
 
 import io
 import zipfile
@@ -53,7 +53,7 @@ def test_is_installed_needs_the_marker_and_the_binary(tmp_path):
     assert sdcpp_installer.is_installed() is False
     (tmp_path / "stable-diffusion.cpp").mkdir()
     (tmp_path / "stable-diffusion.cpp" / "sd-server").write_text("")
-    assert sdcpp_installer.is_installed() is False  # no marker yet — extraction may still be running
+    assert sdcpp_installer.is_installed() is False
     (tmp_path / "stable-diffusion.cpp" / ".install_complete").write_text("")
     assert sdcpp_installer.is_installed() is True
 

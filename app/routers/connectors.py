@@ -1,10 +1,6 @@
-"""
-GET/PUT for the Connectors page — admin-configured third-party engines (see
-app.services.connectors for what a Connector is, app.services.engines.runpod_engine
-for the one real engine a connector currently backs). Admin-only: this is where API
-keys get entered. Deliberately its own router rather than folded into
-engine_admin.py: a Connector is a distinct concept from engine selection itself (see
-app.services.connectors.base's own docstring).
+"""GET/PUT for the Connectors page: admin-configured third-party engines (app.services.connectors;
+runpod_engine is the one real backend). Admin-only since API keys are entered here. Separate from
+engine_admin.py: a Connector is distinct from engine selection (connectors.base).
 """
 
 import logging
@@ -25,10 +21,8 @@ router = APIRouter(prefix="/api/connectors", tags=["connectors"])
 
 
 async def _to_out(db: AsyncSession, connector) -> ConnectorOut:
-    # Imported here, not at module level: app.services.engines.registry (which this needs for is_ready()) sits
-    # above app.services.connectors in the dependency direction — importing it back from a module-level import
-    # here would be circular the same way app.services.engine_support_checker.EngineSupportSet.load already
-    # documents for its own identical case.
+    # Imported here to avoid a cycle: engines.registry (needs is_ready) sits above connectors
+    # (as in engine_support_checker.EngineSupportSet.load).
     from app.services.engines.registry import registry
 
     values = await connector_config_service.get_config_for_display(db, connector.id)
@@ -108,11 +102,10 @@ async def update_connector_enabled(
 async def test_connector_config(
     connector_id: str, db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)
 ):
-    """Actually attempts to reach the real service with the connector's *currently saved* config (see
-    app.services.engines.base.InferenceEngine.test_connection) — a connector can't become ready (selectable as
-    the active engine) until this has passed, even if every required field is filled in and it's enabled (see
-    app.services.connector_config_cache.is_ready)."""
-    # Imported here, not at module level — same circular-import reasoning as _to_out's own import.
+    """Tries the real service with the saved config (InferenceEngine.test_connection). A connector is not
+    ready (selectable as engine) until this passes, even if enabled and filled in (connector_config_cache.is_ready).
+    """
+    # Imported here for the same circular-import reason as _to_out.
     from app.services.engines.registry import registry
 
     try:
@@ -131,9 +124,9 @@ async def test_connector_config(
 
 @router.post("/internal-refresh", response_model=OkResponse)
 async def internal_refresh(request: Request, db: AsyncSession = Depends(get_db)):
-    """Called only by another local instance's own server_pool_broadcast.broadcast_refresh right after an
-    admin's connector save — see app/routers/engine_admin.py's internal_refresh for the identical loopback-only
-    guard and reasoning."""
+    """Called only by another local instance's server_pool_broadcast.broadcast_refresh after a connector save;
+    see engine_admin.internal_refresh for the loopback-only guard.
+    """
     if request.client is None or request.client.host not in ("127.0.0.1", "::1"):
         raise HTTPException(status_code=403, detail="Internal endpoint — not reachable externally.")
     await connector_config_cache.load_cache_from_db(db)

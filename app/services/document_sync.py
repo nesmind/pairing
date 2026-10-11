@@ -1,9 +1,5 @@
-"""
-Folder-level orchestration: makes the Document/Chunk rows for one owner
-match whatever's actually sitting on disk, calling
-app/services/document_ingest.py once per new/changed file. Used at app
-startup (app/main.py) and right after a browser upload (see
-app/services/document_upload.py).
+"""Folder-level orchestration: makes one owner's Document/Chunk rows match the disk, calling
+document_ingest.py per new/changed file. Used at startup (app/main.py) and after browser uploads (document_upload.py).
 """
 
 from pathlib import Path
@@ -20,27 +16,16 @@ from app.services.inference_client import InferenceError
 
 
 async def sync_folder_stream(db: AsyncSession, folder: Path, owner_id: str | None):
-    """Makes the Document/Chunk rows for one owner (a specific user, or
-    the shared `None`/global scope) match whatever's currently sitting
-    in `folder`: new files get chunked+embedded, edited files get
-    re-ingested, and files removed from the folder have their database
-    rows deleted. Safe to call repeatedly — on every app startup, and
-    right after an upload — since unchanged files are skipped via their
-    stored content hash instead of being re-embedded every time.
+    """Makes one owner's (a user or the shared `None`/global scope) rows match `folder`: new files are
+    chunked+embedded, edited ones re-ingested, removed ones deleted. Safe to repeat (startup, after upload):
+    unchanged files are skipped by content hash.
 
-    An async generator rather than a plain function so a caller that
-    cares (the upload endpoint, for a progress bar) can watch each file
-    resolve one at a time; `_drain_sync_stats` below is for callers that
-    just want the final tally. The very last item yielded is always
-    `{"stage": "done", "stats": {...}}`.
+    An async generator so the upload endpoint can show per-file progress; `_drain_sync_stats` is for callers
+    wanting only the final tally. The last item is `{"stage": "done", "stats": {...}}`.
 
-    Each file's own text-extraction and embedding is wrapped in its own
-    try/except: a single corrupt or unusually-structured file (a
-    password-protected or malformed PDF, say) reports itself as one
-    per-file error and the rest of the batch still goes through — it
-    used to be that an uncaught exception from *any* file's parsing
-    would blow up the whole sync, silently abandoning every file after
-    it (including ones that had nothing wrong with them).
+    Each file's extraction and embedding has its own try/except: a corrupt file (e.g. a password-protected or
+    malformed PDF) reports one per-file error and the rest still go through (an uncaught exception once
+    abandoned every later file).
     """
     stats = {"added": 0, "updated": 0, "removed": 0, "skipped": 0, "errors": []}
 
@@ -62,9 +47,8 @@ async def sync_folder_stream(db: AsyncSession, folder: Path, owner_id: str | Non
     if removed_any:
         await db.commit()
 
-    # Removing stale rows above only needed the database, but adding or
-    # re-embedding files needs the embedding model — resolved once up front
-    # rather than re-reading it once per file with the same underlying cause.
+    # Removing stale rows needs only the DB, but adding/re-embedding needs the embedding model: resolve it once up
+    # front, not per file.
     embedding_model = await model_catalog_service.get_default_embedding_model(db)
     embeddings_available = (not on_disk) or embedding_model is not None
     if not embeddings_available:
@@ -152,10 +136,7 @@ async def sync_folder_stream(db: AsyncSession, folder: Path, owner_id: str | Non
             status = "updated" if existing is not None else "added"
             stats[status] += 1
             if skipped_chunks:
-                # Still a success overall — just missing a bit of this
-                # file's content from the knowledge base, not the whole
-                # file — see ingest_document_stream's docstring for why
-                # an individual chunk can fail on its own.
+                # Still a success: this file just lacks some content (see ingest_document_stream on per-chunk failures).
                 stats["errors"].append(
                     f"{path.name}: {skipped_chunks} of {chunks_total} chunk(s) couldn't be "
                     "embedded and were skipped (the rest of the file was ingested normally).",
@@ -173,10 +154,7 @@ async def sync_folder_stream(db: AsyncSession, folder: Path, owner_id: str | Non
                 "error": str(exc),
             }
         except Exception as exc:
-            # Anything else (a bug in a specific parser, an odd file
-            # structure pypdf/python-docx/etc. doesn't expect, ...) —
-            # reported the same way rather than taking the whole request
-            # down with it.
+            # Anything else (parser bug, odd file structure): reported the same way, not taking the request down.
             await db.rollback()
             error = f"unexpected error while processing this file ({exc})."
             stats["errors"].append(f"{path.name}: {error}")
@@ -193,9 +171,8 @@ async def sync_folder_stream(db: AsyncSession, folder: Path, owner_id: str | Non
 
 
 async def _drain_sync_stats(folder: Path, owner_id: str | None, db: AsyncSession) -> dict:
-    """Runs sync_folder_stream to completion and returns just the final
-    stats — for callers (startup, and sync_global/sync_user below) that
-    don't care about per-file progress, only the end result."""
+    """Runs sync_folder_stream to completion and returns the final stats, for callers that don't need per-file
+    progress."""
     async for event in sync_folder_stream(db, folder, owner_id):
         if event["stage"] == "done":
             return event["stats"]
@@ -203,10 +180,8 @@ async def _drain_sync_stats(folder: Path, owner_id: str | None, db: AsyncSession
 
 
 def merge_sync_stats(a: dict, b: dict) -> dict:
-    """Combines two sync-stats dicts (see sync_folder_stream) into one, for
-    callers that sync more than one folder in a single request/startup
-    step (e.g. global + one user's own folder) and want a single
-    combined result."""
+    """Combines two sync-stats dicts (sync_folder_stream) for callers syncing several folders in one step (e.g. global +
+    a user's)."""
     return {
         "added": a["added"] + b["added"],
         "updated": a["updated"] + b["updated"],
@@ -217,21 +192,19 @@ def merge_sync_stats(a: dict, b: dict) -> dict:
 
 
 async def sync_global(db: AsyncSession) -> dict:
-    """Syncs the shared knowledge base every user's chats can draw on."""
+    """Syncs the shared knowledge base."""
     return await _drain_sync_stats(GLOBAL_DIR, None, db)
 
 
 async def sync_user(db: AsyncSession, user_id: str) -> dict:
-    """Syncs one user's own private knowledge base."""
+    """Syncs one user's private knowledge base."""
     return await _drain_sync_stats(user_folder(user_id), user_id, db)
 
 
 async def sync_all_on_startup(db: AsyncSession) -> dict:
-    """Syncs the global folder plus every user subfolder that currently
-    exists on disk, for app startup — covers files dropped directly
-    onto the server filesystem while the app wasn't running. Doesn't
-    iterate the full user table: a user who's never uploaded anything
-    has no folder yet, and there's nothing to sync for them."""
+    """Syncs the global folder plus every existing user subfolder at startup (covers files dropped while the app
+    was down). Skips the user table: no folder means nothing to sync.
+    """
     stats = await sync_global(db)
     if USERS_DIR.is_dir():
         for entry in sorted(USERS_DIR.iterdir()):

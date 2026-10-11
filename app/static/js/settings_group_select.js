@@ -1,10 +1,4 @@
-/**
- * Settings tabs with a "Configure ..." selector at the top (External servers, Knowledge): the selector
- * picks which `[data-group]` block of the same tab is shown. The first <option> is always the starting
- * choice on every page load (nothing is remembered). Hidden blocks stay in the DOM, so settings.js keeps
- * loading and binding every section inside them as before. A new option is one <option value="x"> plus
- * one <div data-group="x">.
- */
+/* Settings tabs with a "Configure..." selector on top (External servers, Knowledge): it picks which `[data-group]` block of the tab shows. The first <option> is the starting choice on every load (nothing is remembered). Hidden blocks stay in the DOM, so settings.js keeps binding their sections. A new option is one <option value="x"> plus one <div data-group="x">. */
 class GroupSelect {
   constructor(select) {
     this.select = select;

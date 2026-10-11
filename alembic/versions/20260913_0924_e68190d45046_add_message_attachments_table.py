@@ -2,7 +2,7 @@
 
 Revision ID: e68190d45046
 Revises: 1bb757574207
-Create Date: 2026-09-13 09:24:00.000000
+Create Date: 09:24:00.000000
 
 """
 
@@ -12,7 +12,6 @@ import sqlalchemy as sa
 
 from alembic import op
 
-# revision identifiers, used by Alembic.
 revision = "e68190d45046"
 down_revision = "1bb757574207"
 branch_labels = None
@@ -20,10 +19,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # A message can now carry several attachments (see
-    # app.config.MAX_ATTACHMENT_DOCUMENTS/MAX_ATTACHMENT_IMAGES) — this
-    # table replaces messages.attachment_path/attachment_filename/
-    # attachment_type (one row per file instead of three scalar columns).
+    # A message can carry several attachments (app.config.MAX_ATTACHMENT_DOCUMENTS/IMAGES);
+    # this table replaces the three scalar attachment columns.
     op.create_table(
         "message_attachments",
         sa.Column("id", sa.String(length=32), primary_key=True),
@@ -33,11 +30,8 @@ def upgrade() -> None:
         sa.Column("type", sa.String(length=20), nullable=False),
     )
 
-    # Carries forward any message that already has a single attachment
-    # under the old scalar columns — a real, if small, live-data concern:
-    # this app already has real attachments in production. Done as raw
-    # SQL rather than the ORM since Alembic migrations run outside the
-    # app's own model layer.
+    # Carries forward existing single attachments (production has real ones); raw SQL, since
+    # migrations run outside the model layer.
     conn = op.get_bind()
     messages = sa.table(
         "messages",
@@ -98,8 +92,7 @@ def downgrade() -> None:
         sa.column("filename", sa.String),
         sa.column("type", sa.String),
     )
-    # Only the first attachment per message survives a downgrade — the
-    # old schema only ever had room for one.
+    # Only the first attachment per message survives a downgrade.
     rows = conn.execute(
         sa.select(
             message_attachments.c.message_id,

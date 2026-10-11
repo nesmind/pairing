@@ -1,10 +1,6 @@
-"""
-The fixed set of InferenceEngine instances this app knows about — app.services.
-inference_client's replacement for its old two-way "ollama" vs "matricxon" ternary.
-Engines are listed explicitly here (not self-registering via a decorator on each
-adapter module) so "which engines exist" is visible in one place and never depends on
-import order — adding a third engine in stage 2 is one new adapter file plus one line
-below, nothing else in this module or in inference_client.py changes.
+"""The fixed set of InferenceEngine instances, replacing inference_client's two-way ternary. Listed
+explicitly (not decorator self-registration) so they're visible in one place and independent of import
+order; a third engine is one adapter file plus one line here.
 """
 
 from app.schemas import EngineName
@@ -29,10 +25,8 @@ class EngineRegistry:
             raise KeyError(f"No engine registered under {name!r} — registered: {sorted(self._by_name)}") from None
 
     def active(self) -> InferenceEngine:
-        # Imported here, not at module level: app.services.engine_service doesn't
-        # import this module, so there's no real cycle — kept local anyway so this
-        # module (imported by engine_support_checker.py) never has to care about
-        # engine_service's own import surface.
+        # Imported here: engine_service doesn't import this module, so no cycle, but local so this module (imported
+        # by engine_support_checker.py) needn't track engine_service's imports.
         from app.services import engine_service
 
         return self.get(engine_service.current_engine())
@@ -44,11 +38,9 @@ class EngineRegistry:
         return list(self._by_name)
 
     def all_error_types(self) -> tuple[type[Exception], ...]:
-        """The union of every registered engine's own error type(s), plus
-        EngineCapabilityError (raised by an engine's own default "this isn't
-        supported" stubs — see base.py) — app.services.inference_client catches this
-        whole tuple, exactly replacing its old `except (OllamaError,
-        MatricxonError)`."""
+        """The union of every engine's error types plus EngineCapabilityError (from base.py's "unsupported" stubs);
+        inference_client catches it, replacing `except (OllamaError, MatricxonError)`.
+        """
         types: set[type[Exception]] = {EngineCapabilityError}
         for engine in self._by_name.values():
             types.update(engine.error_types)

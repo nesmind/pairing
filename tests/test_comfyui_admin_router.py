@@ -1,10 +1,7 @@
-"""Unit tests for app/routers/comfyui_admin.py — called directly, not
-through a TestClient/ASGI app (see tests/test_instance_proxy_http.py's
-own docstring on why this project doesn't use that pattern). The
-underlying start/stop logic is already covered by
-tests/test_comfyui_service.py; this file only covers the router's own
-job — wiring config get/set through settings_service, and mapping
-comfyui_service's ValueError onto a 400."""
+"""Tests for routers/comfyui_admin.py, called directly, not via TestClient/ASGI (see tests/test_instance_proxy_http.py).
+Start/stop logic is in tests/test_comfyui_service.py; this covers wiring config through settings_service and
+mapping comfyui_service's ValueError to 400.
+"""
 
 import pytest
 from fastapi import HTTPException

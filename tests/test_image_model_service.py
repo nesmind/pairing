@@ -1,6 +1,7 @@
-"""Unit tests for app/services/image_model_service.py + the image-model routing in the extended catalog and
-app/routers/image_model_admin.py. Hugging Face is faked (httpx.MockTransport / stubbed repo_files); the models
-folder is a tmp_path."""
+"""Tests for services/image_model_service.py, the image-model routing in the extended catalog and
+routers/image_model_admin.py. Hugging Face is faked (httpx.MockTransport / stubbed repo_files); the models folder is a
+tmp_path.
+"""
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -183,16 +184,16 @@ async def test_catalog_adds_admin_added_and_otherwise_installed_models_after_the
 
     assert [e.tag for e in entries] == [_TAG, _Z_TAG, added, "hf.co/org/Other-GGUF:other"]
     by_tag = {e.tag: e for e in entries}
-    assert by_tag[added].removable and not by_tag[added].installed  # an admin may drop a not-installed addition
+    assert by_tag[added].removable and not by_tag[added].installed
     assert not by_tag["hf.co/org/Other-GGUF:other"].removable and by_tag["hf.co/org/Other-GGUF:other"].installed
-    assert not (await (await ImageModelStore.open(db)).catalog_entries())[2].removable  # not for a non-admin
+    assert not (await (await ImageModelStore.open(db)).catalog_entries())[2].removable
 
 
 def test_is_image_repo_detection():
     detect = HuggingFaceCatalogSearch.is_image_repo
     assert detect({"pipeline_tag": "text-to-image"})
     assert detect({"pipeline_tag": None, "tags": ["gguf", "sd.cpp"]})
-    assert not detect({"pipeline_tag": "image-text-to-text", "tags": ["gguf"]})  # a vision *chat* model
+    assert not detect({"pipeline_tag": "image-text-to-text", "tags": ["gguf"]})
     assert not detect({})
 
 
@@ -285,7 +286,7 @@ async def test_models_dir_defaults_to_a_stable_diffusion_sibling_of_the_chat_eng
     assert await image_model_service.resolve_models_dir(db) == Path("/data/models/diffusion")
 
     await settings_service.set_matricxon_server_config(db, MatricxonServerConfig(models_path="/mnt/models/matricxon"))
-    assert await image_model_service.resolve_models_dir(db) == Path("/mnt/models/diffusion")  # Matricxon wins
+    assert await image_model_service.resolve_models_dir(db) == Path("/mnt/models/diffusion")
 
     await settings_service.set_matricxon_server_config(db, MatricxonServerConfig(models_path="/mnt/custom-dir"))
     await settings_service.set_ollama_server_config(db, OllamaServerConfig(models_path="/data/other"))
@@ -313,8 +314,8 @@ async def test_pull_never_fetches_companions_until_the_user_picks_them(db, model
 
     events = [e async for e in store.download_companions(_Z_TAG, ["--vae"], None)]
     assert events[-1] == {"done": True}
-    assert sorted(ImageCompanions.args(model)) == ["--vae"]  # only the ticked one
-    assert [f.name for f in store.list_files()] == [f"leejet/Z-Image-Turbo-GGUF/{model.name}"]  # not companions
+    assert sorted(ImageCompanions.args(model)) == ["--vae"]
+    assert [f.name for f in store.list_files()] == [f"leejet/Z-Image-Turbo-GGUF/{model.name}"]
     await store.delete(_Z_TAG)
     assert not model.parent.exists()
 
@@ -358,7 +359,7 @@ async def test_delete_keeps_companions_while_another_quant_shares_them(db, model
     (comp / "ae.safetensors").write_bytes(b"x")
 
     await store.delete(_Z_TAG)
-    assert comp.is_dir()  # the Q8_0 file still needs them
+    assert comp.is_dir()
     sibling.unlink()
     model.write_bytes(b"x")
     await store.delete(_Z_TAG)

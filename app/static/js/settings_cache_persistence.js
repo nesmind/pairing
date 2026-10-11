@@ -1,8 +1,4 @@
-/**
- * Settings > Matricxon > saved chat caches (app/templates/_matricxon_cache_persistence.html).
- * Reads and changes Matricxon's encrypted on-disk prompt cache through
- * /api/settings/matricxon/cache-persistence. Uses api() from app.js.
- */
+/* Settings > Matricxon > saved chat caches (app/templates/_matricxon_cache_persistence.html): reads and changes Matricxon's encrypted on-disk prompt cache via /api/settings/matricxon/cache-persistence. Uses api from app.js. */
 class MatricxonCachePanel {
   static URL = "/api/settings/matricxon/cache-persistence";
 
@@ -78,6 +74,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Matricxon-only feature: with Ollama (or anything else) as the active engine the panel stays hidden.
   const { active_engine: activeEngine } = await api("/health");
   if (activeEngine !== "matricxon") return;
+  const managed = await api("/api/settings/matricxon/config").then((c) => c.cluster_role !== "off", () => false);
+  if (managed) {
+    // The Cluster page owns these limits while cluster mode is on (settings.js keeps the panel hidden too).
+    root.dataset.clusterManaged = "1";
+    root.classList.add("hidden");
+    document.getElementById("matricxon-cache-managed").classList.remove("hidden");
+    return;
+  }
   root.classList.remove("hidden");
   new MatricxonCachePanel(root).load();
 });

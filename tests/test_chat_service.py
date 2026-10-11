@@ -1,10 +1,7 @@
-"""Unit tests for app/services/chat_service.py: build_reply_stream's own
-history-assembly and title-mode gating (see
-tests/test_chat_history_service.py for the pure history-trimming/merging
-helpers themselves, app/services/title_service.py's own tests for the two
-title modes, and tests/test_reply_generation_service.py for the
-detached-generation mechanism both a personal chat and a channel's
-shared conversation go through)."""
+"""Tests for services/chat_service.py: build_reply_stream's history assembly and title-mode gating. Related:
+tests/test_chat_history_service.py (trimming/merging), title_service's tests (the two title modes) and
+tests/test_reply_generation_service.py (the detached generation used by personal and channel chats).
+"""
 
 import asyncio
 
@@ -30,12 +27,11 @@ from app.services.inference_client import InferenceError
 
 @pytest.fixture(autouse=True)
 def _fake_model_is_installed(monkeypatch):
-    """build_reply_stream now calls model_catalog_service.resolve_installed_model (see that function's own
-    docstring) before every reply, which calls installed_chat_models() — a real call to whichever engine is
-    active. Every test in this file uses "fake-model" as a conversation's model and isn't testing that fallback
-    mechanism itself (see test_model_catalog_service.py for that, and the dedicated tests further down this file
-    for build_reply_stream's own integration of it) — this treats "fake-model" as installed by default so
-    resolve_installed_model is a no-op here, the same as before it existed, without hitting a real engine."""
+    """build_reply_stream calls model_catalog_service.resolve_installed_model before every reply, which calls
+    installed_chat_models, a real call to the active engine. Tests here use "fake-model" and don't test that
+    fallback (test_model_catalog_service.py and the dedicated tests below do), so it counts as installed and
+    resolve_installed_model is a no-op without hitting an engine.
+    """
 
     async def fake_installed_chat_models():
         return ["fake-model"]
@@ -45,15 +41,11 @@ def _fake_model_is_installed(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_build_reply_stream_yields_the_user_message_id_first(db, user, monkeypatch):
-    """Regression test: chat.js needs this — its own dedicated event,
-    not folded into "title" or the first "chunk" — to tag the *user*
-    message's own optimistically-rendered bubble (see
-    app/static/js/chat.js's readAssistantReplyStream). Without it, that
-    bubble never carries a data-message-id, and a later channel poll/
-    live-watch catch-up (see reply_generation_service.stream_reply's
-    cancel_on_disconnect and chat.js's ownSendInFlight) sees the same
-    user message as unrecognized and creates a genuine duplicate for
-    it — a real, shipped bug this event exists to fix."""
+    """Regression: chat.js needs this dedicated event (not folded into "title" or the first "chunk") to tag the *user*
+    message's optimistic bubble (chat.js readAssistantReplyStream). Without it that bubble has no data-message-id,
+    and a later channel poll/live-watch catch-up (reply_generation_service.stream_reply's cancel_on_disconnect,
+    chat.js ownSendInFlight) treats the same user message as unrecognized and duplicates it (a shipped bug).
+    """
 
     async def fake_chat_stream(_model, _messages, _params):
         yield "ok"
@@ -73,8 +65,7 @@ async def test_build_reply_stream_yields_the_user_message_id_first(db, user, mon
 async def test_build_reply_stream_yields_the_user_message_id_first_for_a_channel_too(
     db, admin_user, user, channel_manager_user, monkeypatch
 ):
-    """Same contract for a channel's shared conversation — this event
-    isn't personal-chat-only the way "title" is."""
+    """Same contract for a channel's shared conversation: not personal-chat-only like "title"."""
 
     async def fake_chat_stream(_model, _messages, _params):
         yield "ok"
@@ -101,18 +92,12 @@ async def test_build_reply_stream_yields_the_user_message_id_first_for_a_channel
 
 @pytest.mark.asyncio
 async def test_build_reply_stream_sends_the_current_message_to_the_model(db, user, monkeypatch):
-    """Regression test: build_reply_stream used to hand _trim_history
-    conversation.messages as-is, trusting it to already include the
-    just-added user message after `await db.commit()`. It never did —
-    the app's AsyncSession is expire_on_commit=False (see
-    app/database.py), so committing never invalidates an already-loaded
-    relationship collection, and db.add()-ing a Message doesn't append
-    it to conversation.messages in memory either (that only happens via
-    the relationship itself, e.g. conversation.messages.append(...)).
-    The practical effect: the model only ever saw history through the
-    *previous* turn — never the question actually being asked — which
-    is exactly why replies looked like they were answering an earlier
-    message instead of the latest one."""
+    """Regression: build_reply_stream handed _trim_history conversation.messages as is, assuming it included the new
+    user message after `await db.commit`. It never did: AsyncSession is expire_on_commit=False (app/database.py),
+    so committing doesn't invalidate the loaded collection, and db.add-ing a Message doesn't append it in memory
+    (only conversation.messages.append(...) does). The model saw history only through the *previous* turn, never
+    the current question: replies seemed to answer an earlier message.
+    """
     captured: list[list[dict]] = []
 
     async def fake_chat_stream(_model, messages, _params):
@@ -134,11 +119,11 @@ async def test_build_reply_stream_sends_the_current_message_to_the_model(db, use
 
 @pytest.mark.asyncio
 async def test_build_reply_stream_always_sends_a_system_message_even_when_empty(db, user, monkeypatch):
-    """A brand-new conversation with default notes disabled, no RAG hits, and no attachments has nothing to
-    put in the system prompt — but the system message itself must still be sent, with empty content, rather
-    than omitted outright: some engines' own chat-template layers (e.g. Matricxon's VicunaPromptBuilder)
-    treat "no system message at all" as license to substitute their own default preamble, which silently
-    reintroduces exactly the extra, unwanted tokens this is meant to prevent (confirmed live, 2026-09-28)."""
+    """A new conversation with default notes off, no RAG hits and no attachments has nothing for the system prompt,
+    but the system message must still be sent empty, not omitted: some chat-template layers (e.g. Matricxon's
+    VicunaPromptBuilder) treat "no system message" as license for their own default preamble, adding the unwanted
+    tokens this prevents.
+    """
     captured: list[list[dict]] = []
 
     async def fake_chat_stream(_model, messages, _params):
@@ -157,11 +142,9 @@ async def test_build_reply_stream_always_sends_a_system_message_even_when_empty(
 
 @pytest.mark.asyncio
 async def test_build_reply_stream_simple_mode_done_event_carries_the_final_title(db, user, monkeypatch):
-    """ "Simple" mode (the default — see
-    app.services.chat_settings_service.DEFAULT_TITLE_MODE) sets the title
-    synchronously, before the reply even starts streaming (see
-    title_service.maybe_set_title) — the "done" event's title is always
-    already final, with no follow-up call needed."""
+    """ "Simple" mode (default; chat_settings_service.DEFAULT_TITLE_MODE) sets the title before streaming
+    (title_service.maybe_set_title), so the "done" event's title is final with no follow-up.
+    """
 
     async def fake_chat_stream(_model, _messages, _params):
         yield "ok"
@@ -180,12 +163,9 @@ async def test_build_reply_stream_simple_mode_done_event_carries_the_final_title
 
 @pytest.mark.asyncio
 async def test_build_reply_stream_yields_the_title_before_the_reply_starts(db, user, monkeypatch):
-    """Regression test: "simple" mode's title is known instantly (it
-    only depends on the user's own message), but build_reply_stream used
-    to only ever send it as part of the "done" event — bundled behind
-    the *entire reply*, however long that took to stream, even though
-    nothing about the title was still waiting on it. A dedicated title
-    event must reach the consumer before the first reply chunk does."""
+    """Regression: "simple" mode's title depends only on the user's message, but build_reply_stream sent it only in
+    "done", behind the *entire reply*. A dedicated title event must reach the consumer before the first chunk.
+    """
     events: list[str] = []
 
     async def fake_chat_stream(_model, _messages, _params):
@@ -204,17 +184,11 @@ async def test_build_reply_stream_yields_the_title_before_the_reply_starts(db, u
 
 @pytest.mark.asyncio
 async def test_build_reply_stream_smart_mode_schedules_title_after_done(db, user, monkeypatch):
-    """Regression test: title generation used to unconditionally run
-    *before* "done" was yielded, so the frontend's Send button (see
-    chat.js: streamAssistantReply, which stops waiting on the response
-    right after "done") stayed disabled for however long that second,
-    slower model call took, on top of the reply itself already being
-    fully shown. With "smart" mode configured (see
-    app.services.chat_settings_service.set_title_mode),
-    title_service.schedule_smart_title_generation must still only be
-    called *after* "done" is yielded — see
-    tests/test_title_service.py for why it's a scheduled background task
-    rather than a plain `await` here in the first place."""
+    """Regression: title generation ran *before* "done", so the Send button (chat.js streamAssistantReply stops
+    waiting right after "done") stayed disabled for the whole second model call. In "smart" mode
+    (chat_settings_service.set_title_mode) title_service.schedule_smart_title_generation must run only *after*
+    "done" (see tests/test_title_service.py for why it's scheduled, not awaited).
+    """
     events: list[str] = []
 
     async def fake_chat_stream(_model, _messages, _params):
@@ -244,11 +218,9 @@ async def test_build_reply_stream_never_titles_a_channel_conversation(
     channel_manager_user,
     monkeypatch,
 ):
-    """A channel conversation's title comes from the channel's own
-    `name` (see conversation_service.update_conversation), never from
-    chat_service — and its "done" event never carries a "title" key at
-    all (see test_build_reply_stream_persists_a_channel_reply below for
-    that assertion), unlike a personal chat's."""
+    """A channel conversation's title comes from the channel `name` (conversation_service.update_conversation), never
+    chat_service, and its "done" has no "title" key (see test_build_reply_stream_persists_a_channel_reply).
+    """
 
     async def fake_chat_stream(_model, _messages, _params):
         yield "ok"
@@ -278,14 +250,11 @@ async def test_build_reply_stream_persists_a_channel_reply(
     channel_manager_user,
     monkeypatch,
 ):
-    """A channel conversation's reply goes through the exact same
-    reply_generation_service.stream_reply a personal chat's does (see
-    tests/test_reply_generation_service.py for that mechanism itself) —
-    this checks what's specific to being a channel: the assistant
-    Message actually gets persisted as status="complete", and its "done"
-    event carries no "title" (a personal chat's does — see
-    test_build_reply_stream_simple_mode_done_event_carries_the_final_title
-    above)."""
+    """A channel reply goes through the same reply_generation_service.stream_reply as a personal one
+    (tests/test_reply_generation_service.py). This checks the channel specifics: the assistant Message is
+    persisted as status="complete" and its "done" carries no "title" (a personal chat's does, see
+    test_build_reply_stream_simple_mode_done_event_carries_the_final_title).
+    """
 
     async def fake_chat_stream(_model, _messages, _params):
         yield "ok"
@@ -315,11 +284,9 @@ async def test_build_reply_stream_persists_a_channel_reply(
 
 @pytest.mark.asyncio
 async def test_build_reply_stream_links_the_reply_to_its_triggering_user_message(db, user, monkeypatch):
-    """conversation_service.delete_message relies on Message.reply_to_message_id
-    to find (and cancel) a still-streaming reply when the question that
-    triggered it is deleted — build_reply_stream must pass the just-saved
-    user_message's id through to reply_generation_service.stream_reply
-    for this to work at all."""
+    """conversation_service.delete_message uses Message.reply_to_message_id to find and cancel a streaming reply
+    when its question is deleted, so build_reply_stream must pass the saved user_message's id to stream_reply.
+    """
 
     async def fake_chat_stream(_model, _messages, _params):
         yield "ok"
@@ -338,14 +305,10 @@ async def test_build_reply_stream_links_the_reply_to_its_triggering_user_message
 
 @pytest.mark.asyncio
 async def test_build_reply_stream_persists_a_failed_personal_reply_instead_of_losing_it(db, user, monkeypatch):
-    """Regression test: before reply_generation_service unified personal
-    and channel generation, a personal chat's mid-stream InferenceError just
-    yielded {"error": ...} with nothing ever saved — the failed attempt
-    left no trace at all, and reopening the conversation later showed no
-    sign a reply had even been attempted. Now the assistant Message is
-    persisted with status="error" and whatever partial content came
-    through, exactly like a channel's reply already does (see
-    test_build_reply_stream_persists_a_channel_reply above)."""
+    """Regression: before reply_generation_service unified generation, a personal chat's mid-stream InferenceError
+    yielded {"error":...} and saved nothing, leaving no trace on reopening. Now the assistant Message is saved with
+    status="error" and the partial content, like a channel's (test_build_reply_stream_persists_a_channel_reply).
+    """
 
     async def fake_chat_stream(_model, _messages, _params):
         yield "partial"
@@ -365,14 +328,10 @@ async def test_build_reply_stream_persists_a_failed_personal_reply_instead_of_lo
 
 @pytest.mark.asyncio
 async def test_build_reply_stream_cancels_a_personal_reply_on_disconnect(db, user, monkeypatch):
-    """Regression test: build_reply_stream must pass
-    cancel_on_disconnect=True to reply_generation_service.stream_reply
-    for a personal chat — unlike a channel's shared conversation, only
-    its owner could ever be watching, so leaving should actually stop
-    generation (see tests/test_reply_generation_service.py's
-    test_cancel_on_disconnect_stops_generation_and_marks_it_errored for
-    the mechanism itself), not let it keep running unseen the way a
-    channel's does."""
+    """Regression: build_reply_stream must pass cancel_on_disconnect=True for a personal chat. Only its owner could
+    watch, so leaving should stop generation (see tests/test_reply_generation_service.py
+    test_cancel_on_disconnect_stops_generation_and_marks_it_errored), unlike a channel's, which keeps running.
+    """
     never = asyncio.Event()
 
     async def fake_chat_stream(_model, _messages, _params):
@@ -394,11 +353,8 @@ async def test_build_reply_stream_cancels_a_personal_reply_on_disconnect(db, use
     # Simulate the owner navigating away mid-reply.
     await gen.aclose()
 
-    # Waits for the cancelled task *and* the fresh task it spawns to
-    # actually persist that cancellation (a cancelled task can't safely
-    # await its own cleanup — see
-    # reply_termination_service.schedule_cancelled_write, in a *separate*
-    # module's own tracking set from the main generation task's).
+    # Waits for the cancelled task *and* the fresh task it spawns to persist the cancellation (a cancelled task can't
+    # await its own cleanup; reply_termination_service.schedule_cancelled_write has its own tracking set).
     for _ in range(200):
         tasks = list(reply_generation_service._background_generation_tasks) + list(
             reply_termination_service._background_tasks
@@ -420,10 +376,9 @@ async def test_build_reply_stream_cancels_a_personal_reply_on_disconnect(db, use
 
 @pytest.mark.asyncio
 async def test_build_reply_stream_tags_the_user_message_with_its_sender(db, user, monkeypatch):
-    """A "user"-role Message records who actually typed it
-    (Message.sender_id) — needed so a channel's shared conversation can
-    label each message with its sender (see MessageOut.sender_display_name
-    and chat.js's bubbleFor); a personal chat just never displays it."""
+    """A "user" Message records who typed it (Message.sender_id) so a channel can label messages
+    (MessageOut.sender_display_name, chat.js bubbleFor); a personal chat never shows it.
+    """
 
     async def fake_chat_stream(_model, _messages, _params):
         yield "ok"
@@ -434,22 +389,16 @@ async def test_build_reply_stream_tags_the_user_message_with_its_sender(db, user
     async for _event in chat_service.build_reply_stream(db, conversation, user, "hello"):
         pass
 
-    # Queried fresh rather than read off conversation.messages: that
-    # in-memory collection has the exact same staleness the regression
-    # test above documents — db.add()-ing a Message never updates it —
-    # so it still wouldn't include either message added just above.
+    # Queried fresh: conversation.messages has the same staleness as the regression test above (db.add never updates
+    # it).
     messages = (await db.execute(select(Message).where(Message.conversation_id == conversation.id))).scalars().all()
 
-    # The `user` fixture has no first/last name set, so the label falls
-    # back to the bare username — see
-    # test_message_sender_display_name_combines_username_and_name below
-    # for the name-combining cases.
+    # The `user` fixture has no first/last name, so the label is the bare username (the name-combining cases:
+    # test_message_sender_display_name_combines_username_and_name).
     user_message = next(m for m in messages if m.role == "user")
     assert user_message.sender_id == user.id
     assert user_message.sender_display_name == user.username
-    # No avatar uploaded (the `user` fixture never sets one) — falls
-    # back to initials, the bare username's first letter here since it
-    # has no first/last name either.
+    # No avatar (the fixture sets none): falls back to initials, the username's first letter.
     assert user_message.sender_avatar_url is None
     assert user_message.sender_initials == user.username[0].upper()
 
@@ -464,10 +413,9 @@ async def test_build_reply_stream_tags_the_user_message_with_its_sender(db, user
 async def test_build_reply_stream_skips_generation_for_a_normal_channel_message(
     db, admin_user, user, channel_manager_user, monkeypatch
 ):
-    """ask_ai=False ("post as a normal message" — see #ask-ai-btn in
-    app/static/js/chat.js) must never touch the model at all: no
-    assistant Message is created, and chat_stream is never even
-    called."""
+    """ask_ai=False ("post as a normal message", #ask-ai-btn in chat.js) never touches the model: no assistant
+    Message is created and chat_stream isn't called.
+    """
 
     def fake_chat_stream(*_args, **_kwargs):
         raise AssertionError("chat_stream must not be called for an ask_ai=False message")
@@ -499,12 +447,12 @@ async def test_build_reply_stream_skips_generation_for_a_normal_channel_message(
 async def test_build_reply_stream_merges_consecutive_channel_messages_before_calling_the_model(
     db, admin_user, user, channel_manager_user, monkeypatch
 ):
-    """The real bug this covers: a channel lets several members post with ask_ai=False in a row (see
-    test_build_reply_stream_skips_generation_for_a_normal_channel_message above) before anyone asks the AI —
-    those all land in history as consecutive "user"-role messages, which a real, strict chat template
-    (Mistral/Ministral's — used by both Ollama and Matricxon) rejects outright: "conversation roles must
-    alternate user and assistant roles", confirmed live against Ollama's own server logs. chat_history_service
-    must fold them into one turn, each line attributed to its own sender, before the model ever sees them."""
+    """Covers several members posting with ask_ai=False in a row before anyone asks the AI (see
+    test_build_reply_stream_skips_generation_for_a_normal_channel_message): consecutive "user" messages, which a
+    strict chat template (Mistral/Ministral, used by Ollama and Matricxon) rejects: "conversation roles must
+    alternate user and assistant roles" (seen in Ollama's logs). chat_history_service must fold them into one
+    turn, each line attributed to its sender, before the model sees them.
+    """
     captured: list[list[dict]] = []
 
     async def fake_chat_stream(_model, messages, _params):
@@ -527,11 +475,10 @@ async def test_build_reply_stream_merges_consecutive_channel_messages_before_cal
     async for _event in chat_service.build_reply_stream(db, conversation, user, "hi there", ask_ai=False):
         pass
 
-    # Simulates a real second HTTP request: a fresh request always re-fetches its Conversation from the DB
-    # (see app/routers/conversations.py's Depends(get_db) + a fresh query per request), unlike reusing the
-    # same in-memory `conversation` object across two calls in one test session, whose already-loaded
-    # `.messages` relationship (see conversation_service.visible_messages) would otherwise never pick up the
-    # first message committed above (expire_on_commit=False — see app/database.py).
+    # Simulates a real second request, which re-fetches its Conversation from the DB (routers/conversations.py
+    # Depends(get_db) plus a fresh query). Reusing the in-memory `conversation` keeps its loaded `.messages`
+    # (conversation_service.visible_messages), which would miss the first message (expire_on_commit=False,
+    # app/database.py).
     await db.refresh(conversation, attribute_names=["messages"])
 
     async for _event in chat_service.build_reply_stream(
@@ -540,9 +487,8 @@ async def test_build_reply_stream_merges_consecutive_channel_messages_before_cal
         pass
 
     sent_messages = captured[0]
-    # A leading system message is now always sent, even empty (see chat_service.build_reply_stream's own
-    # comment on why) — irrelevant to this test's own point (consecutive-user-message folding), so only its
-    # role is asserted here.
+    # A leading system message is now always sent, even empty (see chat_service.build_reply_stream); irrelevant to
+    # this test's point (folding consecutive user messages), so only its role is asserted.
     assert [m["role"] for m in sent_messages] == ["system", "user"]
     assert sent_messages[1]["content"] == (
         f"{user.username}: hi there\n{channel_manager_user.username}: how's it going"
@@ -551,10 +497,9 @@ async def test_build_reply_stream_merges_consecutive_channel_messages_before_cal
 
 @pytest.mark.asyncio
 async def test_build_reply_stream_ask_ai_false_still_asks_ai_for_a_personal_chat(db, user, monkeypatch):
-    """A personal chat has no "other human" to just message — it must
-    always ask the AI, even if a caller explicitly passes ask_ai=False
-    (the frontend never offers this choice there, but the service is the
-    authoritative enforcement point, not the UI)."""
+    """A personal chat has no other human, so it must always ask the AI even with ask_ai=False. The frontend never
+    offers it; the service is the authoritative enforcement.
+    """
 
     async def fake_chat_stream(_model, _messages, _params):
         yield "ok"
@@ -576,10 +521,9 @@ async def test_build_reply_stream_ask_ai_false_still_asks_ai_for_a_personal_chat
 
 @pytest.mark.asyncio
 async def test_message_sender_display_name_combines_username_and_name(db, monkeypatch):
-    """Message.sender_display_name is username-only with no name set,
-    or "First (username)"/"Last (username)"/"First Last (username)" once
-    either is set — the username stays visible in parentheses either
-    way, so the label always still identifies *which account* sent it."""
+    """Message.sender_display_name is the username alone with no name, or "First (username)"/"Last (username)"/
+    "First Last (username)": the username always stays visible to identify the account.
+    """
 
     async def fake_chat_stream(_model, _messages, _params):
         yield "ok"
@@ -616,10 +560,8 @@ async def test_message_sender_display_name_combines_username_and_name(db, monkey
 
 @pytest.mark.asyncio
 async def test_message_sender_avatar_url_reflects_the_senders_own_picture(db, monkeypatch):
-    """See test_message_sender_display_name_combines_username_and_name
-    above for the equivalent avatar-less case — this only covers the
-    "an avatar is set" branch, since that one already exercises "none
-    set" via the `user` fixture."""
+    """The "avatar is set" branch only; the avatar-less case is in
+    test_message_sender_display_name_combines_username_and_name (the `user` fixture has none)."""
 
     async def fake_chat_stream(_model, _messages, _params):
         yield "ok"
@@ -643,18 +585,16 @@ async def test_message_sender_avatar_url_reflects_the_senders_own_picture(db, mo
 
 @pytest.mark.asyncio
 async def test_build_reply_stream_records_the_attachments_on_the_user_message(db, user, tmp_path, monkeypatch):
-    """Every attachment must land on the *user* message (never the
-    assistant reply) as its own MessageAttachment row — see
-    app.models.conversation.Message.attachments' own docstring."""
+    """Every attachment lands on the *user* message (never the assistant reply) as a MessageAttachment row
+    (Message.attachments).
+    """
 
     async def fake_chat_stream(_model, _messages, _params):
         yield "ok"
 
     monkeypatch.setattr(reply_generation_service, "chat_stream", fake_chat_stream)
-    # attachment.path must live under chat_service's own ATTACHMENTS_DIR
-    # (see build_reply_stream's relative_to(ATTACHMENTS_DIR) call) —
-    # patched to tmp_path so these tests don't write into the project's
-    # real attachments/ folder.
+    # attachment.path must be under chat_service's ATTACHMENTS_DIR (build_reply_stream's relative_to call), patched to
+    # tmp_path so tests don't write into the real attachments/ folder.
     monkeypatch.setattr(chat_service, "ATTACHMENTS_DIR", tmp_path)
 
     path = tmp_path / "notes.txt"
@@ -684,10 +624,8 @@ async def test_build_reply_stream_records_the_attachments_on_the_user_message(db
 async def test_build_reply_stream_puts_a_text_attachment_in_front_of_the_newest_user_message(
     db, user, tmp_path, monkeypatch
 ):
-    """A text/PDF/etc. attachment's extracted content must reach the
-    model as part of the system prompt, and the conversation's own model
-    is used unchanged (no vision-model override — see the image test
-    below for that case)."""
+    """A text/PDF attachment's extracted content reaches the model as part of the system prompt, with the conversation's
+    model unchanged (no vision override; see the image test below)."""
     captured: dict = {}
 
     async def fake_chat_stream(model, messages, _params):
@@ -696,10 +634,8 @@ async def test_build_reply_stream_puts_a_text_attachment_in_front_of_the_newest_
         yield "ok"
 
     monkeypatch.setattr(reply_generation_service, "chat_stream", fake_chat_stream)
-    # attachment.path must live under chat_service's own ATTACHMENTS_DIR
-    # (see build_reply_stream's relative_to(ATTACHMENTS_DIR) call) —
-    # patched to tmp_path so these tests don't write into the project's
-    # real attachments/ folder.
+    # attachment.path must be under chat_service's ATTACHMENTS_DIR (build_reply_stream's relative_to call), patched to
+    # tmp_path so tests don't write into the real attachments/ folder.
     monkeypatch.setattr(chat_service, "ATTACHMENTS_DIR", tmp_path)
 
     path = tmp_path / "notes.txt"
@@ -724,10 +660,9 @@ async def test_build_reply_stream_puts_a_text_attachment_in_front_of_the_newest_
 async def test_build_reply_stream_uses_the_default_vision_model_for_an_image_attachment(
     db, user, tmp_path, monkeypatch
 ):
-    """An image attachment must answer via the admin-configured default
-    vision model for this one reply only — conversation.model itself is
-    never written, so a later message with no attachment reverts to it
-    automatically (checked here by re-reading conversation.model after)."""
+    """An image attachment is answered by the admin's default vision model for that reply only; conversation.model is
+    never written, so a later message without one reverts (checked by re-reading conversation.model).
+    """
     captured: dict = {}
 
     async def fake_chat_stream(model, messages, _params):
@@ -756,8 +691,7 @@ async def test_build_reply_stream_uses_the_default_vision_model_for_an_image_att
     assert captured["messages"][-1]["role"] == "user"
     assert "images" in captured["messages"][-1]
 
-    # conversation.model was never touched — the next (no-attachment)
-    # message reverts to it automatically.
+    # conversation.model was never touched: the next (no-attachment) message reverts.
     await db.refresh(conversation)
     assert conversation.model == "fake-model"
 
@@ -766,9 +700,9 @@ async def test_build_reply_stream_uses_the_default_vision_model_for_an_image_att
 async def test_build_reply_stream_falls_back_to_conversation_model_with_no_vision_model_installed(
     db, user, tmp_path, monkeypatch
 ):
-    """If no vision model is configured/installed, an image attachment
-    is silently sent through as an ordinary message on the conversation's
-    own model, rather than failing the whole request."""
+    """With no vision model configured/installed, an image attachment goes through as an ordinary message on the
+    conversation's model instead of failing the request.
+    """
     captured: dict = {}
 
     async def fake_chat_stream(model, messages, _params):
@@ -799,11 +733,11 @@ async def test_build_reply_stream_falls_back_to_conversation_model_with_no_visio
 
 @pytest.mark.asyncio
 async def test_build_reply_stream_falls_back_when_the_conversation_model_is_not_installed(db, user, monkeypatch):
-    """The real bug this covers: after an admin switches the active engine (see app.services.engine_service), an
-    *existing* conversation's own model column still points at a tag that engine has never heard of — Ollama
-    and Matricxon each have their own separate catalog. Sending a message used to fail instantly with a raw
-    404 from the engine itself. Now it falls back to *some* installed model instead, and persists that
-    correction onto the conversation so it isn't re-resolved (or re-explained) on every subsequent message."""
+    """Covers: after an admin switches the active engine (engine_service), an *existing* conversation's model still
+    names a tag that engine lacks (Ollama and Matricxon have separate catalogs), and sending used to fail at once
+    with a raw 404. Now it falls back to an installed model and saves that correction on the conversation, so it
+    isn't re-resolved on every message.
+    """
     captured: dict = {}
 
     async def fake_chat_stream(model, messages, _params):
@@ -817,10 +751,9 @@ async def test_build_reply_stream_falls_back_when_the_conversation_model_is_not_
     monkeypatch.setattr(reply_generation_service, "chat_stream", fake_chat_stream)
     monkeypatch.setattr(model_catalog_service, "installed_chat_models", fake_installed_chat_models)
 
-    # Built directly (not via create_conversation, which would itself now reject "stale-model" outright) —
-    # this represents a conversation that already existed with a model that *was* installed at the time, before
-    # an engine switch or uninstall left it stale, which create_conversation's own validation is a different,
-    # earlier line of defense against (see conversation_service's own tests).
+    # Built directly, not via create_conversation (which now rejects "stale-model"): it represents a conversation
+    # that existed with a then-installed model before an engine switch or uninstall made it stale (create_conversation's
+    # validation is the earlier defense; see conversation_service's tests).
     conversation = Conversation(owner_id=user.id, title="Chat", model="stale-model")
     db.add(conversation)
     await db.commit()

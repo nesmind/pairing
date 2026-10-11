@@ -1,20 +1,11 @@
-"""
-Installs ComfyUI from GitHub — the "local" mode auto-install behind
-Settings > External servers' Install button. `git clone`s the exact
-pinned app.config.COMFYUI_PINNED_VERSION tag (never "latest", for the
-same predictability reason app.services.ollama_installer pins Ollama's
-version), then builds a dedicated venv and `pip install`s ComfyUI's own
-requirements.txt — there's no separate native "compile" step beyond
-whatever pip itself does for any wheel that needs building.
+"""Installs ComfyUI from GitHub (the "local" auto-install behind Settings > External servers' Install). Clones
+the pinned app.config.COMFYUI_PINNED_VERSION tag (never "latest", like ollama_installer), builds a venv and
+`pip install`s ComfyUI's requirements.txt.
 
-Requires `git` and a working `python3 -m venv` on this machine — neither
-is something this app can install for the admin, so both failures
-surface as a clear {"error": ...} rather than a raw crash.
+Needs `git` and `python3 -m venv`; failures surface as a clear {"error":...}.
 
-A reinstall preserves target_dir's own "models" subdirectory (see _preserve_models_dir/_restore_models_dir) —
-already-pulled checkpoints/loras/etc are pAIring's own managed library, not disposable engine-install artifacts,
-so a reinstall of the *engine software* must never wipe them out from under an admin (same reasoning as
-app.services.matricxon_installer's identical "data" preservation).
+A reinstall preserves target_dir's "models" subdirectory (_preserve_models_dir/_restore_models_dir):
+checkpoints are pAIring's managed library, not disposable install artifacts (as in matricxon_installer's "data").
 """
 
 import asyncio
@@ -32,10 +23,8 @@ from app.hardware import get_gpu_vram_gb, has_avx2, local_install_supported
 
 logger = logging.getLogger("llama_chat")
 
-# See app.services.ollama_installer's identical constants — every event
-# below carries step/total_steps/step_label so Settings > External
-# servers can render a labeled "Step X of Y" progress panel instead of a
-# bare spinner (see app/static/js/settings.js's installServer).
+# See ollama_installer's constants: every event carries step/total_steps/step_label for the labeled
+# "Step X of Y" progress panel (static/js/settings.js installServer).
 _TOTAL_STEPS = 3
 _STEP_CLONE = 1
 _STEP_VENV = 2
@@ -55,13 +44,10 @@ def python_path() -> Path:
 
 
 def _preserve_models_dir(target_dir: Path) -> Path | None:
-    """Moves target_dir's own "models" subdirectory (ComfyUI's real checkpoints/loras/vae/etc — no
-    extra_model_paths.yaml override configured anywhere in this app, so ComfyUI's own default in-tree location
-    is what's actually in use) out to a fresh temp directory, returning where it went (None if there was
-    nothing to preserve). See app.services.matricxon_installer._preserve_data_dir's identical reasoning: a real,
-    confirmed-live bug without this — every already-pulled checkpoint (often several GB each) was silently
-    destroyed by a reinstall of the *engine software*, even though those files are pAIring's own managed
-    library, not disposable install artifacts."""
+    """Moves target_dir's "models" subdirectory (ComfyUI's checkpoints/loras/vae; no extra_model_paths.yaml) to a
+    temp directory and returns it (None if nothing to preserve). Without this a reinstall destroyed every pulled
+    checkpoint (see matricxon_installer._preserve_data_dir).
+    """
     models_dir = target_dir / "models"
     if not models_dir.is_dir():
         return None
@@ -76,7 +62,7 @@ def _restore_models_dir(preserved: Path | None, target_dir: Path) -> None:
         return
     target_dir.mkdir(parents=True, exist_ok=True)
     shutil.move(str(preserved), str(target_dir / "models"))
-    preserved.parent.rmdir()  # the now-empty tempfile.mkdtemp() holding directory
+    preserved.parent.rmdir()  # the now-empty mkdtemp holding directory
 
 
 def _marker_path() -> Path:
@@ -84,46 +70,26 @@ def _marker_path() -> Path:
 
 
 def is_installed() -> bool:
-    """True once a previous Install click finished successfully — unlike
-    Ollama, this module's managed path is the *only* place a "local"
-    ComfyUI install is ever auto-detected from (an admin pointing at
-    their own separately-installed ComfyUI instead just fills in the
-    python_path/main_py_path fields directly — see
-    app.schemas.comfyui_config.ComfyUIProcessConfig).
+    """True once a previous Install finished. This managed path is the only place a local ComfyUI is
+    auto-detected (own installs fill python_path/main_py_path, see ComfyUIProcessConfig).
 
-    Checks a marker file written only once install_stream's pip step
-    finishes, not just main.py/venv existing — both of those already
-    exist partway through a still-running install (git clone and venv
-    creation both finish long before the pip install of requirements.txt
-    does), so checking them alone would report "installed" while the
-    install is still actively running — confirmed live: reloading
-    Settings mid-install showed the finished-state params panel instead
-    of the in-progress one."""
+    Checks a marker written after the pip step: main.py and the venv exist long before pip finishes, so they
+    would report "installed" mid-install (reloading Settings then showed the finished-state panel).
+    """
     return _marker_path().exists() and main_py_path().exists() and python_path().exists()
 
 
 async def _run_streamed(
     argv: list[str], cwd: Path | None = None, env: dict[str, str] | None = None
 ) -> AsyncIterator[str]:
-    """Runs `argv`, yielding its combined stdout/stderr line by line as
-    it's produced (not buffered until exit) — both `git clone --progress`
-    and `pip install` report real progress this way, and the caller
-    relays each line straight into an SSE event. `env` defaults to the
-    same "inherit this app's own process env" behavior as before this
-    param existed — pass it (see _proxied_env below) only for a call that
-    actually makes a network request.
+    """Runs `argv`, yielding combined stdout/stderr line by line as produced (`git clone --progress` and
+    `pip install` report real progress), which the caller relays as SSE. `env` defaults to this process's
+    env; pass it (see _proxied_env) only for network calls.
 
-    The `finally` below matters more than it looks: confirmed live that
-    without it, a client disconnecting mid-install (a closed tab, or a
-    reload) tears down *this* async generator (Python raises GeneratorExit
-    at the suspended `yield`) but does nothing to the real OS subprocess
-    it spawned — pip/git kept running fully orphaned, invisible to the
-    app (no tracking, no way to know it finished, no marker file ever
-    written since the coroutine that would write it is gone), for as
-    long as it took to finish on its own. Killing it here instead makes
-    a disconnect actually stop the install, matching what a plain
-    process-name-based "start/stop" toggle already gives Ollama/ComfyUI
-    once installed."""
+    The `finally` matters: without it a client disconnect mid-install tore down this generator
+    (GeneratorExit at the `yield`) but left the pip/git subprocess running orphaned and untracked, with no
+    marker file. Killing it makes a disconnect actually stop the install.
+    """
     process = await asyncio.create_subprocess_exec(
         *argv,
         cwd=str(cwd) if cwd else None,
@@ -146,12 +112,9 @@ async def _run_streamed(
 
 
 def _proxied_env(proxy_url: str | None) -> dict[str, str] | None:
-    """None when no proxy is configured (the caller then leaves `env`
-    unset, inheriting this app's own process env unchanged). Sets both
-    the upper- and lower-case forms: git/curl and some pip backends only
-    honor the lowercase convention, most Python libraries only the
-    uppercase one — setting both removes any ambiguity about which the
-    underlying tool happens to check."""
+    """None when no proxy is configured (env stays inherited). Sets upper- and lower-case variables: git/curl
+    and some pip backends read only lowercase, most Python libraries only uppercase.
+    """
     if not proxy_url:
         return None
     return {
@@ -166,22 +129,14 @@ def _proxied_env(proxy_url: str | None) -> dict[str, str] | None:
 async def install_stream(
     repo: str | None = None, version: str | None = None, proxy_url: str | None = None
 ) -> AsyncIterator[dict]:
-    """Yields progress events the same shape
-    app.services.ollama_installer.install_stream already does
-    ({"status": ...}, finally {"done": True, ...} or {"error": ...}) —
-    reused as-is by the SSE relay in app/routers/comfyui_admin.py.
-    Cleans up a partial clone on failure so a retry starts fresh rather
-    than hitting "directory already exists".
+    """Yields progress events like ollama_installer.install_stream ({"status":...}, then {"done": True,...}
+    or {"error":...}), relayed by routers/comfyui_admin.py. Cleans up a partial clone on failure so a retry
+    starts fresh.
 
-    `repo`/`version` let the caller (see app/routers/comfyui_admin.py's
-    install endpoint, which passes through ComfyUIProcessConfig.install_repo/
-    install_version) pin a different fork/tag than the maintainer's own
-    COMFYUI_GITHUB_REPO/COMFYUI_PINNED_VERSION default — None for either
-    falls back to that default. `proxy_url` (from Settings > System's
-    HttpProxyConfig, see app.services.http_proxy_service) routes the git
-    clone and pip install through an admin-configured HTTP proxy — the
-    venv-creation step in between doesn't need it, since it makes no
-    network requests of its own."""
+    `repo`/`version` (ComfyUIProcessConfig.install_repo/install_version) override COMFYUI_GITHUB_REPO/
+    COMFYUI_PINNED_VERSION; None uses the default. `proxy_url` (HttpProxyConfig, http_proxy_service) routes the
+    git clone and pip install; venv creation makes no network requests.
+    """
     repo = repo or COMFYUI_GITHUB_REPO
     version = version or COMFYUI_PINNED_VERSION
     proxied_env = _proxied_env(proxy_url)
@@ -232,9 +187,8 @@ async def install_stream(
         yield {"error": f"Could not clone ComfyUI: {exc}"}
         return
 
-    # Restored right away, not held until the very end — venv creation/pip install below never touch "models"
-    # at all, so there's no reason to leave already-pulled checkpoints sitting in a temp directory for however
-    # long those two steps take.
+    # Restored right away: venv creation and pip never touch "models", so no reason to hold checkpoints in a temp
+    # directory meanwhile.
     _restore_models_dir(preserved_models_dir, target_dir)
 
     venv_meta = {"step": _STEP_VENV, "total_steps": _TOTAL_STEPS, "step_label": "Creating a Python environment"}
@@ -246,10 +200,8 @@ async def install_stream(
         yield {"error": f"Could not create ComfyUI's virtual environment: {exc}"}
         return
 
-    # step_label carries the "this can take a while" caveat persistently — see
-    # app.services.matricxon_installer's identical pip_meta for the full reasoning (pip's own piped output has
-    # no incremental byte-progress the way git clone's --progress does, so this step's bar stays indeterminate
-    # with nothing to show for it the whole time otherwise).
+    # step_label carries the "this can take a while" caveat: pip's piped output has no incremental byte
+    # progress like git's --progress, so the bar stays indeterminate (see matricxon_installer pip_meta).
     pip_meta = {
         "step": _STEP_PIP,
         "total_steps": _TOTAL_STEPS,
@@ -268,14 +220,9 @@ async def install_stream(
 
     _marker_path().write_text("")
     logger.info("Installed ComfyUI %s to %s", version, target_dir)
-    # ComfyUI's own requirements.txt pulls a CUDA-enabled PyTorch build
-    # unconditionally — on a machine with no NVIDIA GPU/driver, that
-    # crashes hard at startup trying to initialize CUDA (confirmed live:
-    # "RuntimeError: Found no NVIDIA driver on your system") unless
-    # launched with ComfyUI's own --cpu flag. Detected the same way
-    # app.hardware already gates model recommendations elsewhere, and
-    # suggested as the default extra_args so a fresh install actually
-    # starts on the first Start click instead of crashing.
+    # ComfyUI's requirements.txt pulls a CUDA PyTorch build, which crashes at startup without an NVIDIA
+    # driver ("Found no NVIDIA driver on your system") unless run with --cpu. Detected via app.hardware and
+    # suggested as default extra_args so Start works first time.
     extra_args = "--cpu" if get_gpu_vram_gb() == 0.0 else None
     yield {
         "done": True,

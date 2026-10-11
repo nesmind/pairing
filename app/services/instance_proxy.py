@@ -1,35 +1,17 @@
-"""
-"Proxy mode" (Settings > System): when set to "local" (the default —
-see app.services.settings_service.get_proxy_mode/instance_pool's cached
-copy of it), this ASGI middleware transparently forwards an incoming
-request to whichever local instance app.services.instance_pool.
-pick_instance() chooses (possibly this primary process itself), and
-streams the response back. When set to "proxy", or when there's only
-one instance, this middleware does nothing at all — an external
-reverse proxy, if any, is expected to balance across each instance's
-own port directly instead.
+""" "Proxy mode" (Settings > System): when "local" (default; settings_service.get_proxy_mode / instance_pool's
+cache), this ASGI middleware forwards a request to the instance instance_pool.pick_instance chooses
+(possibly this primary) and streams the response back. With "proxy" or one instance it does nothing; an
+external reverse proxy is expected to balance across each instance's port.
 
-The pure exemption/job-routing/header-filtering helpers this relies on
-live in app/services/instance_proxy_http.py (split out purely to stay
-under CLAUDE.md's file-size rule).
+Exemption, job-routing and header helpers: instance_proxy_http.py (split for the file-size rule).
 
-A raw ASGI middleware, not Starlette's BaseHTTPMiddleware: the chat
-SSE stream (app/routers/chat.py) can run for minutes and relies on
-ASGI cancellation propagating cleanly when a client disconnects (see
-app.services.chat_service.build_reply_stream's own docstring) —
-BaseHTTPMiddleware has a known history of not propagating that
-cleanly through long-lived streamed responses.
+A raw ASGI middleware, not BaseHTTPMiddleware: the chat SSE stream (routers/chat.py) can run for minutes
+and needs ASGI cancellation to propagate on client disconnect (chat_service.build_reply_stream), which
+BaseHTTPMiddleware has a history of not doing for long streamed responses.
 
-Must be registered (app.add_middleware in app/main.py) *after*
-SessionMiddleware — Starlette's add_middleware() prepends to its
-internal list and builds the stack by iterating it in reverse, so
-whichever middleware is registered *last* ends up outermost (sees the
-request first). Registering this one last means a request that gets
-proxied away never touches this process's own session/router handling
-at all — the target instance decodes the (shared-secret, stateless)
-session cookie independently. See app/services/auth_service.py's own
-docstring: sessions are a pure signed cookie, no server-side store, so
-no sticky routing is needed for login state.
+Register (app.add_middleware in app/main.py) *after* SessionMiddleware: Starlette makes the last-registered
+middleware outermost, so a proxied request never touches this process's session/router; the target decodes
+the shared-secret, stateless session cookie itself (auth_service: no server-side store, so no sticky routing).
 """
 
 import asyncio
@@ -96,28 +78,15 @@ class InstanceProxyMiddleware:
 
     @staticmethod
     async def _proxy_once(scope, receive, send, index: int, body: bytes | None = None) -> None:
-        """Streams the proxied response straight through — never reads
-        it fully into memory first, so a long chat SSE reply or a large
-        upload response isn't buffered or delayed.
+        """Streams the proxied response through, never buffering it (long chat SSE or large uploads).
 
-        Races forwarding the response body against watching `receive()`
-        for an http.disconnect message, and cancels forwarding the
-        instant one arrives. This is load-bearing, not defensive
-        padding: ASGI signals a client disconnect by sending that
-        message through `receive()`, never by making `send()` raise —
-        a loop that only calls `send()` while forwarding chunks (as an
-        earlier version of this method did) never learns the client
-        left at all. Confirmed live: without this, abandoning a chat
-        stream after a few chunks left the *upstream* instance's own
-        generation running to completion regardless — several minutes
-        of the ML engine's single-request slot held hostage by a reply nobody
-        was still reading, exactly the failure chat_service.
-        build_reply_stream's own cancellation-propagation contract is
-        supposed to prevent. Cancelling the forwarding task here closes
-        httpx's stream (the `async with client.stream(...)` below exits
-        on the way out), which drops the connection to the upstream
-        instance — the same mechanism that cancels its own generation
-        when a *direct* (non-proxied) client disconnects.
+        Races forwarding the body against `receive` for http.disconnect and cancels forwarding on arrival. This
+        is load-bearing: ASGI signals a disconnect via `receive`, never by making `send` raise, so a loop that
+        only sends never learns the client left (an earlier version did this). Without it, abandoning a chat stream
+        left the *upstream* generation running for minutes, holding the engine's single-request slot for a reply no
+        one read, which build_reply_stream's cancellation contract is meant to prevent. Cancelling closes httpx's
+        stream (`async with client.stream(...)` exits), dropping the upstream connection, which cancels its generation
+        as a direct disconnect does.
         """
         port = instance_process.port_for_index(index)
         url = http_.target_url(scope, port)
@@ -149,4 +118,4 @@ class InstanceProxyMiddleware:
                 for task in pending:
                     task.cancel()
                 if forward_task in done:
-                    forward_task.result()  # re-raise any real forwarding error
+                    forward_task.result()

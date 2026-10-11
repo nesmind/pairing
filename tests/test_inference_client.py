@@ -1,7 +1,7 @@
-"""Unit tests for app/services/inference_client.py — the engine-agnostic dispatch layer every generic call site
-(chat, RAG, titles, model management) goes through instead of importing app.services.ollama_client or
-app.services.matricxon_client directly. Confirms dispatch actually follows app.services.engine_service.
-current_engine(), and that both engines' own exception types get normalized into one InferenceError."""
+"""Tests for services/inference_client.py, the engine-agnostic dispatch every generic call site (chat, RAG,
+titles, model management) uses instead of importing ollama_client/matricxon_client. Confirms dispatch follows
+engine_service.current_engine and both engines' exception types normalize into one InferenceError.
+"""
 
 import pytest
 
@@ -97,9 +97,9 @@ async def test_pull_model_stream_dispatches_to_the_active_engines_admin_service(
 
 @pytest.mark.asyncio
 async def test_pull_model_stream_rejects_a_non_hf_tag_for_ollama(monkeypatch):
-    """The real gap this closes: Ollama (unlike Matricxon, which has no access to Ollama's own registry protocol
-    at all) will happily pull a bare library name like "llama3" — a tag Matricxon could never resolve, so it
-    would silently become unusable the moment an admin switched the active engine."""
+    """Ollama (unlike Matricxon, which can't use Ollama's registry protocol) will pull a bare library name like
+    "llama3", which Matricxon could never resolve, making it unusable once an admin switches engine.
+    """
     engine_service._cached_engine = "ollama"
     monkeypatch.setattr(ollama_admin, "pull_model_stream", lambda _tag: pytest.fail("must not reach the engine"))
 
@@ -141,9 +141,9 @@ def test_active_capabilities_reflects_the_active_engine():
 
 @pytest.mark.asyncio
 async def test_embed_raises_inference_error_when_the_active_engine_cannot_embed(monkeypatch):
-    """A future engine without real embedding support (see InferenceEngine.embed's own default) must fail the
-    same clean way an unreachable engine already does — one InferenceError, not an AttributeError or a silent
-    no-op — so a caller only ever needs one except clause regardless of *why* the call couldn't go through."""
+    """An engine without embedding support (InferenceEngine.embed's default) must fail like an unreachable one: one
+    InferenceError, not an AttributeError or silent no-op, so callers need one except clause whatever the cause.
+    """
     from app.services.engines.base import EngineCapabilities, InferenceEngine
     from app.services.engines.registry import EngineRegistry
 
@@ -187,8 +187,8 @@ async def test_embed_raises_inference_error_when_the_active_engine_cannot_embed(
 
 @pytest.mark.asyncio
 async def test_stop_model_does_not_wrap_errors(monkeypatch):
-    # stop_model is cleanup/best-effort on both engines (see ollama_client.stop_model/matricxon_client.stop_model's
-    # own docstrings — they already swallow failures internally), so the dispatcher passes it through untouched.
+    # stop_model is best-effort cleanup on both engines (ollama_client/matricxon_client.stop_model swallow failures), so
+    # the dispatcher passes it through.
     engine_service._cached_engine = "ollama"
     called = []
 

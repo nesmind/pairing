@@ -1,10 +1,5 @@
-"""
-Pydantic schemas: define the shape of JSON that flows in and out of the
-API. Split one domain per file (see CLAUDE.md's file-size rule) instead
-of one large schemas.py, and re-exported here so the rest of the app
-keeps writing `from app.schemas import ChatRequest, ...` exactly as
-before — this package boundary is an internal reorganization, not a
-change to any call site outside it.
+"""Pydantic schemas for JSON in and out of the API, one domain per file, re-exported here so
+`from app.schemas import ChatRequest,...` works.
 """
 
 from app.schemas.channel import ChannelCreate, ChannelMemberOut, ChannelOut, ChannelSummary, ChannelUpdate

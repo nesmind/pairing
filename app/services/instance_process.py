@@ -1,11 +1,5 @@
-"""
-Process-level primitives for the "local instances" feature — spawning/
-terminating/liveness-checking a sibling app process and persisting which
-ones are currently known to exist. Split out of
-app/services/instance_service.py (which does the async orchestration
-around these) purely to stay under CLAUDE.md's file-size rule, the same
-reasoning app/services/db_config_url.py was split from
-db_config_service.py for.
+"""Process primitives for "local instances": spawn, terminate and liveness-check a sibling process and persist
+which exist. Split from instance_service.py (async orchestration) for the file-size rule, like db_config_url.py.
 """
 
 import json
@@ -26,35 +20,27 @@ _TERMINATE_GRACE_SECONDS = 3.0
 
 
 def port_for_index(index: int) -> int:
-    """The port a given local instance listens on. `APP_PORT` is *this process's own* actual port, not
-    necessarily the primary's — a sibling's own APP_PORT env var is already offset by its own index (see
-    spawn_sibling below), so naively adding `index` to it double-counts that offset when called from anywhere
-    but the primary itself. Subtracting this process's own INSTANCE_INDEX first recovers the true base (index
-    0's) port regardless of which instance is asking — confirmed live: without this, a broadcast_refresh() call
-    made from a non-primary instance (see app.services.server_pool_broadcast) POSTed back to its *own* port
-    instead of the primary's, silently leaving the primary's in-process caches (e.g. app.services.engine_service)
-    stale after an admin's change — the exact "switching engine doesn't seem to take effect" bug this was."""
+    """The port a local instance listens on. `APP_PORT` is *this process's* port (a sibling's is already offset by
+    its index, see spawn_sibling), so adding `index` double-counts. Subtracting this process's INSTANCE_INDEX
+    recovers the base (index 0's) port from any instance. Without it a non-primary's broadcast_refresh
+    (server_pool_broadcast) POSTed to its own port, leaving the primary's caches (e.g. engine_service)
+    stale: the "switching engine doesn't take effect" bug.
+    """
     return (APP_PORT - INSTANCE_INDEX) + index
 
 
 def plan_changes(desired_count: int, alive_indices: set[int]) -> tuple[set[int], set[int]]:
-    """Pure decision logic, no I/O: given how many instances are wanted
-    and which sibling indices (1-based; index 0 is the primary and is
-    never included) are currently confirmed alive, returns
-    (indices_to_spawn, indices_to_terminate). Kept separate from the
-    subprocess/file/network side effects below so it's trivially unit-
-    testable."""
+    """Pure decision logic: given the wanted count and the sibling indices (1-based; 0 is the primary) alive,
+    returns (indices_to_spawn, indices_to_terminate). Separate from side effects so it's easy to unit-test.
+    """
     wanted = set(range(1, desired_count))
     return wanted - alive_indices, alive_indices - wanted
 
 
 def read_tracking() -> dict[int, dict]:
-    """Returns {index: {"pid": int}} for every sibling this primary has
-    previously recorded spawning. Tolerant of a missing or corrupt file
-    — treated as "nothing tracked yet" rather than raising, the same
-    self-healing stance other startup code in this app takes toward
-    state that should exist but might not (e.g. note_service's default-
-    notes backfill)."""
+    """{index: {"pid": int}} for each sibling this primary recorded spawning. A missing or corrupt file means
+    "nothing tracked" (self-healing, like note_service's default-notes backfill).
+    """
     if not _TRACKING_FILE.exists():
         return {}
     try:
@@ -70,30 +56,17 @@ def write_tracking(tracked: dict[int, dict]) -> None:
 
 
 def is_alive(pid: int) -> bool:
-    """True iff `pid` is still running *and* still looks like one of our
-    own run.py processes — never a bare os.kill(pid, 0), which can't
-    tell a live sibling from an unrelated process that happened to reuse
-    the same PID after a reboot or long uptime.
+    """True iff `pid` runs *and* looks like one of our own run.py processes; never a bare os.kill(pid, 0), which
+    can't tell a live sibling from an unrelated process reusing the PID.
 
-    Tries reaping first (os.waitpid with WNOHANG): if this primary
-    process is the actual parent (the common case — we spawned it this
-    run), a dead child needs reaping or it zombies. ChildProcessError
-    means we're not its parent (e.g. the primary itself restarted since
-    spawning it, so the sibling was reparented to init) — falls back to
-    a /proc/{pid}/comm check, which works regardless of parentage.
+    Reaps first (os.waitpid WNOHANG) so a dead child doesn't zombie if we're its parent. ChildProcessError
+    means we aren't (e.g. the primary restarted and the sibling was reparented to init): fall back to
+    /proc/{pid}/comm, which works regardless.
 
-    Deliberately reads comm, not cmdline: run.py calls setproctitle
-    *very* early, and setproctitle rewrites a process's argv memory too
-    — by the time this ever runs, /proc/{pid}/cmdline no longer contains
-    "run.py" (or anything resembling the original launch command) for
-    any of our own processes, primary or sibling alike (confirmed live,
-    not just in theory — this broke a real restart-adoption test).
-    comm is capped at 15 bytes by the kernel (TASK_COMM_LEN), so every
-    sibling's proctitle "pAIring-server-N" truncates to the identical
-    "pAIring-server-" regardless of N (see scripts/stop.sh's own comment
-    on this same fact) — enough to prove "this is one of our own
-    processes," which is all an identity check here needs; the actual
-    index is already known from the tracking file's own key.
+    Reads comm, not cmdline: run.py calls setproctitle very early, which rewrites argv memory, so cmdline
+    no longer shows "run.py" (this broke a restart-adoption test). comm is capped at 15 bytes (TASK_COMM_LEN),
+    so "pAIring-server-N" truncates to "pAIring-server-" (see scripts/stop.sh): enough to prove identity; the
+    index comes from the tracking file's key.
     """
     try:
         reaped_pid, _status = os.waitpid(pid, os.WNOHANG)
@@ -114,20 +87,12 @@ def is_alive(pid: int) -> bool:
 
 
 def spawn_sibling(index: int) -> int | None:
-    """Launches sibling `index` as a detached subprocess sharing this
-    machine's DB/models/knowledge (same env, same working directory) —
-    only APP_PORT/AUTO_MIGRATE/PAIRING_INSTANCE_INDEX differ.
-    AUTO_MIGRATE=false reuses the existing multi-instance migration
-    safety net (see app.config.AUTO_MIGRATE's own docstring): the
-    primary already migrated, so a sibling racing to migrate the same
-    database on its own cold start is exactly the failure mode that
-    setting exists to avoid.
+    """Launches sibling `index` detached, sharing this machine's DB/models/knowledge (same env and cwd); only
+    APP_PORT/AUTO_MIGRATE/PAIRING_INSTANCE_INDEX differ. AUTO_MIGRATE=false reuses the multi-instance safety net
+    (app.config.AUTO_MIGRATE): the primary migrated, and a sibling racing to migrate is the failure it avoids.
 
-    start_new_session=True detaches the sibling from this process's own
-    session/process group (the same effect scripts/start.sh gets from
-    `nohup ... & disown`), so it keeps running even if this primary
-    process dies uncleanly. Returns None (and logs) if the sibling
-    appears to have exited immediately, e.g. a port already in use.
+    start_new_session=True detaches it (like scripts/start.sh's `nohup... & disown`) so it survives the primary
+    dying uncleanly. Returns None (and logs) if it exits immediately (e.g. port in use).
     """
     port = port_for_index(index)
     log_dir = DATA_DIR / "logs"
@@ -158,10 +123,7 @@ def spawn_sibling(index: int) -> int | None:
 
 
 def terminate_sibling(pid: int) -> None:
-    """SIGTERM, then a brief grace period, then SIGKILL if it's still
-    around — the same graceful-then-forceful shape scripts/stop.sh's
-    pkill gives the primary. Silent no-op if the process is already
-    gone."""
+    """SIGTERM, a brief grace period, then SIGKILL (like scripts/stop.sh's pkill). No-op if already gone."""
     try:
         os.kill(pid, signal.SIGTERM)
     except ProcessLookupError:

@@ -1,5 +1,6 @@
-"""sdcpp_source_build: tool checks, command streaming (real tiny subprocesses) and the whole build flow with the
-git/cmake commands scripted — nothing is compiled here."""
+"""sdcpp_source_build: tool checks, command streaming (real tiny subprocesses) and the whole build flow with
+git/cmake scripted; nothing is compiled.
+"""
 
 import asyncio
 
@@ -46,8 +47,8 @@ async def test_a_missing_tool_is_reported_without_touching_the_install_folder(tm
 
 
 def _script_commands(monkeypatch, fail_on: str | None = None, produce_binary: bool = True, dirty: str = ""):
-    """Replaces the git/cmake runs: clone makes the source folder, the build prints percent lines and (optionally)
-    leaves the binaries in build/bin."""
+    """Replaces the git/cmake runs: clone makes the source folder; the build prints percent lines and (optionally)
+    leaves binaries in build/bin."""
     calls = []
 
     async def fake_stream(argv, cwd, env):
@@ -98,15 +99,15 @@ async def test_build_installs_the_binary_keeps_models_and_cleans_up(tmp_path, mo
         "Installing",
     ]
     percents = [e["completed"] for e in events if "completed" in e]
-    assert percents == [5, 90]  # a repeated percentage is not re-sent
+    assert percents == [5, 90]
     done = events[-1]
     assert done["done"] and done["version"] == "abc1234" and done["binary_path"] == str(target / "sd-server")
     assert (target / "sd-server").read_text() == "NEW-BINARY"
-    assert not (target / "libggml.so.0").exists()  # old engine files are replaced
+    assert not (target / "libggml.so.0").exists()
     assert (target / "models" / "keep.gguf").read_text() == "model"
     assert (target / ".install_complete").read_text() == "abc1234"
-    assert (target / "src" / ".git").is_dir() and not (target / "src.partial").exists()  # the source is kept
-    assert (target / "build" / "bin" / "sd-server").exists()  # and so is the build tree
+    assert (target / "src" / ".git").is_dir() and not (target / "src.partial").exists()
+    assert (target / "build" / "bin" / "sd-server").exists()
     assert done["source_dir"] == str(target / "src")
     clone = calls[0]
     assert clone[:2] == ["git", "clone"] and "--branch" in clone and "v1" in clone
@@ -118,7 +119,7 @@ async def test_default_branch_is_cloned_when_no_ref_is_given(tmp_path, monkeypat
     calls = _script_commands(monkeypatch)
     await _collect(build_stream(None, None, None, tmp_path / "sd"))
     assert "--branch" not in calls[0]
-    assert calls[0][-1].endswith("src.partial")  # cloned beside the real folder, then renamed
+    assert calls[0][-1].endswith("src.partial")
 
 
 @pytest.mark.asyncio
@@ -132,7 +133,7 @@ async def test_a_failed_build_keeps_the_existing_install_and_the_source(tmp_path
 
     assert "Building stable-diffusion.cpp failed: compiler exploded" in events[-1]["error"]
     assert (target / "sd-server").read_text() == "OLD-BINARY"
-    assert (target / "src" / ".git").is_dir()  # a retry resumes from the kept clone and build tree
+    assert (target / "src" / ".git").is_dir()
 
 
 @pytest.mark.asyncio
@@ -154,7 +155,7 @@ async def test_install_stream_delegates_the_source_choice(tmp_path, monkeypatch)
     monkeypatch.setattr(sdcpp_installer, "local_install_supported", lambda: True)
     events = [e async for e in sdcpp_installer.install_stream(None, None, proxy_url="http://p", build="source")]
     assert events == [{"done": True}]
-    assert seen == {"repo": "leejet/stable-diffusion.cpp", "ref": None, "proxy": "http://p"}  # no pinned tag forced
+    assert seen == {"repo": "leejet/stable-diffusion.cpp", "ref": None, "proxy": "http://p"}
 
 
 @pytest.mark.asyncio
@@ -178,7 +179,7 @@ async def test_a_second_build_while_one_runs_is_refused_and_leaves_the_first_alo
 
     release.set()
     assert "failed" in (await first)[-1]["error"]
-    assert (await _collect(build_stream(None, None, None, tmp_path / "sd")))[-1]["error"]  # the flag was released
+    assert (await _collect(build_stream(None, None, None, tmp_path / "sd")))[-1]["error"]
     assert sdcpp_source_build._building is False
 
 
@@ -209,5 +210,5 @@ async def test_an_update_is_refused_when_tracked_source_files_were_edited(tmp_pa
     events = await _collect(build_stream(None, None, None, target))
 
     assert "local changes" in events[-1]["error"]
-    assert ["git", "reset"] not in [argv[:2] for argv in calls]  # nothing was overwritten
+    assert ["git", "reset"] not in [argv[:2] for argv in calls]
     assert (target / "src" / ".git").is_dir()

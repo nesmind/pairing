@@ -1,14 +1,10 @@
-"""GET /api/telemetry/{ollama,matricxon}/summary — per-engine call telemetry for the Stats page's "Telemetry"
-view (see app/services/telemetry_service.py for the aggregation queries). Admin-only, same access-control
-decision as app/routers/stats.py's own summary endpoint (see that file's own docstring).
+"""GET /api/telemetry/{ollama,matricxon}/summary: per-engine call telemetry for the Stats "Telemetry" view
+(telemetry_service.py). Admin-only, like stats.py.
 
-The two literal routes are this codebase's existing convention (a real, named endpoint per engine rather than a
-validated-string param — same as ollama_admin.py/matricxon_admin.py being separate routers instead of one
-parameterized by engine name) and stay, so nothing already depending on their exact paths breaks. The generic
-`/{engine}/summary` route below is additive: the frontend (see stats.html/telemetry.js) now calls it directly
-once a third engine's name isn't one of these two literals, without this router needing a new route added for
-it — `telemetry_service.get_engine_telemetry_summary` already takes `engine` as a plain parameter, so this is
-routing-only, no new aggregation logic."""
+The two literal routes are the codebase's convention (one named endpoint per engine) and keep existing
+paths working. The generic `/{engine}/summary` route is additive, for a third engine (stats.html/telemetry.js);
+telemetry_service.get_engine_telemetry_summary already takes `engine`, so it is routing only.
+"""
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession

@@ -1,7 +1,7 @@
-"""Unit tests for app/services/engines/ollama_engine.py, matricxon_engine.py, and runpod_engine.py — confirms each
-method forwards to its client/admin/pool module by reference (looked up again on every call, never bound at
-construction time), so the existing test suite's monkeypatch.setattr(ollama_client, ...)-style patches keep
-working through the adapter layer exactly the way they already do through app.services.inference_client."""
+"""Tests for engines/ollama_engine.py, matricxon_engine.py and runpod_engine.py: each method forwards to its
+client/admin/pool module by reference (looked up per call, never bound at construction), so
+monkeypatch.setattr(ollama_client,...) patches keep working through the adapters as through inference_client.
+"""
 
 import pytest
 

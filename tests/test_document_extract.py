@@ -1,5 +1,4 @@
-"""Unit tests for app/services/document_extract.py's pure text-chunking
-logic — no filesystem, no Ollama, no database."""
+"""Tests for services/document_extract.py's pure text-chunking logic: no filesystem, Ollama or database."""
 
 from app.services.document_extract import chunk_text, hash_bytes
 
@@ -14,17 +13,15 @@ def test_chunk_text_short_text_is_a_single_chunk():
 
 
 def test_chunk_text_splits_long_text_with_overlap():
-    text = "abcdefghij" * 10  # 100 chars
+    text = "abcdefghij" * 10
     chunks = chunk_text(text, size=30, overlap=5)
 
     assert len(chunks) > 1
-    # Every chunk after the first repeats the previous chunk's last
-    # `overlap` characters at its own start — that's the whole point of
-    # overlap (an idea split across a boundary still appears whole
-    # somewhere).
+    # Every chunk after the first repeats the previous chunk's last `overlap` characters: an idea split across a
+    # boundary stays whole somewhere.
     for prev, nxt in zip(chunks, chunks[1:]):
         assert prev[-5:] == nxt[:5]
-    # Reassembling without the overlap should reproduce the original.
+    # Reassembling without the overlap reproduces the original.
     assert chunks[0] + "".join(c[5:] for c in chunks[1:]) == text
 
 
@@ -38,4 +35,4 @@ def test_hash_bytes_is_deterministic_and_sensitive_to_content():
     c = hash_bytes(b"different content")
     assert a == b
     assert a != c
-    assert len(a) == 64  # sha256 hex digest length
+    assert len(a) == 64

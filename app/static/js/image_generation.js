@@ -1,9 +1,4 @@
-/**
- * Image generation page controller: submit a prompt to the active image engine (see
- * app/routers/image_generation.py), then poll each job's own status
- * until it's complete/errored/cancelled, rendering a gallery tile per generation.
- * Plain polling (no websocket): an in-progress tile shows a live progress bar and a Cancel button.
- */
+/* Image generation page controller: submits a prompt to the active image engine (app/routers/image_generation.py), then polls each job until complete/errored/cancelled, with a gallery tile per generation. Plain polling (no websocket); an in-progress tile shows a progress bar and a Cancel button. */
 
 const galleryEl = document.getElementById("gen-gallery");
 const galleryEmptyEl = document.getElementById("gen-gallery-empty");
@@ -11,9 +6,8 @@ const generateBtn = document.getElementById("gen-generate-btn");
 const statusEl = document.getElementById("gen-status");
 const checkpointSelect = document.getElementById("gen-checkpoint");
 
-// One poll loop per in-flight job id, so navigating away from an older
-// tile (e.g. a fresh full-gallery reload) never disrupts a newer job's
-// own polling — each loop only ever touches its own tile.
+// One poll loop per in-flight job id, so a full-gallery reload never disrupts a newer job; each loop touches only its
+// own tile.
 const activePolls = new Set();
 
 function statusLabel(status) {
@@ -26,7 +20,7 @@ function statusLabel(status) {
 
 const isActive = (job) => job.status === "queued" || job.status === "running";
 
-/** The server stores naive UTC timestamps — parse them as UTC. */
+/* The server stores naive UTC timestamps; parse them as UTC. */
 function parseCreatedAt(iso) {
   return new Date(/(Z|[+-]\d\d:\d\d)$/.test(iso) ? iso : `${iso}Z`);
 }
@@ -36,9 +30,7 @@ function formatDuration(totalSeconds) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-/** The in-progress tile: stage text, a progress bar (real percentage when the engine reports one, otherwise an
- * indeterminate pulse), elapsed time / rough time left, and a Cancel button. Updated in place by
- * updateActiveTile so the bar animates smoothly between polls instead of being rebuilt. */
+/* The in-progress tile: stage text, a progress bar (real percentage if the engine reports one, else an indeterminate pulse), elapsed/rough time left, and Cancel. updateActiveTile updates it in place so the bar animates between polls. */
 function buildActiveTile(tile, job) {
   tile.dataset.active = "true";
   tile.dataset.createdAt = parseCreatedAt(job.created_at).getTime();
@@ -73,7 +65,7 @@ function detailText(tile, percent) {
   return parts.filter(Boolean).join(" · ");
 }
 
-// Keeps every in-progress tile's elapsed time ticking between the (slower) job polls.
+// Keeps every in-progress tile's elapsed time ticking between the slower job polls.
 setInterval(() => {
   for (const tile of galleryEl.querySelectorAll('[data-active="true"]')) {
     const detail = tile.querySelector("[data-detail]");
@@ -93,15 +85,14 @@ async function cancelJob(jobId, button) {
   }
 }
 
-/** Builds one gallery tile for `job` — an image once complete, a
- * spinner-ish placeholder while queued/running, or an error badge. */
+/* Builds a gallery tile for `job`: an image once complete, a placeholder while queued/running, or an error badge. */
 function renderTile(job) {
   const tile = document.createElement("div");
   tile.className = "aspect-square rounded-lg bg-slate-900 border border-slate-800 overflow-hidden relative group";
   tile.dataset.jobId = job.id;
 
   if (job.status === "complete" && job.url) {
-    tile.innerHTML = window.completeTileHtml(job); // picture + Save link; click-to-enlarge in image_generation_viewer.js
+    tile.innerHTML = window.completeTileHtml(job);
   } else if (job.status === "error") {
     tile.innerHTML = `<div class="h-full w-full flex flex-col items-center justify-center gap-1 p-2 text-center">
         <span class="text-xs text-red-400">Failed</span>
@@ -118,7 +109,7 @@ function renderTile(job) {
   return tile;
 }
 
-/** The × in a finished tile's corner (always visible on a failed/cancelled one, on hover for a real image). */
+/* The × in a finished tile's corner (always visible on a failed/cancelled one, on hover for an image). */
 function buildRemoveButton(job) {
   const button = document.createElement("button");
   button.type = "button";
@@ -148,7 +139,7 @@ async function removeJob(job, button) {
 function replaceTile(job) {
   const existing = galleryEl.querySelector(`[data-job-id="${job.id}"]`);
   if (existing?.dataset.active === "true" && isActive(job)) {
-    updateActiveTile(existing, job); // in place, so the bar animates instead of resetting
+    updateActiveTile(existing, job);
     return;
   }
   const fresh = renderTile(job);
@@ -156,9 +147,7 @@ function replaceTile(job) {
   else galleryEl.prepend(fresh);
 }
 
-/** Polls GET .../jobs/{id} every ~2s until status is complete/error,
- * updating that one tile in place — independent of any other job's own
- * loop or of a later full-gallery reload. */
+/* Polls GET.../jobs/{id} every ~2s until complete/error, updating that tile in place, independent of other jobs and full-gallery reloads. */
 async function pollJob(jobId) {
   if (activePolls.has(jobId)) return;
   activePolls.add(jobId);
@@ -170,9 +159,7 @@ async function pollJob(jobId) {
       await new Promise((resolve) => setTimeout(resolve, 1500));
     }
   } catch (_) {
-    // A transient poll failure isn't worth surfacing per-tile — the next
-    // full gallery reload (switching tabs, reopening the page) will show
-    // the real state either way.
+    // A transient poll failure isn't worth surfacing per tile; the next gallery reload shows the real state.
   } finally {
     activePolls.delete(jobId);
   }

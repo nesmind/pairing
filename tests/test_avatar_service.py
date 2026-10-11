@@ -1,5 +1,4 @@
-"""Unit tests for app/services/avatar_service.py: profile picture
-validation/storage/replacement/removal."""
+"""Tests for services/avatar_service.py: profile picture validation, storage, replacement and removal."""
 
 import io
 
@@ -15,9 +14,9 @@ def _upload(filename: str, data: bytes) -> UploadFile:
 
 @pytest.fixture(autouse=True)
 def _isolated_avatars_dir(tmp_path, monkeypatch):
-    """save_avatar()/delete_avatar() write through app.config.AVATARS_DIR directly (same module-split
-    import-binding gotcha as chat_attachment_service's identical fixture) — without this, every test below would
-    touch the project's own real avatars/ folder."""
+    """save_avatar/delete_avatar write through app.config.AVATARS_DIR (the same import-binding gotcha as
+    chat_attachment_service's fixture); otherwise tests would touch the project's real avatars/ folder.
+    """
     monkeypatch.setattr(avatar_service, "AVATARS_DIR", tmp_path)
 
 
@@ -25,8 +24,7 @@ def _isolated_avatars_dir(tmp_path, monkeypatch):
 async def test_save_avatar_writes_the_file_and_sets_avatar_path(db, user):
     updated = await avatar_service.save_avatar(db, user, _upload("me.png", b"fake-png-bytes"))
 
-    # <user.id>-<random token>.png, not just <user.id>.png — see save_avatar's own docstring on why the random
-    # component matters (it's what makes avatar_url's ?v= cache-buster below always genuinely change).
+    # <user.id>-<random token>.png: the random part makes avatar_url's ?v= cache-buster always change (see save_avatar).
     assert updated.avatar_path.startswith(f"{user.id}-")
     assert updated.avatar_path.endswith(".png")
     assert (avatar_service.AVATARS_DIR / updated.avatar_path).read_bytes() == b"fake-png-bytes"
@@ -55,26 +53,24 @@ async def test_save_avatar_replaces_a_previously_uploaded_picture(db, user):
 
     await avatar_service.save_avatar(db, user, _upload("me.png", b"new-png-bytes"))
 
-    assert not old_path.exists()  # the stale .jpg is gone, not left orphaned
+    assert not old_path.exists()
     assert user.avatar_path.endswith(".png")
     assert (avatar_service.AVATARS_DIR / user.avatar_path).read_bytes() == b"new-png-bytes"
 
 
 @pytest.mark.asyncio
 async def test_reuploading_the_same_extension_still_changes_avatar_url(db, user):
-    """The actual regression this covers: re-uploading a picture with the same extension used to write to the
-    exact same filename — without a cache-busting suffix on avatar_url, the browser kept showing the stale
-    cached image after a re-upload, confirmed live. avatar_url (and now avatar_path itself, see save_avatar's
-    own docstring) must differ across two real, distinct uploads even when the extension doesn't. save_avatar
-    mutates and returns the same User object both times, so each URL is captured as a plain string right after
-    its own save — holding onto the object itself would just re-evaluate the property against whatever the
-    *final* state ended up being."""
+    """Regression: re-uploading with the same extension reused the filename, and without a cache-buster the browser
+    showed the stale image. avatar_url (and avatar_path) must differ between two uploads even with the same
+    extension. save_avatar returns the same User object both times, so each URL is captured as a string right
+    after its save (the object would re-evaluate against the final state).
+    """
     updated = await avatar_service.save_avatar(db, user, _upload("me.png", b"first-bytes"))
     first_path, first_url = updated.avatar_path, updated.avatar_url
     updated = await avatar_service.save_avatar(db, user, _upload("me.png", b"second-bytes"))
     second_path, second_url = updated.avatar_path, updated.avatar_url
 
-    assert first_path != second_path  # a genuinely different filename this time, not just a different URL
+    assert first_path != second_path
     assert first_url != second_url
 
 
@@ -91,5 +87,5 @@ async def test_delete_avatar_removes_the_file_and_clears_avatar_path(db, user):
 
 @pytest.mark.asyncio
 async def test_delete_avatar_is_a_no_op_when_nothing_was_uploaded(db, user):
-    await avatar_service.delete_avatar(user)  # must not raise
+    await avatar_service.delete_avatar(user)
     assert user.avatar_path is None

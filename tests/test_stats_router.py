@@ -1,11 +1,8 @@
-"""Unit test for app/routers/stats.py — called directly, not through a
-TestClient/ASGI app (see tests/test_instance_proxy_http.py's own
-docstring on why this project doesn't use that pattern). Real
-aggregation coverage lives in tests/test_stats_service.py; this file
-only proves the router is admin-only (see its own docstring for why) —
-calling require_admin directly with a plain `user`, since a direct
-router call bypasses FastAPI's own dependency resolution and would
-never actually run that check otherwise."""
+"""Test for routers/stats.py, called directly, not via TestClient/ASGI (see tests/test_instance_proxy_http.py). The
+aggregation is tested in tests/test_stats_service.py; this proves only that the router is admin-only, calling
+require_admin directly with a plain `user` (a direct router call bypasses FastAPI's dependency resolution and
+would never run that check).
+"""
 
 import pytest
 from fastapi import HTTPException

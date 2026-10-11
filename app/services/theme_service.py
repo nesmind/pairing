@@ -1,9 +1,5 @@
-"""
-The app-wide UI theme (backgrounds, text, accent colors, fonts — see
-app/static/css/themes.css) a user has picked. Split out of
-settings_service.py (already at CLAUDE.md's line cap) rather than added
-there; mirrors that file's other get_x/set_x per-user setting pairs
-(e.g. get_default_model/set_default_model) in shape.
+"""The user's app-wide UI theme (backgrounds, text, accents, fonts; static/css/themes.css). Split from
+settings_service.py (at the line cap); same get_x/set_x per-user shape (e.g. get_default_model/set_default_model).
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,9 +11,8 @@ THEME_KEY = "ui_theme"
 
 
 async def get_ui_theme(db: AsyncSession, user: User) -> str:
-    """Returns `user`'s own app-wide UI theme (see app.theme_config.UI_THEMES), falling back to
-    app.theme_config.DEFAULT_UI_THEME if they haven't picked one or their saved value is no longer a valid
-    theme id (e.g. a theme that was later removed from the catalog)."""
+    """`user`'s UI theme (app.theme_config.UI_THEMES), falling back to DEFAULT_UI_THEME if unset or no longer a valid
+    theme id."""
     row = await db.get(AppSetting, (user.id, THEME_KEY))
     if row and row.value["theme"] in {t["id"] for t in UI_THEMES}:
         return row.value["theme"]

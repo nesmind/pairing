@@ -1,14 +1,10 @@
-"""
-Starts/stops the local Matricxon process via its own scripts/start.sh and scripts/stop.sh — the supervisor
-behind Settings > External servers > Matricxon's "local" mode. Unlike Ollama (a single self-contained binary,
-see app/services/ollama_process.py) or ComfyUI (a bare `python main.py` this app launches and tracks itself, see
-app/services/comfyui_process.py), Matricxon has no binary and no invocation this app constructs by hand — it's a
-sibling Python project with its own venv, whose own scripts/start.sh already writes and manages a PID file
-(`run/matricxon.pid` inside the project directory) — read directly here rather than reinventing PID tracking the
-way comfyui_process.py has to for a subprocess it spawns itself.
+"""Starts/stops the local Matricxon via its scripts/start.sh and scripts/stop.sh: the supervisor behind
+Settings > External servers > Matricxon "local" mode. Unlike Ollama (one binary, ollama_process.py) or
+ComfyUI (a `python main.py` this app tracks, comfyui_process.py), Matricxon is a sibling Python project
+with its own venv whose scripts/start.sh manages a PID file (`run/matricxon.pid` in the project), read here
+directly instead of reinventing tracking.
 
-Only the primary process (app.config.IS_PRIMARY) may start/stop it — same reasoning as
-app/services/comfyui_service.py's identical guard.
+Only the primary (app.config.IS_PRIMARY) may start/stop it, as comfyui_service.py.
 """
 
 import asyncio
@@ -28,24 +24,23 @@ from app.services.matricxon_pool import LOCAL_MATRICXON_HOST
 
 logger = logging.getLogger("llama_chat")
 
-# Matricxon isn't something this app installs itself (see app.services.matricxon_installer's own docstring — its
-# GitHub install is a stub today) — the one default worth guessing is the sibling checkout this app's own
-# development layout already uses.
+# This app doesn't install Matricxon itself (matricxon_installer's GitHub install is a stub), so the one
+# default worth guessing is the sibling checkout of this app's development layout.
 _DEFAULT_PROJECT_DIR = BASE_DIR.parent / "matricxon"
 
 _START_TIMEOUT_SECONDS = 30.0
 _HEALTH_CHECK_TIMEOUT = httpx.Timeout(3.0, connect=2.0)
 
-# Same reasoning as ollama_process._lock / comfyui_service._lock: a live Start/Stop click racing a status poll
-# (or another start/stop) must never interleave.
+# As ollama_process._lock / comfyui_service._lock: a Start/Stop must not interleave with a status poll or another
+# start/stop.
 _lock = asyncio.Lock()
 
 
 def _find_project_dir(project_dir: str | None = None) -> Path | None:
-    """`project_dir` is the admin's own override (see Settings > External servers' "Already have Matricxon
-    installed elsewhere?" link) — checked first and, if it looks like a real checkout (has scripts/start.sh),
-    used exclusively. Falls back to the sibling-directory default otherwise, same "override, else a sane guess"
-    pattern as ollama_process._find_binary."""
+    """`project_dir` is the admin's override (Settings > External servers' "Already have Matricxon installed
+    elsewhere?"): used exclusively if it looks like a checkout (has scripts/start.sh), else the sibling-directory
+    default (like ollama_process._find_binary).
+    """
     candidates = [Path(project_dir).expanduser()] if project_dir else []
     candidates.append(_DEFAULT_PROJECT_DIR)
     for candidate in candidates:
@@ -59,23 +54,23 @@ def is_installed(project_dir: str | None = None) -> bool:
 
 
 def auto_detect_project_dir() -> str | None:
-    """What _find_project_dir resolves to with no override at all — Settings > External servers shows this as
-    the project_dir field's own placeholder, mirroring ollama_process.auto_detect_binary's identical purpose."""
+    """What _find_project_dir resolves to with no override; the project_dir placeholder (like
+    ollama_process.auto_detect_binary)."""
     found = _find_project_dir()
     return str(found) if found else None
 
 
 def resolve_project_dir(project_dir: str | None = None) -> Path | None:
-    """Public wrapper around _find_project_dir for callers outside this module that need the
-    actual resolved directory — honoring a saved override, unlike auto_detect_project_dir's
-    "what would blank resolve to" behavior — see matricxon_direct_puller._resolve_dest."""
+    """Public wrapper of _find_project_dir for outside callers needing the resolved directory, honoring a saved
+    override (unlike auto_detect_project_dir); see matricxon_direct_puller._resolve_dest.
+    """
     return _find_project_dir(project_dir)
 
 
 def auto_detect_models_dir() -> str | None:
-    """What a blank models_path resolves to — Matricxon's own default models directory inside
-    the auto-detected project checkout. None if no checkout can be found at all (mirrors
-    auto_detect_project_dir's own None case)."""
+    """What a blank models_path resolves to: Matricxon's default models directory in the auto-detected checkout.
+    None if no checkout is found (like auto_detect_project_dir).
+    """
     project_dir = _find_project_dir()
     return str(project_dir / "data" / "models") if project_dir else None
 
@@ -100,13 +95,13 @@ def _is_running(project_dir: Path) -> bool:
     except ProcessLookupError:
         return False
     except OSError:
-        # Real but not ours (e.g. owned by another user) — kill(pid, 0) still reached a live process.
+        # Real but not ours (e.g. another user's): kill(pid, 0) still reached a live process.
         return True
     return True
 
 
 def _concurrency_env_values(config: MatricxonServerConfig) -> dict[str, str | None]:
-    """The concurrent-user tuning fields as env values (None = unset, matricxon's own default)."""
+    """The concurrent-user tuning fields as env values (None = unset, Matricxon's default)."""
     return {
         "MATRICXON_PROMPT_CACHE_SLOTS": _int_or_none(config.prompt_cache_slots),
         "MATRICXON_PROMPT_CACHE_BUDGET_MB": _int_or_none(config.prompt_cache_budget_mb),
@@ -122,6 +117,10 @@ def _build_env(config: MatricxonServerConfig, proxy_url: str | None = None) -> d
     env = {**os.environ}
     if config.models_path is not None:
         env["MATRICXON_MODELS_DIR"] = config.models_path
+    if config.prompt_cache_path is not None:
+        env["MATRICXON_PROMPT_CACHE_DIR"] = config.prompt_cache_path
+    if config.advertise_url is not None:
+        env["MATRICXON_ADVERTISE_URL"] = config.advertise_url
     if config.max_loaded_models is not None:
         env["MATRICXON_MAX_LOADED_MODELS"] = str(config.max_loaded_models)
     if config.keep_alive_minutes is not None:
@@ -138,8 +137,8 @@ def _build_env(config: MatricxonServerConfig, proxy_url: str | None = None) -> d
     env["MATRICXON_DEVICE"] = config.device
     env["MATRICXON_GPU_WEIGHT_MODE"] = config.gpu_weight_mode
     env["MATRICXON_LOG_LEVEL"] = str(config.log_level)
-    # Matricxon's own model-pull downloader (a plain httpx client) honors these the same standard way Ollama's Go
-    # binary does — see ollama_process._build_env.
+    env["MATRICXON_CLUSTER_ROLE"] = config.cluster_role
+    # Matricxon's model-pull downloader (plain httpx) honors these like Ollama's Go binary (ollama_process._build_env).
     if proxy_url:
         env["HTTP_PROXY"] = proxy_url
         env["HTTPS_PROXY"] = proxy_url
@@ -149,23 +148,24 @@ def _build_env(config: MatricxonServerConfig, proxy_url: str | None = None) -> d
 
 
 def write_env_file(config: MatricxonServerConfig) -> None:
-    """Persists `config`'s local-mode fields into Matricxon's own .env file (its Settings class already loads
-    one — see ../matricxon/app/config.py's `env_file=".env"` — so this works via pydantic-settings' own native
-    support, no code change needed on that side) — not just into *this* process's env when this app itself
-    happens to be the one launching it (see _build_env, used only in that one case). Confirmed live,
-    2026-09-22: after a laptop restart, Matricxon came back up started some other way (its own scripts/start.sh
-    run directly, a systemd unit, ...) and silently fell back to its own default, now-empty models directory —
-    this closes that gap at the source, so the config takes effect no matter what actually starts the process,
-    the same way it always would if this app were the one starting it. Called on every config save (see
-    app/routers/matricxon_admin.py's _save_and_broadcast), not just at start time, so it's already in place
-    before Matricxon next comes up however that happens. A no-op if the project directory can't currently be
-    resolved — saving a config for an install that isn't finished/found yet must not fail outright over this."""
+    """Persists `config`'s local-mode fields into Matricxon's own .env (its Settings loads
+    `env_file=".env"`,../matricxon/app/config.py, so no change there), not only this process's env when this app
+    launches it
+    (_build_env). On: after a laptop restart, Matricxon started another way (scripts/start.sh directly,
+    systemd,...) fell back to its empty default models directory. This applies the config however the process
+    starts; called on every save (routers/matricxon_admin.py _save_and_broadcast). No-op if the project directory
+    can't be resolved yet, so saving for an unfinished install doesn't fail.
+    """
+    if config.mode == "remote":
+        return  # remote mode: pAIring manages no Matricxon and must not write into any checkout's.env
     project_dir = resolve_project_dir(config.project_dir)
     if project_dir is None:
         return
     env_file.write_env_values(
         {
             "MATRICXON_MODELS_DIR": config.models_path,
+            "MATRICXON_PROMPT_CACHE_DIR": config.prompt_cache_path,
+            "MATRICXON_ADVERTISE_URL": config.advertise_url,
             "MATRICXON_MAX_LOADED_MODELS": (
                 str(config.max_loaded_models) if config.max_loaded_models is not None else None
             ),
@@ -182,6 +182,7 @@ def write_env_file(config: MatricxonServerConfig) -> None:
             "MATRICXON_DEVICE": config.device,
             "MATRICXON_GPU_WEIGHT_MODE": config.gpu_weight_mode,
             "MATRICXON_LOG_LEVEL": str(config.log_level),
+            "MATRICXON_CLUSTER_ROLE": config.cluster_role if config.cluster_role != "off" else None,
         },
         path=project_dir / ".env",
     )
@@ -198,15 +199,16 @@ def _run_script(project_dir: Path, script: str, env: dict[str, str]) -> subproce
     )
 
 
-# Matricxon's own one-line startup refusals (e.g. a GPU device that isn't there): "... matricxon cannot start: <why>".
+# Matricxon's one-line startup refusals (e.g. a missing GPU device): "... matricxon cannot start: <why>".
 _CANNOT_START_LINE = re.compile(r"matricxon cannot start: (.+)$")
 _STARTUP_ERROR_LINE = re.compile(r"^(?:[\w.]+\.)?(\w*(?:Error|Exception)): (.+)$")
 
 
 def _startup_failure_reason(output: str) -> str | None:
-    """The cause of a failed start, from its log tail: matricxon's own one-line "matricxon cannot start: <why>"
-    (e.g. a CUDA device with no GPU), else the last "SomeError: message" line of a traceback — so the Settings page
-    shows the actual cause instead of a whole traceback. None if neither is there."""
+    """The cause of a failed start from its log tail: Matricxon's "matricxon cannot start: <why>" (e.g. a CUDA
+    device with no GPU), else the last "SomeError: message" traceback line, so Settings shows the cause, not a
+    traceback. None if neither.
+    """
     for line in reversed(output.strip().splitlines()):
         refusal = _CANNOT_START_LINE.search(line.strip())
         if refusal:
@@ -228,8 +230,8 @@ def _start(project_dir: Path, config: MatricxonServerConfig, proxy_url: str | No
 
 
 def _stop(project_dir: Path) -> None:
-    # scripts/stop.sh already does its own graceful-then-SIGKILL wait (see that script) — no extra polling loop
-    # needed here the way ollama_process._stop/comfyui_process.terminate need for the raw signals they send.
+    # scripts/stop.sh already waits gracefully then SIGKILLs; no polling loop like
+    # ollama_process._stop/comfyui_process.terminate's raw signals.
     if not _is_running(project_dir):
         return
     result = _run_script(project_dir, "stop.sh", {**os.environ})
@@ -263,8 +265,9 @@ async def get_status(project_dir_override: str | None = None) -> MatricxonServer
 
 
 async def start(config: MatricxonServerConfig, proxy_url: str | None = None) -> MatricxonServerStatus:
-    """Backs POST .../start. Raises RuntimeError if no checkout can be found or it doesn't come back up healthy
-    in time, ValueError if called on anything but the primary instance — same contract as ollama_process.start."""
+    """POST.../start. RuntimeError if no checkout is found or it doesn't come up healthy in time; ValueError if not
+    the primary (as ollama_process.start).
+    """
     if not IS_PRIMARY:
         raise ValueError("Matricxon can only be managed from the primary instance.")
     async with _lock:
@@ -296,9 +299,9 @@ async def stop(project_dir_override: str | None = None) -> MatricxonServerStatus
 
 
 async def apply_local_config(config: MatricxonServerConfig, proxy_url: str | None = None) -> MatricxonServerStatus:
-    """Backs a config Save while Matricxon is already running locally — like Ollama, Matricxon only reads its
-    MATRICXON_* env vars at its own process startup, so this stops and restarts it with the new values. Callers
-    (see app/routers/matricxon_admin.py) are expected to have already warned about the interruption."""
+    """Backs a config Save while Matricxon runs locally. It reads MATRICXON_* only at startup (like Ollama), so this
+    stops and restarts it. Callers (routers/matricxon_admin.py) should have warned about the interruption.
+    """
     if not IS_PRIMARY:
         raise ValueError("Matricxon can only be managed from the primary instance.")
     async with _lock:

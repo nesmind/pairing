@@ -1,0 +1,18 @@
+<!-- Slide-in panel with one node's details and actions, opened by clicking a node on the Cluster page's Nodes
+     map. Same look and behavior as the profile panel (_account_panel.html); filled by cluster_node_panel.js. -->
+<div id="cluster-node-backdrop" class="hidden fixed inset-0 z-40 bg-black/60"></div>
+<div id="cluster-node-panel"
+  class="fixed inset-y-0 right-0 z-50 flex w-full max-w-sm translate-x-full transform flex-col border-l border-slate-800 bg-slate-900 shadow-xl transition-transform duration-200 ease-out">
+  <div class="flex items-center justify-between border-b border-slate-800 px-4 py-3">
+    <div class="min-w-0">
+      <h2 id="cluster-node-title" class="truncate text-sm font-semibold text-slate-200"></h2>
+      <p id="cluster-node-subtitle" class="truncate text-xs text-slate-500"></p>
+    </div>
+    <button id="cluster-node-close" type="button" class="text-slate-500 hover:text-slate-300 transition-colors"
+      aria-label="Close">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div id="cluster-node-body" class="flex-1 overflow-y-auto px-4 py-4 space-y-4"></div>
+</div>

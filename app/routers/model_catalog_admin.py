@@ -1,10 +1,6 @@
-"""
-GET/POST/DELETE for the "browse more models" catalog behind Settings >
-Model (see app/services/extended_model_catalog_service.py), plus the
-Hugging Face search/file-lookup endpoints that feed its "Add a model"
-flow (see app/services/huggingface_client.py) — a separate file from
-app/routers/settings.py (already at CLAUDE.md's line cap) for the same
-reason app/routers/theme.py is its own file.
+"""GET/POST/DELETE for the "browse more models" catalog (Settings > Model;
+app/services/extended_model_catalog_service.py) and the Hugging Face search/file lookups behind
+"Add a model" (huggingface_client.py). Separate from settings.py for the file-size cap.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -31,8 +27,7 @@ router = APIRouter(prefix="/api/settings/model-catalog/extended", tags=["setting
 
 @router.get("", response_model=ExtendedModelCatalogResponse)
 async def get_extended_catalog(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    """Every user can browse this list (same visibility rule as the default catalog — an admin-hidden tag is
-    left out for a regular user, not just marked hidden), but only an admin can add to or remove from it."""
+    """Visible to all users (admin-hidden tags are left out for regular users); only admins add or remove."""
     entries = await ExtendedModelCatalog(db).build(user)
     return ExtendedModelCatalogResponse(entries=entries)
 
@@ -43,9 +38,9 @@ async def search_hf_models(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),
 ):
-    """Searches Hugging Face for GGUF-tagged repos matching `body.query` — the first step of "Add a model."
-    Admin-only (same as the rest of this add flow), routed through the same admin-configured outbound proxy as
-    the ML engine/ComfyUI installers (Settings > System)."""
+    """Searches Hugging Face for GGUF repos matching `body.query` (first step of "Add a model").
+    Admin-only; uses the admin-configured outbound proxy.
+    """
     proxy_config = await http_proxy_service.get_http_proxy_config(db)
     try:
         results = await HuggingFaceCatalogSearch.search(body.query, proxy_url=proxy_config.proxy_url())
@@ -60,9 +55,7 @@ async def get_hf_repo_files(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),
 ):
-    """Lists every single-file GGUF variant `body.repo_id` offers, with real sizes — the file-picker step shown
-    once an admin picks a repo from search_hf_models' results (or already knows the exact repo path and skips
-    search entirely)."""
+    """Lists a repo's single-file GGUF variants with sizes (the file-picker step)."""
     proxy_config = await http_proxy_service.get_http_proxy_config(db)
     try:
         repo = await HuggingFaceCatalogSearch.repo_files(body.repo_id, proxy_url=proxy_config.proxy_url())
@@ -77,13 +70,10 @@ async def add_extended_model(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
-    """Verifies `body.repo_id`/`body.filename` really exist on Hugging Face before adding, so the catalog never
-    ends up carrying a typo'd or made-up entry — except when the resulting tag is already installed, where the
-    same lookup is still attempted for real family/parameter_size data but a failure is tolerated instead of
-    blocking (see ExtendedModelCatalog.add's own docstring): silencing the "not in catalog" badge for something
-    already on disk shouldn't require connectivity. Same proxy-routing as search_hf_models/get_hf_repo_files
-    above — on a machine with no internet access and no proxy configured, a *not-yet-installed* add still fails
-    with a clear "check your connection or configure a proxy" message rather than hanging or a raw traceback."""
+    """Verifies `body.repo_id`/`body.filename` exist on Hugging Face before adding. For an already-installed
+    tag a lookup failure is tolerated (ExtendedModelCatalog.add). With no internet and no proxy, a
+    not-yet-installed add fails with a clear message rather than hanging.
+    """
     proxy_config = await http_proxy_service.get_http_proxy_config(db)
     catalog = ExtendedModelCatalog(db)
     try:
@@ -93,8 +83,7 @@ async def add_extended_model(
     except HuggingFaceLookupError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     entries = await catalog.build(admin)
-    # See ExtendedModelCatalogResponse.already_installed's own docstring — added["note"] is only ever
-    # ALREADY_INSTALLED_NOTE on that exact branch of add().
+    # added["note"] is ALREADY_INSTALLED_NOTE only on that branch (see ExtendedModelCatalogResponse.already_installed).
     already_installed = added["note"] == ExtendedModelCatalog.ALREADY_INSTALLED_NOTE
     return ExtendedModelCatalogResponse(entries=entries, already_installed=already_installed)
 
@@ -105,8 +94,8 @@ async def remove_extended_model(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
-    """Removes a tag from the extended catalog only — never uninstalls it from the ML engine if it happens to be
-    installed, same "curation, not deletion" distinction app/routers/settings.py's hide-model endpoint draws."""
+    """Removes a tag from the extended catalog only; never uninstalls it (curation, not deletion, like settings.py's
+    hide-model)."""
     catalog = ExtendedModelCatalog(db)
     await catalog.remove(body.tag)
     entries = await catalog.build(admin)

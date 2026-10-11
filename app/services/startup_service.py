@@ -1,8 +1,5 @@
-"""
-The actual work behind app/main.py's startup/shutdown event handlers —
-split out purely to keep main.py under CLAUDE.md's file-size rule; this
-is business logic (seeding, backfills, knowledge sync, the local-
-instances supervisor), not routing, so it belongs here regardless.
+"""The work behind app/main.py's startup/shutdown handlers, split from main.py for the file-size rule; it is
+business logic (seeding, backfills, knowledge sync, the instances supervisor), not routing.
 """
 
 import logging
@@ -13,6 +10,7 @@ from app.config import AUTO_MIGRATE, IS_PRIMARY
 from app.database import AsyncSessionLocal, init_db
 from app.models import User
 from app.services import (
+    cluster_membership,
     comfyui_pool,
     connector_config_cache,
     engine_service,
@@ -42,14 +40,10 @@ logger = logging.getLogger("llama_chat")
 
 
 async def run_startup_tasks() -> None:
-    """Runs once when the server process starts: makes sure the
-    database schema is up to date (or, with app.config.AUTO_MIGRATE off,
-    just verifies it already is — see init_db), seeds the starter admin
-    account, logs a clear warning (instead of a confusing error deep in
-    a request later) if the active engine (Ollama or Matricxon — see
-    app.services.engine_service) isn't reachable yet, and syncs the
-    knowledge-base folder (app.config.KNOWLEDGE_DIR) so any files
-    dropped in while the server was down are picked up immediately."""
+    """Runs once at server start: ensures the schema is current (or with AUTO_MIGRATE off, just verifies it; init_db),
+    seeds the starter admin, logs a clear warning if the active engine (engine_service) is unreachable (instead
+    of a confusing error later) and syncs KNOWLEDGE_DIR so files dropped while down are picked up.
+    """
     logger.info(
         "AUTO_MIGRATE=%s — %s",
         AUTO_MIGRATE,
@@ -59,24 +53,14 @@ async def run_startup_tasks() -> None:
     )
     await init_db()
 
-    # A fresh AsyncSessionLocal() rather than the get_db() dependency:
-    # this runs outside of any HTTP request, so there's no request-
-    # scoped session to reuse — we open one, use it, and close it
-    # ourselves (the `async with` below).
+    # A fresh AsyncSessionLocal, not get_db: this runs outside any request, so we open and close the session
+    # ourselves.
     async with AsyncSessionLocal() as db:
         admin_user = await seed_default_users(db)
-        # Conversations created before multi-user support existed have
-        # no owner (see the migration in app/database.py) — attach them
-        # to admin rather than leaving them permanently invisible to
-        # everyone, since deleting someone's existing chat history as a
-        # side effect of an unrelated feature would be a bad surprise.
-        # `channel_id IS NULL` is load-bearing here, not just belt-and-
-        # suspenders: a channel's shared conversation (see
-        # app/models/conversation.py) also has owner_id NULL *by design*
-        # — without this exclusion, this backfill would silently steal
-        # every channel's conversation for admin on every single
-        # restart, which is exactly what happened before this exclusion
-        # was added (see repair pass right below for undoing that).
+        # Conversations from before multi-user support have no owner (app/database.py migration): attach them to admin
+        # rather than leave them invisible (deleting history would be a bad surprise). `channel_id IS NULL` is
+        # load-bearing: a channel's shared conversation (models/conversation.py) also has owner_id NULL by design, and
+        # without it this backfill stole every channel's conversation for admin on each restart (see the repair below).
         result = await db.execute(
             text("UPDATE conversations SET owner_id = :admin_id WHERE owner_id IS NULL AND channel_id IS NULL"),
             {"admin_id": admin_user.id},
@@ -84,16 +68,10 @@ async def run_startup_tasks() -> None:
         if result.rowcount:
             logger.info("Assigned %d pre-existing conversation(s) to admin.", result.rowcount)
 
-        # Self-healing repair, unconditional on every startup (cheap: a
-        # no-op UPDATE touching zero rows once nothing is broken): a
-        # channel's shared conversation must never have owner_id set —
-        # channel_id/owner_id are mutually exclusive (see
-        # app/models/conversation.py) — but the backfill above did
-        # exactly that on every restart before it excluded channel_id,
-        # so any row still carrying that stray owner_id (from before
-        # this fix existed) gets corrected here rather than staying
-        # silently broken (invisible-but-undeletable in its owner's
-        # personal chat list) until someone notices and asks about it.
+        # Self-healing repair on every startup (cheap: a no-op UPDATE of zero rows once fixed): a channel conversation
+        # must never have owner_id (mutually exclusive with channel_id, models/conversation.py), but the backfill above
+        # did that each restart before it excluded channel_id. Stray rows get corrected rather than staying broken
+        # (invisible-but-undeletable in the owner's list).
         result = await db.execute(
             text("UPDATE conversations SET owner_id = NULL WHERE owner_id IS NOT NULL AND channel_id IS NOT NULL"),
         )
@@ -101,91 +79,69 @@ async def run_startup_tasks() -> None:
             logger.info("Repaired %d channel conversation(s) with a stray owner_id.", result.rowcount)
         await db.commit()
 
-        # Backfill: every user (not just admin/ran above) gets their 3
-        # protected persona/rules/skill notes if they don't already have
-        # them — covers both the two seed accounts on a fresh install and
-        # any account that existed before this feature shipped.
-        # seed_default_notes is idempotent, so this is safe to run on
-        # every single startup rather than needing its own one-time
-        # migration flag.
+        # Backfill: every user gets their 3 protected persona/rules/skill notes if missing (seed accounts on a fresh
+        # install and accounts predating the feature). seed_default_notes is idempotent, so no one-time migration flag.
         for user in (await db.execute(select(User))).scalars().all():
             await seed_default_notes(db, user)
 
         await db.commit()
 
-        # Primes the live ML engine/ComfyUI host pools (Settings > External
-        # servers) from whatever's currently saved — unlike the
-        # instance-count/proxy-mode priming right below, this runs on
-        # *every* instance, not just the primary: each instance
-        # independently routes its own chat/image-generation requests
-        # through these pools (see app.services.ollama_pool/comfyui_pool),
-        # so every one of them needs its own cache warm before the
-        # ML engine connectivity check right after this block runs.
+        # Primes the engine/ComfyUI host pools (Settings > External servers) from what's saved. Unlike the
+        # instance-count/proxy-mode priming below, this runs on *every* instance: each routes its own chat/image
+        # requests
+        # through these pools (ollama_pool/comfyui_pool) and needs its cache warm before the connectivity check after
+        # this block.
         ollama_pool.refresh_from_config(await settings_service.get_ollama_server_config(db))
         comfyui_pool.refresh_from_config(await settings_service.get_comfyui_config(db))
         sdcpp_pool.refresh_from_config(await image_engine_service.get_sdcpp_config(db))
         matricxon_config = await settings_service.get_matricxon_server_config(db)
         matricxon_pool.refresh_from_config(matricxon_config)
-        # Which of the two feeds app.services.inference_client's dispatch — see
-        # app.services.engine_service.load_cache_from_db's own docstring for why every instance needs this,
-        # same "own in-process cache, not re-read per request" reasoning as the pool refreshes right above.
+        # Which engine feeds inference_client's dispatch (engine_service.load_cache_from_db): every instance needs its
+        # own in-process cache, like the pool refreshes above.
         await engine_service.load_cache_from_db(db)
-        # Every Connector's admin-configured state — same reasoning, and must run before the reachability check
-        # below in case a Connector-backed engine is already the active one (see app.services.connectors).
+        # Every Connector's admin state: same reasoning, and it must run before the reachability check below in case a
+        # Connector-backed engine is active (services.connectors).
         await connector_config_cache.load_cache_from_db(db)
 
-        # Same "every instance, not just primary" reasoning as the pool refresh right above — each instance
-        # instruments its own outbound Ollama/Matricxon calls independently (see app.services.ollama_client/
-        # matricxon_client), so each needs its own OpenTelemetry SDK wired up, one per engine (see
-        # matricxon_telemetry's own docstring for why a separate TracerProvider, not a shared one). Must happen
-        # before the ML engine reachability check below: that check `return`s early on a cold start without the ML
-        # engine reachable yet, which would otherwise skip this permanently.
+        # Every instance, not just the primary, like the pool refresh: each instruments its own outbound
+        # Ollama/Matricxon
+        # calls (ollama_client/matricxon_client) and needs its own OpenTelemetry SDK, one per engine (see
+        # matricxon_telemetry for the separate TracerProvider). Must precede the reachability check below, which
+        # returns early on a cold start without the engine and would skip this permanently.
         ollama_telemetry.init_ollama_telemetry()
         matricxon_telemetry.init_matricxon_telemetry()
 
-        # Local-instances supervisor (Settings > System) — primary only,
-        # so a sibling this same call might spawn never tries to spawn
-        # siblings of its own. See app/services/instance_service.py.
-        # Priming instance_pool's proxy-mode cache here too (same
-        # primary-only gate) is what lets app/services/instance_proxy.py
-        # decide per-request without a DB round trip — see
-        # instance_pool.get_cached_proxy_mode's own docstring.
+        # Local-instances supervisor (Settings > System): primary only, so a spawned sibling never spawns siblings
+        # (instance_service.py). Priming instance_pool's proxy-mode cache here (same gate) lets instance_proxy.py decide
+        # per request without a DB round trip (instance_pool.get_cached_proxy_mode).
         if IS_PRIMARY:
             await instance_service.reconcile_on_startup(db)
             instance_pool.set_cached_proxy_mode(await settings_service.get_proxy_mode(db))
 
-            # Re-syncs Matricxon's own .env file to the last-saved config on every startup, not
-            # just on config save (see matricxon_process.write_env_file's own docstring on why
-            # that file exists at all: Matricxon must get the right parameters no matter what
-            # actually starts it — this app, a bare scripts/start.sh, a reboot, systemd — since
-            # it's meant to work as a dependent server either way). Closes a real gap found live,
-            # 2026-09-27: a save that happened to land before write_env_file could resolve the
-            # project directory yet silently no-oped (its own documented guard for an install
-            # that isn't finished/found), leaving .env stale indefinitely with nothing to ever
-            # retry it — a plain restart is exactly the moment the project directory is most
-            # likely resolvable again, so this is a cheap, safe place to self-heal that.
+            # Re-syncs Matricxon's.env to the last-saved config on every startup, not just on save (see
+            # matricxon_process.write_env_file: Matricxon must get the right parameters however it is started: this app,
+            # bare scripts/start.sh, a reboot, systemd). Closes a gap: a save that landed before
+            # write_env_file could resolve the project directory silently no-oped and left.env stale with nothing to
+            # retry;
+            # a restart is when the directory is most likely resolvable.
             matricxon_process.write_env_file(matricxon_config)
 
-            # Ollama/Matricxon's currently-loaded-model state (GET /api/ps), this machine's own CPU/RAM/disk
-            # usage, and the retention sweep that keeps all of these (plus telemetry_events) from growing
-            # unbounded over a long uptime are all host-level, not per-instance — starting any of them from every
-            # instance would just duplicate work for no benefit, same reasoning as the supervisor right above.
-            # Must also run before the reachability check below for the same early-return reason as
-            # init_ollama_telemetry() — every one of these already tolerates Ollama/Matricxon/the underlying
-            # syscalls being unavailable via their own per-iteration try/except, so it's safe to start them even
-            # before that check has run.
+            # Loaded-model state (GET /api/ps) of Ollama/Matricxon, this machine's CPU/RAM/disk, and the retention sweep
+            # that bounds all of these (plus telemetry_events) are host-level, not per-instance: starting them on every
+            # instance would duplicate work (like the supervisor above). They must also run before the reachability
+            # check
+            # below (same early-return reason as init_ollama_telemetry); each tolerates Ollama/Matricxon/syscalls
+            # being
+            # unavailable via its own per-iteration try/except.
             ollama_ps_poller.start_ollama_ps_poller()
             matricxon_ps_poller.start_matricxon_ps_poller()
             system_metrics_poller.start_system_metrics_poller()
             retention_poller.start_retention_poller()
+            cluster_membership.start_membership_sync()
 
-            # A message left "streaming" (personal chat or channel alike)
-            # is a generation task that was running in some earlier
-            # process — an asyncio.Task can't survive a restart, so
-            # without this it would stay stuck showing a permanent
-            # "typing" state forever. See mark_interrupted_messages_as_errored's
-            # own docstring for why this is scoped to a single-instance
-            # restart only.
+            # A message left "streaming" (personal or channel) was a generation task in an earlier process; an
+            # asyncio.Task can't survive a restart, so it would show "typing" forever. Single-instance restart only (see
+            # mark_interrupted_messages_as_errored).
             interrupted = await mark_interrupted_messages_as_errored(db)
             if interrupted:
                 logger.info(
@@ -194,12 +150,9 @@ async def run_startup_tasks() -> None:
                     "y" if interrupted == 1 else "ies",
                 )
 
-            # Same restart-survival gap as the reply sweep above, for a
-            # generation job left "queued"/"running" by a prior process
-            # — see mark_interrupted_jobs_as_errored's own docstring.
-            # ComfyUI itself is deliberately NOT stopped here (see
-            # app/services/comfyui_service.py's own docstring on why it
-            # survives an app restart) — only this app's own bookkeeping
+            # Same restart gap as the reply sweep, for jobs left "queued"/"running" (mark_interrupted_jobs_as_errored).
+            # ComfyUI itself is NOT stopped (it survives app restarts, see comfyui_service.py); only this app's
+            # bookkeeping
             # of a job it can no longer track is corrected.
             interrupted_jobs = await mark_interrupted_jobs_as_errored(db)
             if interrupted_jobs:
@@ -223,9 +176,8 @@ async def run_startup_tasks() -> None:
         return
 
     async with AsyncSessionLocal() as db:
-        # sync_all_on_startup degrades gracefully (logged as an "error"
-        # in its stats, not raised) if no embedding model is available
-        # yet.
+        # sync_all_on_startup degrades gracefully (logged as an "error" in its stats, not raised) if no embedding model
+        # is available yet.
         stats = await sync_all_on_startup(db)
         logger.info(
             "Knowledge base synced: %d added, %d updated, %d removed, %d unchanged.",
@@ -239,13 +191,10 @@ async def run_startup_tasks() -> None:
 
 
 async def run_shutdown_tasks() -> None:
-    """Cleans up any siblings this primary spawned — most load-bearing
-    on the plain scripts/stop.sh path (no cgroup to do this for us
-    there, unlike a real systemd stop/reboot — see
-    app/services/instance_service.py's own docstring). Also flushes any
-    telemetry spans still queued in either engine's own OTel SDK before
-    the process exits — see ollama_telemetry.shutdown_ollama_telemetry's
-    own docstring for why this must run on a worker thread, not inline."""
+    """Cleans up siblings this primary spawned (matters most on plain scripts/stop.sh: no cgroup, unlike a
+    systemd stop/reboot; see instance_service.py). Also flushes telemetry spans still queued in either engine's
+    OTel SDK before exit (on a worker thread; see ollama_telemetry.shutdown_ollama_telemetry).
+    """
     if IS_PRIMARY:
         await instance_service.terminate_all_siblings()
     await ollama_telemetry.shutdown_ollama_telemetry()

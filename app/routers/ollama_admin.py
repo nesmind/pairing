@@ -1,18 +1,9 @@
-"""
-Settings > External servers > Ollama admin endpoints: local-mode
-parameters (num_parallel/keep_alive/max_loaded_models/context_length) or
-remote-mode host list, and starting/stopping/observing the actual local
-`ollama serve` subprocess. See app/services/ollama_process.py for the
-supervisor logic — mirrors app/routers/comfyui_admin.py's identical
-shape for ComfyUI's own half of the same tab.
+"""Settings > External servers > Ollama admin: local-mode params (num_parallel/keep_alive/max_loaded_models/
+context_length) or remote host list, and start/stop/status of the local `ollama serve`
+(app/services/ollama_process.py). Same shape as comfyui_admin.py.
 
-Named ollama_admin.py for the Settings-page-admin-endpoint convention
-this project uses (db_admin.py, instances_admin.py, comfyui_admin.py) —
-distinct from app/services/ollama_admin.py (model pull/delete), an
-unrelated existing module this doesn't touch. Replaces the old, narrower
-"Ollama concurrency" endpoints (num_parallel only, always restarted
-Ollama immediately on save) — that one field is now part of the fuller
-config below.
+Not to be confused with app/services/ollama_admin.py (model pull/delete). Replaces the old
+"Ollama concurrency" endpoints (num_parallel only, restarted on save).
 """
 
 import json
@@ -52,16 +43,10 @@ router = APIRouter(prefix="/api/settings/ollama", tags=["ollama"])
 
 
 async def _save_and_broadcast(db: AsyncSession, body: OllamaServerConfig) -> None:
-    """Persists `body`, applies it to this instance's own live pool
-    immediately, and best-effort propagates the same refresh to every
-    other local instance (see app.services.server_pool_broadcast — each
-    instance independently routes its own chat requests through
-    app.services.ollama_pool, so every one of them needs this, not just
-    whichever received this request). A sibling that couldn't be
-    refreshed just keeps routing through its own stale host list until
-    its next save or a restart — logged, not raised, since this
-    process's own change (already applied above) is the one that
-    matters most and did succeed."""
+    """Persists `body`, applies it to this instance's pool and best-effort broadcasts it to the other local
+    instances (server_pool_broadcast; each routes chat through ollama_pool). A sibling that fails keeps its
+    stale host list until the next save or restart: logged, not raised.
+    """
     previous = await settings_service.get_ollama_server_config(db)
     await settings_service.set_ollama_server_config(db, body)
     if previous.mode != body.mode:
@@ -79,20 +64,17 @@ async def get_config(db: AsyncSession = Depends(get_db), _admin: User = Depends(
 
 @router.get("/check-host", response_model=HostHealthCheck)
 async def check_host(host: str, _admin: User = Depends(require_admin)):
-    """Pings `host` directly (see app.services.ollama_pool.check_host) —
-    not limited to a host already saved to the live pool, so Settings >
-    External servers can let an admin verify a remote-mode candidate URL
-    is reachable before ever clicking Save on the form."""
+    """Pings `host` directly (ollama_pool.check_host), even if not in the live pool, so an admin can verify a
+    remote URL before saving.
+    """
     return HostHealthCheck(host=host, healthy=await ollama_pool.check_host(host))
 
 
 @router.get("/auto-detected-path", response_model=OllamaAutoDetectedPath)
 async def auto_detected_path(_admin: User = Depends(require_admin)):
-    """What ollama_process.auto_detect_binary() (PATH, then the usual
-    fixed fallback locations) resolves to right now, ignoring any saved
-    binary_path override — the "Ollama binary path" field's own
-    placeholder shows this real value so "leave it blank" is concrete,
-    not just a description."""
+    """What ollama_process.auto_detect_binary resolves to now (PATH, then fixed locations), ignoring any
+    saved override; shown as the binary-path field's placeholder.
+    """
     return OllamaAutoDetectedPath(
         path=ollama_process.auto_detect_binary(), models_path=ollama_process.auto_detect_models_path()
     )
@@ -104,10 +86,9 @@ async def update_config(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),
 ):
-    """Persists the new config and refreshes the live host pool on every
-    instance — does not itself restart a currently-running local Ollama
-    (see POST /apply for that, since restarting interrupts every
-    in-flight reply and the frontend should warn before triggering it)."""
+    """Persists the config and refreshes the pool on every instance; does not restart a running local Ollama
+    (POST /apply does, since that interrupts in-flight replies and the frontend warns first).
+    """
     await _save_and_broadcast(db, body)
     return body
 
@@ -118,11 +99,9 @@ async def apply_config(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),
 ):
-    """Saves `body` and, if Ollama is running locally, restarts it with
-    the new local-mode parameters applied — the one action in this tab
-    that can't apply live. The frontend is expected to confirm with the
-    admin before calling this (same as the old "Ollama concurrency"
-    save button already did)."""
+    """Saves `body` and, if Ollama runs locally, restarts it with the new params: the one action here that
+    cannot apply live. The frontend confirms first.
+    """
     await _save_and_broadcast(db, body)
     proxy_config = await http_proxy_service.get_http_proxy_config(db)
     try:
@@ -136,16 +115,11 @@ async def apply_config(
 
 @router.post("/internal-refresh", response_model=OkResponse)
 async def internal_refresh(request: Request, db: AsyncSession = Depends(get_db)):
-    """Called only by another local instance's own
-    app.services.server_pool_broadcast.broadcast_refresh right after an
-    admin's config save — never by a browser, so no require_admin
-    session here. Deliberately placed under this router's own
-    "/api/settings/ollama" prefix, already covered by
-    app.services.instance_proxy_http.EXEMPT_PREFIXES, so this can never
-    get load-balanced to a random *different* instance — see
-    app/routers/db_admin.py's internal_switch_database for the identical
-    reasoning (a proxied request always looks loopback-sourced, which
-    would defeat this check if this path could ever be proxied)."""
+    """Called only by another local instance's server_pool_broadcast.broadcast_refresh, never by a browser.
+    Under "/api/settings/ollama", covered by instance_proxy_http.EXEMPT_PREFIXES, so it is never
+    load-balanced to another instance (see db_admin.internal_switch_database: a proxied request looks
+    loopback-sourced and would defeat the check).
+    """
     if request.client is None or request.client.host not in ("127.0.0.1", "::1"):
         raise HTTPException(status_code=403, detail="Internal endpoint — not reachable externally.")
     ollama_pool.refresh_from_config(await settings_service.get_ollama_server_config(db))
@@ -183,31 +157,25 @@ async def stop(db: AsyncSession = Depends(get_db), _admin: User = Depends(requir
 
 @router.get("/install-defaults", response_model=InstallDefaults)
 async def install_defaults(_admin: User = Depends(require_admin)):
-    """The maintainer-picked repo/version app.services.ollama_installer
-    falls back to when OllamaServerConfig.install_repo/install_version
-    haven't been overridden — Settings > External servers shows this next
-    to the Install button and pre-fills the override fields' placeholders
-    with it."""
+    """The repo/version ollama_installer uses unless OllamaServerConfig.install_repo/install_version are
+    overridden; shown next to Install and as the override placeholders.
+    """
     return InstallDefaults(repo=OLLAMA_GITHUB_REPO, version=OLLAMA_PINNED_VERSION)
 
 
 @router.get("/available-versions", response_model=AvailableVersions)
 async def available_versions(repo: str | None = None, _admin: User = Depends(require_admin)):
-    """Real tags fetched live from GitHub (see app.services.github_releases) for `repo` — the admin's own
-    not-yet-saved install_repo override if they're previewing one, else OLLAMA_GITHUB_REPO's own default.
-    Backs the version picker's datalist next to the plain install_version override field; see that schema's own
-    docstring for why this is always a convenience, never a hard requirement."""
+    """Tags fetched live from GitHub (github_releases) for `repo` (the unsaved override, else
+    OLLAMA_GITHUB_REPO) for the version picker's datalist; a convenience, never required.
+    """
     return AvailableVersions(versions=await github_releases.list_tags(repo or OLLAMA_GITHUB_REPO))
 
 
 @router.post("/install")
 async def install(db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)):
-    """Downloads and installs Ollama's pinned release (or the admin's own
-    install_repo/install_version override, if set — see
-    app.services.ollama_installer.install_stream), streaming progress
-    over SSE — same wire format as /api/settings/pull-model. A real,
-    multi-GB download; see app.services.ollama_installer's own docstring
-    for exactly what it does and why."""
+    """Downloads and installs Ollama's pinned release (or the override; ollama_installer.install_stream),
+    streaming SSE like /api/settings/pull-model. A multi-GB download.
+    """
     config = await settings_service.get_ollama_server_config(db)
     proxy_config = await http_proxy_service.get_http_proxy_config(db)
 

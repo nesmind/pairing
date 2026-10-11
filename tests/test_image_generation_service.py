@@ -1,12 +1,8 @@
-"""Unit tests for app/services/image_generation_service.py — the
-DB-row-as-source-of-truth generation lifecycle (queued -> running ->
-complete/error). _run_job is awaited directly (bypassing _schedule's
-asyncio.create_task) since it's fire-and-forget by design and this
-module has no synchronizing broadcast queue the way
-reply_generation_service does — the deterministic way to test its full
-transition logic is to just await the same coroutine the background
-task would otherwise run. Every comfyui_client call is monkeypatched;
-no real ComfyUI instance is reachable in this environment."""
+"""Tests for services/image_generation_service.py: the DB-row-as-source-of-truth lifecycle (queued -> running ->
+complete/error). _run_job is awaited directly (bypassing _schedule's create_task): it's fire-and-forget with
+no synchronizing broadcast queue (unlike reply_generation_service), so awaiting the coroutine the task would
+run is the deterministic way to test its transitions. Every comfyui_client call is patched; no real ComfyUI.
+"""
 
 import os
 from types import SimpleNamespace
@@ -21,8 +17,8 @@ from app.services.sdcpp_client import SdCppError
 
 @pytest.fixture(autouse=True)
 async def _comfyui_engine(db, monkeypatch):
-    """The default engine is stable-diffusion.cpp and ComfyUI is switched off in production (ahead of its removal);
-    the ComfyUI-path tests below re-enable it and pin it."""
+    """The default engine is stable-diffusion.cpp and ComfyUI is switched off in production (ahead of removal); the
+    ComfyUI-path tests re-enable and pin it."""
     monkeypatch.setattr(image_engine_service, "ENABLED_IMAGE_ENGINES", ("sdcpp", "comfyui"))
     await image_engine_service.set_active_image_engine(db, "comfyui")
 
@@ -37,8 +33,7 @@ def _request(**overrides) -> ImageGenerationRequest:
 
 @pytest.mark.asyncio
 async def test_create_job_writes_a_queued_row(db, user, monkeypatch):
-    # Prevent the real background task from racing this test's own
-    # assertions — schedule is exercised separately below.
+    # Prevent the real background task from racing this test's assertions; schedule is tested separately.
     monkeypatch.setattr(image_generation_service, "_schedule", lambda _job_id: None)
 
     job = await image_generation_service.create_job(db, user.id, _request())
@@ -85,11 +80,8 @@ async def test_run_job_drives_a_full_success_through_to_complete(db, user, tmp_p
     job = await image_generation_service.create_job(db, user.id, _request())
     await image_generation_service._run_job(job.id)
 
-    # A separate AsyncSessionLocal() did the writes (see _run_job's own
-    # docstring) — this test's own `db` session has `job` cached in its
-    # identity map from create_job's own insert, and expire_on_commit=False
-    # means a plain re-SELECT wouldn't re-read it; db.refresh() forces a
-    # real read of the row's current state instead.
+    # A separate AsyncSessionLocal did the writes (see _run_job); this `db` has `job` cached from create_job's
+    # insert and expire_on_commit=False means a re-SELECT wouldn't re-read it, so db.refresh forces a real read.
     await db.refresh(job)
     assert job.status == "complete"
     assert job.comfy_prompt_id == "prompt-1"
@@ -124,7 +116,7 @@ async def test_run_job_marks_timeout_when_polling_never_finishes(db, user, monke
         return "http://h1:8188", "prompt-1"
 
     async def fake_get_history(_host, _prompt_id):
-        return None  # never finishes
+        return None
 
     monkeypatch.setattr(comfyui_client, "submit_job", fake_submit_job)
     monkeypatch.setattr(comfyui_client, "get_history", fake_get_history)
@@ -139,7 +131,7 @@ async def test_run_job_marks_timeout_when_polling_never_finishes(db, user, monke
 
 @pytest.mark.asyncio
 async def test_run_job_returns_quietly_if_the_row_was_deleted():
-    # No row exists for this id at all — must not raise.
+    # No row exists for this id: must not raise.
     await image_generation_service._run_job("does-not-exist")
 
 
@@ -161,7 +153,7 @@ async def test_mark_interrupted_jobs_as_errored_sweeps_queued_and_running(db, us
     await db.refresh(complete_job)
     assert queued_job.status == "error"
     assert running_job.status == "error"
-    assert complete_job.status == "complete"  # untouched
+    assert complete_job.status == "complete"
 
 
 def _fake_sdcpp(monkeypatch, states, seen=None, cancelled=None):
@@ -278,7 +270,7 @@ async def test_a_cancel_during_an_sdcpp_run_stops_the_engine_and_keeps_the_cance
 
     async def cancelling_check(session, row):
         checks["n"] += 1
-        if checks["n"] == 3:  # the user clicks Cancel while it's generating
+        if checks["n"] == 3:
             await image_generation_service.cancel_job(session, row)
         return await original(session, row)
 
@@ -324,7 +316,7 @@ async def test_a_cancel_during_a_comfyui_run_interrupts_comfyui(db, user, monkey
         return "http://h1:8188", "prompt-1"
 
     async def fake_get_history(_host, _prompt_id):
-        return None  # never finishes
+        return None
 
     async def fake_cancel(host, prompt_id):
         interrupted.append((host, prompt_id))
@@ -334,7 +326,7 @@ async def test_a_cancel_during_a_comfyui_run_interrupts_comfyui(db, user, monkey
     monkeypatch.setattr(comfyui_client, "cancel_job", fake_cancel)
     job = await image_generation_service.create_job(db, user.id, _request())
     await image_generation_service.cancel_job(db, job)
-    job.status = "queued"  # let it start, then cancel on its first poll
+    job.status = "queued"
     await db.commit()
     original = image_generation_service._is_cancelled
 
@@ -363,7 +355,7 @@ def test_check_images_dir_accepts_blank_and_an_existing_writable_folder(tmp_path
 def test_check_images_dir_rejects_a_read_only_folder(tmp_path):
     tmp_path.chmod(0o500)
     try:
-        if os.access(tmp_path, os.W_OK):  # running as root: permissions don't apply
+        if os.access(tmp_path, os.W_OK):
             pytest.skip("folder stays writable for this user")
         with pytest.raises(ValueError, match="not writable"):
             image_engine_service.check_images_dir(str(tmp_path))
@@ -385,7 +377,7 @@ async def test_images_root_and_find_image_follow_the_configured_folder(db, tmp_p
     (custom / "u1").mkdir()
     (custom / "u1" / "new.png").write_bytes(b"y")
     assert await image_engine_service.find_image(db, default, "u1/new.png") == custom / "u1" / "new.png"
-    assert await image_engine_service.find_image(db, default, "u1/old.png") == default / "u1" / "old.png"  # made before
+    assert await image_engine_service.find_image(db, default, "u1/old.png") == default / "u1" / "old.png"
     assert await image_engine_service.find_image(db, default, "u1/none.png") is None
 
 
@@ -397,7 +389,7 @@ async def test_sdcpp_job_times_out_after_the_configured_minutes(db, user, monkey
     await image_engine_service.set_sdcpp_config(db, config)
     cancelled = []
     _fake_sdcpp(monkeypatch, iter(lambda: {"status": "generating"}, None), cancelled=cancelled)
-    clock = iter(range(0, 1000, 20))  # 20 s per reading: past the 60 s limit on the 5th
+    clock = iter(range(0, 1000, 20))
     monkeypatch.setattr(image_generation_service, "time", SimpleNamespace(monotonic=lambda: next(clock)))
 
     job = await image_generation_service.create_job(db, user.id, _request())

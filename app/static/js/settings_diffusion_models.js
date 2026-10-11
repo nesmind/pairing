@@ -1,11 +1,4 @@
-/**
- * Settings > Model > "Diffusion models": the image models for the Images page — curated defaults
- * (default_models.json), image models an admin added from Hugging Face's "Browse more models" search, and anything
- * else already installed. Same list whichever chat engine (Ollama/Matricxon) is active; they install into the local
- * stable-diffusion.cpp engine's models folder (see app/services/image_model_service.py), via
- * /api/settings/image-models. Reuses pullModel/uninstallModel/formatSize/isAdmin from settings.js; reloads on the
- * "pairing:models-changed" event settings.js fires after any model action.
- */
+/* Settings > Model > "Diffusion models": image models for the Images page: curated defaults (default_models.json), models an admin added from Hugging Face's "Browse more models" search, and anything else installed. The list is the same for every chat engine; models install into the local stable-diffusion.cpp models folder (app/services/image_model_service.py) via /api/settings/image-models. Reuses pullModel/uninstallModel/formatSize/isAdmin from settings.js and reloads on the "pairing:models-changed" event it fires after any model action. */
 class DiffusionModelsSection {
   static URL = "/api/settings/image-models/catalog";
 
@@ -39,7 +32,7 @@ class DiffusionModelsSection {
   renderRow(entry, local) {
     const row = document.createElement("div");
     row.className = "rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm relative flex flex-col justify-between gap-1.5";
-    row.dataset.tag = entry.tag; // lets "Add" from the Hugging Face search scroll straight to it
+    row.dataset.tag = entry.tag;
     row.title = entry.tag;
 
     const label = document.createElement("div");
@@ -71,7 +64,7 @@ class DiffusionModelsSection {
     top.className = "flex flex-col gap-1.5";
     if (entry.companions?.length) {
       const { toggle, box } = this.renderCompanions(entry, local && isAdmin, progress, reload);
-      action.appendChild(toggle); // same line as Installed/Pull, so the row keeps its height
+      action.appendChild(toggle);
       row.appendChild(box);
     }
     top.append(label, action);
@@ -80,8 +73,8 @@ class DiffusionModelsSection {
     return row;
   }
 
-  // Split models need a text encoder/VAE too. Never fetched automatically: the admin ticks what to download,
-  // or supplies their own via Settings > Image > extra args (--llm/--vae). Collapsed to one line until clicked.
+  // Split models also need a text encoder/VAE. Never fetched automatically: the admin ticks what to download or
+  // supplies their own via Settings > Image > extra args (--llm/--vae). Collapsed to one line until clicked.
   renderCompanions(entry, canPull, progress, reload) {
     const toggle = document.createElement("button");
     toggle.type = "button";
@@ -89,7 +82,7 @@ class DiffusionModelsSection {
     toggle.title = "Extra models needed to run";
     toggle.textContent = "Extra models ▸";
     const box = document.createElement("div");
-    // Floats over what is below, so opening it never resizes this row or the one beside it.
+    // Floats over the content below, so opening it never resizes this row or its neighbour.
     box.className = "hidden absolute inset-x-0 top-full z-20 mt-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-400 space-y-1 shadow-lg";
     toggle.addEventListener("click", () => {
       const open = box.classList.toggle("hidden") === false;

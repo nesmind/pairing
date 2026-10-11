@@ -1,22 +1,11 @@
-"""
-Everything about a user's Notes (app/models/note.py: Note, NotePin):
-seeding/looking up each user's 3 protected default notes
-(persona/rules/skill), resolving which notes are active for a given
-conversation, turning that into part of the system prompt actually sent
-to the ML engine, and the Notes page's pin-syncing/note CRUD support behind
-app/routers/notes.py's endpoints. The chat page's narrower one-slot-at-
-a-time view (resolving/editing a single persona/rules/skill icon for one
-conversation) lives in app/services/note_slot_service.py instead —
-split out purely to stay under CLAUDE.md's file-size rule. Kept separate
-from app/services/document_ingest.py since none of this has anything to
-do with embeddings/retrieval.
+"""A user's Notes (models/note.py: Note, NotePin): seeding and looking up each user's 3 protected default notes
+(persona/rules/skill), resolving active notes per conversation, turning them into part of the engine's system
+prompt, and the pin-syncing/CRUD behind routers/notes.py. The chat page's one-slot view is
+note_slot_service.py (split for the file-size rule). Unrelated to document_ingest.py (embeddings/retrieval).
 
-seed_initial_disabled_notes below turns the per-user "default notes
-enabled" preference (Settings > Account, stored in
-app/services/default_notes_setting.py) into a brand-new chat/channel's
-own initial disabled_default_notes — the actual per-user setting getter/
-setter live in that separate file, not here, purely to dodge a circular
-import (this module already imports app.services.channel_service).
+seed_initial_disabled_notes turns the per-user "default notes enabled" preference (Settings > Account, in
+default_notes_setting.py) into a new chat/channel's initial disabled_default_notes. The getter/setter live
+there only to avoid a circular import (this module imports channel_service).
 """
 
 from fastapi import HTTPException
@@ -29,15 +18,12 @@ from app.schemas import NoteOut, NotePinCreate, NotePinOut
 from app.services import channel_service
 from app.services.default_notes_setting import get_default_notes_enabled
 
-# Slot types, in the fixed order they're always shown/combined in — a
-# plain tuple (not a set) so persona always appears first in the
-# assembled prompt (see build_pinned_system_prompt) and the chat page's
-# 3 icons always render in the same order.
+# Slot types in fixed order, a tuple (not a set) so persona comes first in the prompt (build_pinned_system_prompt)
+# and the chat page's 3 icons keep their order.
 NOTE_SLOTS: tuple[str, ...] = ("persona", "rules", "skill")
 
-# Simple, real-world-usable starting points for each slot — editable
-# (and, unlike a regular note, un-deletable) from the moment a user's
-# account exists, so Notes/the chat page's 3 icons are never empty.
+# Usable starting points per slot: editable but un-deletable from account creation, so Notes and the chat icons are
+# never empty.
 DEFAULT_NOTE_SEEDS: dict[str, tuple[str, str]] = {
     "persona": (
         "Persona",
@@ -55,13 +41,10 @@ DEFAULT_NOTE_SEEDS: dict[str, tuple[str, str]] = {
 
 
 async def seed_default_notes(db: AsyncSession, user: User) -> None:
-    """Creates whichever of `user`'s 3 protected default notes don't
-    already exist. Idempotent by design — safe to call for a brand-new
-    user (app/services/settings_service.create_user,
-    app/services/auth_service.seed_default_users) as well as, on every
-    startup, every *pre-existing* user as a one-time backfill (see
-    app/main.py's on_startup) for accounts that predate this feature.
-    Doesn't commit — the caller decides when to."""
+    """Creates whichever of `user`'s 3 protected default notes are missing. Idempotent: safe for a new user
+    (settings_service.create_user, auth_service.seed_default_users) and, at every startup, a backfill for
+    pre-existing users (app/main.py on_startup). Doesn't commit.
+    """
     existing_types = set(
         (
             await db.execute(
@@ -77,29 +60,24 @@ async def seed_default_notes(db: AsyncSession, user: User) -> None:
 
 
 async def seed_initial_disabled_notes(db: AsyncSession, user: User, params: dict) -> dict:
-    """Mutates and returns `params` (a brand-new conversation's/channel's own initial
-    GenerationParams dict, from settings_service.get_default_params) so it starts with all 3
-    default notes turned off when `user`'s own default_notes_setting.get_default_notes_enabled
-    preference is off — leaves `params` untouched (every slot on, as always) when it's on.
+    """Mutates and returns `params` (a new conversation's/channel's initial GenerationParams from
+    settings_service.get_default_params) to start with all 3 default notes off when `user`'s
+    default_notes_setting.get_default_notes_enabled is off; untouched (every slot on) when on.
 
-    Deliberately seeds `disabled_default_notes` once, at creation time, rather than having
-    resolve_conversation_notes re-check this global setting live on every message: the chat
-    page's own per-chat "Enable"/"Turn off" icons already read/write disabled_default_notes
-    directly for one specific conversation (see app/routers/notes.py's slot endpoints), and a
-    live global gate layered on top would silently defeat "Enable" for as long as this setting
-    stays off — clicking it would look like it worked but the slot would never actually turn on.
-    Seeding once at creation, then leaving the existing per-conversation mechanism completely
-    unchanged afterward, avoids that."""
+    Seeds `disabled_default_notes` once at creation rather than having resolve_conversation_notes check this
+    global setting live: the chat icons' "Enable"/"Turn off" already read/write that per-conversation list
+    (routers/notes.py slot endpoints), and a live global gate would defeat "Enable" while the setting is off.
+    """
     if not await get_default_notes_enabled(db, user):
         params["disabled_default_notes"] = list(NOTE_SLOTS)
     return params
 
 
 def default_notes_owner_id(conversation: Conversation, user_id: str) -> str:
-    """Whose default notes a conversation falls back to. A personal chat: the user's own. A channel is
-    shared, so the same notes must apply whoever asks - else every member's own defaults make a different
-    system prompt and the model's prompt cache is thrown away each time the speaker changes. It uses one
-    stable member: the first admin in the channel, else its first manager, else any member (lowest id)."""
+    """Whose default notes a conversation falls back to. Personal: the user's own. Channel: one stable member,
+    since members' own defaults would make a different system prompt per speaker and discard the prompt cache.
+    The first admin in the channel, else its first manager, else any member (lowest id).
+    """
     channel = conversation.channel
     if channel is None or not channel.members:
         return user_id
@@ -112,11 +90,11 @@ def default_notes_owner_id(conversation: Conversation, user_id: str) -> str:
 async def freeze_channel_notes(
     db: AsyncSession, conversation: Conversation, label: str, source_user_id: str, replace: bool = False
 ) -> None:
-    """Configures a channel's notes once: copies `source_user_id`'s default notes into the channel as its
-    own pinned notes (every slot not turned off for it), so the channel's system prompt no longer depends
-    on anyone's later edits or on who is asking - which keeps the model's prompt cache valid. Done when the
-    channel is created and when it is reset; `replace` swaps notes already pinned (a clean start), else
-    they are kept. Doesn't commit."""
+    """Configures a channel's notes once: copies `source_user_id`'s default notes into the channel as its own pinned
+    notes (each slot not turned off), so its system prompt no longer depends on later edits or who is asking,
+    keeping the prompt cache valid. Done at creation and reset; `replace` swaps already-pinned notes (clean
+    start), else they stay. Doesn't commit.
+    """
     disabled = set((conversation.params or {}).get("disabled_default_notes", []))
     for slot in NOTE_SLOTS:
         if slot in disabled:
@@ -153,11 +131,9 @@ async def freeze_channel_notes(
 
 
 async def get_default_note(db: AsyncSession, owner_id: str, pin_type: str) -> Note | None:
-    """`owner_id`'s protected default note for one slot — the note
-    app.services.chat_service falls back to when a conversation has no
-    explicit override pinned for that slot (see
-    resolve_conversation_notes) and the note the chat page's icon
-    shows/edits before any override exists (see resolve_slot below)."""
+    """`owner_id`'s protected default note for a slot: chat_service's fallback when a conversation has no explicit
+    pin (resolve_conversation_notes) and what the chat icon shows before any override (resolve_slot).
+    """
     return (
         await db.execute(select(Note).where(Note.owner_id == owner_id, Note.default_type == pin_type))
     ).scalar_one_or_none()
@@ -168,17 +144,11 @@ async def resolve_conversation_notes(
     conversation: Conversation,
     owner_id: str,
 ) -> dict[str, list[Note]]:
-    """The *full* set of active notes per slot for one conversation —
-    used for prompt-building (see build_pinned_system_prompt below).
-    Any note explicitly pinned to this conversation (via the Notes page
-    or the chat page's icons) is used for its slot; a slot with no
-    explicit pin falls back to the user's default note for that type,
-    unless it's been explicitly turned off (conversation.params.
-    disabled_default_notes — see app/schemas/common.py:GenerationParams).
-
-    Multiple explicit pins under the same slot still combine (not
-    last-pinned-wins) — same behavior as before this change, just now
-    also layered with the default-note fallback.
+    """The *full* set of active notes per slot for one conversation, for prompt building
+    (build_pinned_system_prompt). Notes pinned to this conversation (Notes page or chat icons) are used for their
+    slot; a slot with no pin falls back to the user's default note, unless turned off
+    (conversation.params.disabled_default_notes, schemas/common.py GenerationParams). Several pins in one slot still
+    combine.
     """
     by_type: dict[str, list[Note]] = {slot: [] for slot in NOTE_SLOTS}
     pins = (
@@ -204,12 +174,9 @@ async def resolve_conversation_notes(
 
 
 def build_pinned_system_prompt(notes_by_type: dict[str, list[Note]]) -> str:
-    """Assembles the system prompt from active persona/rules/skill notes
-    — this *is* the system prompt now (there used to also be a free-text
-    per-conversation system prompt field; it was dropped once Notes
-    covered the same need, so this is the only source left). Persona
-    goes first since identity/tone should frame everything that follows;
-    rules and skills come after as more specific, situational guidance.
+    """Assembles the system prompt from active persona/rules/skill notes; the only source (the free-text
+    per-conversation system prompt was dropped when Notes covered it). Persona first, as identity and tone
+    frame the rest; rules and skills follow as situational guidance.
     """
     parts = []
     if notes_by_type.get("persona"):
@@ -224,19 +191,12 @@ def build_pinned_system_prompt(notes_by_type: dict[str, list[Note]]) -> str:
 
 
 async def sync_pins(db: AsyncSession, note: Note, user: User, desired: list[NotePinCreate]) -> None:
-    """Makes `note`'s pins exactly match `desired`: adds missing ones,
-    updates pin_type for any that changed, and removes ones no longer
-    present — a full replace rather than an incremental add/remove, so
-    the caller (the Notes page) can just send "here's everywhere this
-    note should be pinned right now" without tracking a diff itself.
+    """Makes `note`'s pins exactly match `desired`: adds missing, updates changed pin_type, removes the rest. A full
+    replace, so the Notes page sends where the note should be pinned without a diff.
 
-    Every target conversation is validated up front, before any change is
-    made, so a bad id can't leave a partial sync — either the whole set
-    applies or none of it does. A target is valid if `user` owns it
-    (personal chat) or, for a channel's shared conversation, if `user`
-    can manage that channel (see
-    channel_service.can_manage_channel_conversation) — a plain channel
-    member can't pin notes to the shared chat, only admins/managers can.
+    Every target is validated first, so a bad id can't leave a partial sync. A target is valid if `user` owns it
+    (personal) or can manage its channel (channel_service.can_manage_channel_conversation): plain members can't pin to
+    the shared chat.
     """
     desired_by_conv = {pin.conversation_id: pin.pin_type for pin in desired}
 
@@ -253,11 +213,8 @@ async def sync_pins(db: AsyncSession, note: Note, user: User, desired: list[Note
         if set(desired_by_conv) - allowed_ids:
             raise HTTPException(status_code=404, detail="Conversation not found")
 
-    # Queried explicitly (rather than read off note.pins) because a
-    # brand-new note reaches here having only been flush()ed, never
-    # select()ed — its `pins` collection was never populated by a query,
-    # so touching it would try an implicit lazy load, which async
-    # SQLAlchemy can't do outside an awaited call (MissingGreenlet).
+    # Queried explicitly, not via note.pins: a new note was only flushed, so `pins` was never populated and
+    # touching it would lazy-load, which async SQLAlchemy can't do (MissingGreenlet).
     existing_pins = (await db.execute(select(NotePin).where(NotePin.note_id == note.id))).scalars().all()
     existing_by_conv = {pin.conversation_id: pin for pin in existing_pins}
     for conversation_id, pin_type in desired_by_conv.items():
@@ -272,10 +229,9 @@ async def sync_pins(db: AsyncSession, note: Note, user: User, desired: list[Note
 
 
 def to_note_out(note: Note) -> NoteOut:
-    """Builds the response by hand rather than relying on NoteOut's
-    from_attributes conversion: NotePinOut.conversation_title has no
-    matching attribute on the NotePin ORM row itself (it's
-    pin.conversation.title), so each pin is constructed explicitly here."""
+    """Built by hand, not via NoteOut's from_attributes: NotePinOut.conversation_title is pin.conversation.title,
+    with no matching attribute on the NotePin row.
+    """
     return NoteOut(
         id=note.id,
         title=note.title,

@@ -1,7 +1,7 @@
-"""Unit tests for app/services/default_model_settings.py — the one consolidated place every "which model is the
-default" read/write goes through. list_models is monkeypatched on this module's own imported binding (not
-inference_client's origin — see the "module-split import-binding gotcha" this codebase already tracks), so no
-real Ollama/Matricxon call happens here."""
+"""Tests for services/default_model_settings.py, the one place every "which model is the default" read/write goes
+through. list_models is monkeypatched on this module's own binding (not inference_client's origin; module-split
+import-binding gotcha), so no real Ollama/Matricxon call.
+"""
 
 import pytest
 
@@ -13,7 +13,7 @@ async def _async_return(value):
     return value
 
 
-# ---- for_new_users -----------------------------------------------------------------------------------------
+# for_new_users
 
 
 @pytest.mark.asyncio
@@ -40,7 +40,7 @@ async def test_for_new_users_falls_back_when_the_configured_one_was_uninstalled(
     assert await settings.for_new_users(["model-a", "model-b"]) == "model-a"
 
 
-# ---- vision -------------------------------------------------------------------------------------------------
+# vision
 
 
 @pytest.mark.asyncio
@@ -81,7 +81,7 @@ async def test_vision_returns_the_configured_choice_once_set(db, monkeypatch):
     assert await settings.vision() == "vision-b"
 
 
-# ---- embedding ----------------------------------------------------------------------------------------------
+# embedding
 
 
 @pytest.mark.asyncio
@@ -107,13 +107,12 @@ async def test_embedding_returns_the_configured_choice_once_set(db, monkeypatch)
     assert await settings.embedding() == "embed-b"
 
 
-# ---- isolation: setting one kind never affects the other two ------------------------------------------------
+# isolation: setting one kind never affects the other two
 
 
 @pytest.mark.asyncio
 async def test_setting_one_default_never_affects_the_other_two(db, monkeypatch):
-    """The real point of consolidating these three into one class: confirms they're genuinely independent
-    AppSetting rows, not accidentally sharing state through some shortcut."""
+    """The point of consolidating the three: they're independent AppSetting rows, with no shared state."""
     monkeypatch.setattr(
         svc,
         "list_models",
@@ -127,12 +126,12 @@ async def test_setting_one_default_never_affects_the_other_two(db, monkeypatch):
     await settings.set_for_new_users("shared-tag")
 
     assert await settings.for_new_users(["shared-tag"]) == "shared-tag"
-    # vision/embedding were never configured — still fall back to "first installed with that capability",
-    # not silently inherit new-users' own configured value.
+    # vision/embedding were never configured: still "first installed with that capability", not inheriting new-users'
+    # value.
     assert await settings.vision() == "shared-tag"
     assert await settings.embedding() == "shared-tag"
 
     await settings.set_vision("shared-tag")
     await settings.set_embedding("other-tag-not-installed")
-    # Setting vision/embedding must not retroactively change what for_new_users returns either.
+    # Setting vision/embedding must not change what for_new_users returns.
     assert await settings.for_new_users(["shared-tag"]) == "shared-tag"

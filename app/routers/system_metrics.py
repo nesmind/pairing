@@ -1,7 +1,6 @@
-"""GET /api/system-metrics/summary — local server CPU/RAM/disk usage for
-the Stats page's "System" view (see app/services/system_metrics_service.py
-for the query). Admin-only, same access-control decision as
-app/routers/stats.py/telemetry.py (see stats.py's own docstring)."""
+"""GET /api/system-metrics/summary: CPU/RAM/disk for the Stats "System" view (system_metrics_service.py).
+Admin-only, like stats.py/telemetry.py.
+"""
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession

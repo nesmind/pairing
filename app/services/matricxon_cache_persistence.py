@@ -1,14 +1,15 @@
-"""Settings > Matricxon: the encrypted on-disk prompt cache (see ../matricxon/app/runtime/cache_store.py).
-Its limits live in Matricxon itself and change there instantly (GET/PUT/DELETE /api/cache/persistence), so
-there is nothing to save in this app's own database or to restart for. With several hosts configured every
-one is asked and the results combined — each host keeps its own cache on its own disk."""
+"""Settings > Matricxon: the encrypted on-disk prompt cache (../matricxon/app/runtime/cache_store.py). Its
+limits live in Matricxon and change instantly (GET/PUT/DELETE /api/cache/persistence), so nothing is saved
+here or restarted. With several hosts each is asked and results combined; each keeps its own cache on its
+own disk (unless the folder is shared, as in a cluster: then files are counted once).
+"""
 
 import logging
 
 import httpx
 
 from app.schemas import MatricxonCachePersistence, MatricxonCachePersistenceUpdate
-from app.services import matricxon_pool
+from app.services import matricxon_http, matricxon_pool
 from app.services.matricxon_client import MatricxonError
 
 logger = logging.getLogger("llama_chat")
@@ -17,9 +18,17 @@ _TIMEOUT = httpx.Timeout(30.0, connect=5.0)
 
 
 class MatricxonCachePersistenceService:
-    def __init__(self, hosts: list[str] | None = None, transport: httpx.AsyncBaseTransport | None = None) -> None:
+    def __init__(
+        self,
+        hosts: list[str] | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
+        shared_folder: bool = False,
+    ) -> None:
         self._hosts = hosts if hosts is not None else matricxon_pool.get_effective_hosts()
         self._transport = transport
+        # In a cluster every node reads the same saved-caches folder and reports the same files: count them once, not
+        # per node.
+        self._shared = shared_folder
 
     async def status(self) -> MatricxonCachePersistence:
         return await self._call_all("GET")
@@ -31,7 +40,7 @@ class MatricxonCachePersistenceService:
         return await self._call_all("DELETE")
 
     async def forget_chat(self, conversation_id: str) -> None:
-        """Best effort: drops a deleted chat's stored prompt caches on every host (see ChatRequest.cache_tag)."""
+        """Best effort: drops a deleted chat's stored prompt caches on every host (ChatRequest.cache_tag)."""
         try:
             await self._call_all("DELETE", path=f"{_PATH}/chats/{conversation_id}")
         except MatricxonError as exc:
@@ -41,7 +50,7 @@ class MatricxonCachePersistenceService:
         results: list[dict] = []
         unreachable: list[str] = []
         errors: list[str] = []
-        async with httpx.AsyncClient(timeout=_TIMEOUT, transport=self._transport) as client:
+        async with matricxon_http.client(timeout=_TIMEOUT, transport=self._transport) as client:
             for host in self._hosts:
                 try:
                     resp = await client.request(method, host + path, json=body)
@@ -59,12 +68,31 @@ class MatricxonCachePersistenceService:
                     results.append(resp.json())
         if not results:
             raise MatricxonError("; ".join(errors) or "no Matricxon host is configured")
+        files, used = self._totals(results)
         return MatricxonCachePersistence(
             enabled=all(r["enabled"] for r in results),
             budget_mb=results[0]["budget_mb"],
             ttl_hours=results[0]["ttl_hours"],
-            files=sum(r["files"] for r in results),
-            used_bytes=sum(r["used_bytes"] for r in results),
+            files=files,
+            used_bytes=used,
             hosts=len(results),
             unreachable=unreachable,
         )
+
+    def _totals(self, results: list[dict]) -> tuple[int, int]:
+        """(files, bytes). Nodes reading the same shared folder report the same files: count each folder once. Forced
+        for a cluster; otherwise a node says if it is on a network mount and where (older ones say nothing: own disk).
+        """
+        seen: set[str] = set()
+        files = used = 0
+        for r in results:
+            folder = r.get("folder") if r.get("shared") else None
+            if self._shared:
+                folder = "cluster"
+            if folder is not None:
+                if folder in seen:
+                    continue
+                seen.add(folder)
+            files += r["files"]
+            used += r["used_bytes"]
+        return files, used

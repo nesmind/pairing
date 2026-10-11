@@ -16,8 +16,7 @@
       <form method="post" action="/logout" class="flex items-center">
         <button type="submit" class="text-xs text-slate-500 hover:text-slate-300 transition-colors">Log out</button>
       </form>
-      <!-- Opens the slide-in account panel — see
-           app/static/js/account_panel.js and app/templates/_account_panel.html. -->
+      <!-- Opens the slide-in account panel (app/static/js/account_panel.js, _account_panel.html). -->
       <button id="account-panel-badge" type="button"
         class="h-7 w-7 shrink-0 rounded-full overflow-hidden bg-slate-800 text-xs font-medium text-slate-300 hover:opacity-80 transition-opacity"
         title="{{ username }}"></button>
@@ -26,13 +25,7 @@
 
   <div class="flex flex-1 min-h-0">
 
-    <!-- This page's OWN left sidebar — distinct from chat.html's main app sidebar (not rendered here at all, same
-         as settings.html's tab nav being its own thing). "Overview" is the default view (a real usage dashboard,
-         populated by stats.js); "Visual chat workflow" swaps the main area for the D3 pipeline diagram
-         (workflow_diagram.js); "Telemetry" swaps it for the Ollama call-telemetry dashboard (telemetry.js);
-         "System" swaps it for this machine's own live CPU/RAM/disk dashboard (system_metrics.js). Extensible: a
-         future option just needs a new data-view button here + a matching #stats-view-<name> panel in <main>
-         below. -->
+    <!-- This page's own left sidebar, separate from chat.html's app sidebar (not rendered here), like settings.html's tab nav. "Overview" is the default (a usage dashboard filled by stats.js); "Visual chat workflow" swaps in the D3 pipeline diagram (workflow_diagram.js); "Telemetry" the Ollama call-telemetry dashboard (telemetry.js); "System" this machine's live CPU/RAM/disk dashboard (system_metrics.js). A new option needs a data-view button here plus a matching #stats-view-<name> panel in <main>. -->
     <aside class="hidden md:flex w-64 shrink-0 flex-col border-r border-slate-800 bg-slate-900/60">
       <nav class="flex-1 overflow-y-auto px-2 py-3 space-y-1">
         <button type="button" data-view="overview"
@@ -51,8 +44,7 @@
           class="stats-nav-btn w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors">
           System
         </button>
-        <!-- Matricxon-only (Ollama has no API listing what it can load) — revealed by engine_support.js once
-             /health confirms Matricxon is the active engine. -->
+        <!-- Matricxon-only (Ollama has no API listing what it can load); engine_support.js reveals it once /health confirms Matricxon is active. -->
         <button type="button" data-view="architectures" id="stats-nav-architectures"
           class="stats-nav-btn hidden w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors">
           Supported architectures
@@ -60,8 +52,7 @@
       </nav>
     </aside>
 
-    <!-- Main area: exactly one of these two is visible at a time (see stats.js: activateView), each occupying the
-         entire remaining space next to the page-local sidebar above. -->
+    <!-- Main area: exactly one view is visible at a time (stats.js activateView), filling the space beside the sidebar above. -->
     <main class="relative flex flex-1 flex-col min-w-0 overflow-hidden">
 
       <div id="stats-view-overview" class="flex-1 overflow-y-auto p-6">
@@ -71,20 +62,15 @@
       </div>
 
       <div id="stats-view-workflow" class="hidden flex-1 min-h-0 relative">
-        <!-- Vertical, top-to-bottom diagram — taller than any viewport, so this scrolls natively (both axes,
-             though height dominates) rather than relying on drag-to-pan/wheel-to-zoom, which had no visible
-             indication a user needed to do either. The <svg> itself is sized to its real content (see
-             workflow_diagram.js), not stretched to the container, so normal scrollbars appear exactly where the
-             content actually overflows. -->
+        <!-- Vertical diagram taller than any viewport, so it scrolls natively (both axes, mostly height) instead of drag-to-pan/wheel-zoom, which had no visible cue. The <svg> is sized to its content (workflow_diagram.js), so scrollbars appear where content overflows. -->
         <div id="workflow-canvas-wrap" class="absolute inset-0 overflow-auto">
           <svg id="workflow-svg"></svg>
         </div>
-        <!-- Legend: which border color means which layer of the app — see workflow_diagram.js: renderWorkflowLegend.
-             Fixed in the corner (outside the scrolling canvas above) so it stays visible at any scroll position. -->
+        <!-- Legend: which border color is which app layer (workflow_diagram.js renderWorkflowLegend). Fixed in the corner, outside the scrolling canvas, so it is visible at any scroll position. -->
         <div id="workflow-legend"
           class="absolute top-4 right-6 z-10 rounded-lg border border-slate-800 bg-slate-900/90 backdrop-blur px-3 py-2.5 space-y-1.5 text-xs">
         </div>
-        <!-- Detail panel: plain DOM (not D3-rendered), opened by clicking a node — see workflow_diagram.js: showDetail. -->
+        <!-- Detail panel: plain DOM (not D3), opened by clicking a node (workflow_diagram.js showDetail). -->
         <aside id="workflow-detail-panel"
           class="hidden absolute top-0 right-0 z-20 h-full w-96 border-l border-slate-800 bg-slate-900/95 backdrop-blur overflow-y-auto p-5">
           <button id="workflow-detail-close" type="button"
@@ -101,15 +87,9 @@
         <div class="flex items-center justify-between gap-3">
           <h2 class="text-lg font-semibold text-slate-100">Telemetry</h2>
           <div class="flex items-center gap-2">
-            <!-- "You're currently on: <engine>" — see telemetry.js's own docstring: filled in once, the first
-                 time this view loads, from the same /health endpoint the Model tab reads its own active-engine
-                 badge from. Purely informational; switching the dropdown below to look at the *other* engine's
-                 history doesn't change which one is actually serving live chat traffic. -->
+            <!-- "You're currently on: <engine>" (see telemetry.js): filled once, the first time this view loads, from the /health endpoint the Model tab uses for its active-engine badge. Informational; switching the dropdown below to the other engine's history doesn't change what serves live chat. -->
             <span id="telemetry-active-engine-note" class="text-xs text-slate-500"></span>
-            <!-- Which engine's history this dashboard shows — defaults to whichever engine is actually active
-                 (see loadTelemetry's own docstring) the first time this view is opened, then stays exactly
-                 where an admin leaves it across refreshes/re-visits within the same page load. Starts `invisible`
-                 (space kept, no layout jump) so it never flashes "Ollama" before the real active engine is known. -->
+            <!-- Which engine's history this dashboard shows: the active engine the first time the view opens (loadTelemetry), then wherever an admin leaves it for the page load. Starts `invisible` (space kept, no layout jump) so "Ollama" never flashes before the active engine is known. -->
             <select id="telemetry-source-select"
               class="invisible rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-brand-500">
             </select>
@@ -118,8 +98,7 @@
 
         <div class="space-y-8">
           <div>
-            <!-- Sets honest expectations up front: no presence/heartbeat tracking exists in this app, so this
-                 is only ever call-level data (see app/services/telemetry_service.py). -->
+            <!-- Sets expectations: the app has no presence/heartbeat tracking, so this is call-level data only (app/services/telemetry_service.py). -->
             <p class="text-xs text-slate-500">
               Every chat/embedding call this app makes to the selected engine, instrumented via OpenTelemetry —
               not a per-user presence feed.
@@ -186,10 +165,7 @@
 
         <div>
           <h3 class="text-sm font-semibold text-slate-200 mb-3">GPU</h3>
-          <!-- Best-effort via nvidia-smi, or (macOS) ioreg's IOAccelerator registry (see
-               app/services/system_metrics_poller.py) — empty and replaced by #gpu-empty on any machine neither
-               path finds a GPU on, not shown as an error. One gauge per detected GPU, built dynamically since
-               the count varies per machine (see system_metrics.js: renderGpuGauges). -->
+          <!-- Best-effort via nvidia-smi, or (macOS) ioreg's IOAccelerator registry (app/services/system_metrics_poller.py); empty and replaced by #gpu-empty when no GPU is found, not shown as an error. One gauge per GPU, built dynamically (system_metrics.js renderGpuGauges). -->
           <div id="gpu-gauges" class="hidden grid grid-cols-1 sm:grid-cols-3 gap-4"></div>
           <p id="gpu-empty" class="hidden text-xs text-slate-500 rounded-lg bg-slate-900 border border-slate-800 px-4 py-3">
             No GPU detected on this machine.
@@ -204,8 +180,7 @@
               Not enough data yet — check back in a minute.
             </p>
           </div>
-          <!-- Populated dynamically, one swatch per detected GPU (see system_metrics.js: renderGpuLegend) —
-               unlike the fixed CPU/Memory legend above, GPU count varies per machine. -->
+          <!-- Filled dynamically, one swatch per GPU (system_metrics.js renderGpuLegend), unlike the fixed CPU/Memory legend above. -->
           <div id="gpu-history-legend" class="flex items-center gap-4 mt-2 text-xs text-slate-400"></div>
         </div>
 

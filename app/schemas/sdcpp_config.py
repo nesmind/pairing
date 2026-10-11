@@ -1,7 +1,7 @@
-"""Schemas for the stable-diffusion.cpp image engine (Settings > Image) — see
-app/services/sdcpp_service.py for the supervisor that spawns/tracks `sd-server`, and
-app/services/sdcpp_client.py / sdcpp_pool.py for the HTTP half (local: app.config.SDCPP_HOST; remote:
-`remote_hosts`). Mirrors app.schemas.comfyui_config."""
+"""Schemas for the stable-diffusion.cpp image engine (Settings > Image). Supervisor: services/sdcpp_service.py
+(`sd-server`); HTTP half: sdcpp_client.py / sdcpp_pool.py (local: app.config.SDCPP_HOST; remote:
+`remote_hosts`). Mirrors schemas/comfyui_config.
+"""
 
 from typing import Literal
 
@@ -10,51 +10,51 @@ from pydantic import BaseModel, Field, model_validator
 from app.schemas.common import MAX_REMOTE_HOSTS, ServerMode
 
 ImageEngineName = Literal["sdcpp", "comfyui"]
-# Which prebuilt release the installer fetches ("auto" picks Vulkan when a GPU + Vulkan loader are present), or
-# "source": compile it here with CMake (Linux; see app.services.sdcpp_source_build).
+# Which prebuilt release to fetch ("auto" picks Vulkan with a GPU + Vulkan loader), or "source": build with
+# CMake (Linux; sdcpp_source_build).
 SdCppBuild = Literal["auto", "cpu", "vulkan", "rocm", "source"]
 DEFAULT_IMAGE_ENGINE: ImageEngineName = "sdcpp"
 
 
 class SdCppConfig(BaseModel):
-    """Admin-configured; saved even while incomplete (see sdcpp_service.start's own validation)."""
+    """Admin-configured; saved even when incomplete (sdcpp_service.start validates)."""
 
     mode: ServerMode = "local"
     remote_hosts: list[str] = Field(default_factory=list, max_length=MAX_REMOTE_HOSTS)
-    # Local-mode only:
-    binary_path: str | None = None  # the sd-server executable
+    # Local mode only:
+    binary_path: str | None = None
     model_path: str | None = None  # .gguf/.safetensors/.ckpt loaded at launch
     extra_args: str | None = None
     # Where image models are stored; None = auto (a `diffusion` sibling of the Matricxon/Ollama models folder).
     models_path: str | None = None
-    # Root of the saved images (<root>/<user id>/<job id>.png), whichever mode; None = the IMAGES_DIR default.
+    # Root of saved images (<root>/<user id>/<job id>.png), either mode; None = IMAGES_DIR.
     images_path: str | None = None
     install_repo: str | None = None
     install_version: str | None = None
     build: SdCppBuild = "auto"
-    # How long one image may take before the job is cancelled as timed out, whichever mode.
+    # Max time per image before the job is cancelled as timed out, either mode.
     timeout_minutes: int = Field(30, ge=1, le=1440)
 
     @model_validator(mode="after")
     def _fall_back_to_local_when_remote_has_no_hosts(self) -> "SdCppConfig":
-        """Same reasoning as ComfyUIProcessConfig's identical validator."""
+        """See ComfyUIProcessConfig's validator."""
         if self.mode == "remote" and not self.remote_hosts:
             self.mode = "local"
         return self
 
 
 class SdCppStatus(BaseModel):
-    """GET .../status — `healthy` is a best-effort ping, `running` (the PID check) is the truth."""
+    """GET.../status: `healthy` is a best-effort ping; `running` (PID check) is the truth."""
 
     running: bool
     installed: bool = False
     pid: int | None = None
     healthy: bool | None = None
-    # Build tools missing for "Build from source" (empty = it can be used).
+    # Build tools missing for "Build from source" (empty = usable).
     source_build_missing: list[str] = Field(default_factory=list)
 
 
 class ImageEngineConfig(BaseModel):
-    """Which engine serves the Images page right now."""
+    """Which engine serves the Images page."""
 
     active_image_engine: ImageEngineName = DEFAULT_IMAGE_ENGINE

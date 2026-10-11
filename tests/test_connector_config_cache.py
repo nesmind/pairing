@@ -1,6 +1,6 @@
-"""Unit tests for app/services/connector_config_cache.py — the multi-instance-safe
-in-process cache app.services.runpod_client actually reads from, mirroring
-tests/test_engine_service.py's own write-through-cache conventions."""
+"""Tests for services/connector_config_cache.py, the multi-instance-safe in-process cache runpod_client reads,
+mirroring tests/test_engine_service.py's write-through-cache conventions.
+"""
 
 import pytest
 
@@ -38,11 +38,11 @@ async def test_load_cache_from_db_populates_config_and_enabled(db):
 async def test_is_ready_requires_enabled_configured_and_a_passed_test(db):
     await connector_config_service.set_enabled(db, _ID, True)
     await connector_config_cache.load_cache_from_db(db)
-    assert connector_config_cache.is_ready(_ID) is False  # enabled, but no config saved yet
+    assert connector_config_cache.is_ready(_ID) is False
 
     await connector_config_service.set_config(db, _ID, {"endpoint_id": "ep-1", "api_key": "k", "model": "m"})
     await connector_config_cache.load_cache_from_db(db)
-    assert connector_config_cache.is_ready(_ID) is False  # configured now, but never tested
+    assert connector_config_cache.is_ready(_ID) is False
 
     await connector_config_service.set_test_result(db, _ID, True, "Connected successfully.")
     await connector_config_cache.load_cache_from_db(db)

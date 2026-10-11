@@ -1,8 +1,4 @@
-"""
-Schemas for Settings > System > Database (see
-app/services/db_config_service.py) — the admin-configurable SQLite/MySQL
-connection an installation runs on.
-"""
+"""Schemas for Settings > System > Database (services/db_config_service.py): the SQLite/MySQL connection."""
 
 from typing import Literal
 
@@ -18,20 +14,16 @@ class MysqlParams(BaseModel):
     host: str = Field(min_length=1)
     port: int = Field(default=3306, ge=1, le=65535)
     user: str = Field(min_length=1)
-    # Empty means "keep whatever password is already saved" — see
-    # db_config_service._build_url. Never populated on a read (see
-    # DbConfig.has_password instead).
+    # Empty keeps the saved password (db_config_service._build_url); never filled on read (see DbConfig.has_password).
     password: str = ""
     database: str = Field(min_length=1)
 
 
 class DbConfig(BaseModel):
-    """What Settings > System > Database currently shows. Reflects the
-    connection saved on disk (.env), not necessarily what the running
-    process is actually using — see restart_required. Saving through
-    this page always keeps the two in sync (see
-    db_config_service.save_and_apply); restart_required only ever turns
-    true if .env was edited by hand outside the UI."""
+    """What the Database settings show: the connection saved in .env, not necessarily the running one
+    (restart_required). Saving here keeps both in sync (save_and_apply); restart_required is true only
+    after a manual.env edit.
+    """
 
     db_type: Literal["sqlite", "mysql"]
     sqlite: SqliteParams | None = None
@@ -60,9 +52,8 @@ class DbActionResult(BaseModel):
 
 
 class InternalSwitchDatabaseRequest(BaseModel):
-    """Body of POST /api/settings/database/internal-switch — sent only
-    by another local instance's own app.services.instance_db_broadcast,
-    never by a browser (see that router endpoint's own docstring for the
-    loopback-only guard)."""
+    """Body of POST /api/settings/database/internal-switch, sent only by another instance's
+    instance_db_broadcast (loopback-only, see the endpoint).
+    """
 
     database_url: str

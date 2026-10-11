@@ -1,4 +1,4 @@
-"""Routes stable-diffusion.cpp requests across host(s) — the sd-server twin of comfyui_pool.py (same HostPool)."""
+"""Routes stable-diffusion.cpp requests across host(s): the sd-server twin of comfyui_pool.py (same HostPool)."""
 
 import httpx
 

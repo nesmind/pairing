@@ -2,7 +2,7 @@
 
 Revision ID: 7a3e9c1d5f22
 Revises: 2f8b6c4d9a17
-Create Date: 2026-09-14 18:00:00.000000
+Create Date: 18:00:00.000000
 
 """
 
@@ -10,7 +10,6 @@ import sqlalchemy as sa
 
 from alembic import op
 
-# revision identifiers, used by Alembic.
 revision = "7a3e9c1d5f22"
 down_revision = "2f8b6c4d9a17"
 branch_labels = None
@@ -29,8 +28,7 @@ def upgrade() -> None:
         sa.Column("temperature_c", sa.Float(), nullable=True),
         sa.Column("polled_at", sa.DateTime(), nullable=False),
     )
-    # Same reasoning as system_metric_snapshots' own index: every dashboard query is a bounded polled_at range
-    # scan (see app/services/system_metrics_service.py).
+    # Same as system_metric_snapshots: bounded polled_at range scans.
     op.create_index("ix_gpu_metric_snapshots_polled_at", "gpu_metric_snapshots", ["polled_at"])
 
 

@@ -1,7 +1,8 @@
-"""Unit tests for app/services/matricxon_client.py — mirrors tests/test_ollama_client.py's wiring coverage
-(confirms embed/chat_stream/stop_model actually route through app.services.matricxon_pool rather than a fixed
-host), minus the OpenTelemetry span assertions: matricxon_client deliberately has no span instrumentation yet
-(see that module's own docstring)."""
+"""Tests for services/matricxon_client.py, with the wiring coverage of tests/test_ollama_client.py
+(embed/chat_stream/stop_model route through
+matricxon_pool, not a fixed host), minus OpenTelemetry span assertions: matricxon_client has no span instrumentation
+yet.
+"""
 
 import httpx
 import pytest
@@ -114,11 +115,10 @@ async def test_get_capabilities_raises_matricxon_error_on_http_failure(monkeypat
 
 @pytest.mark.asyncio
 async def test_get_capabilities_never_reuses_a_previous_result(monkeypatch):
-    """Real bug found live, 2026-09-22: this used to cache its result for 30s on the theory that Matricxon's
-    own supported-architecture list only changes on a restart — but it can also change while Matricxon keeps
-    running (granite/granitemoe/nemotron_h all landed live, in the same running process), and a stale cached
-    "not supported" verdict had no way to refresh short of restarting pAIring itself. Every call must hit
-    Matricxon fresh, even two calls back to back."""
+    """Bug found: this cached its result 30s on the theory that the supported-architecture list changes
+    only on restart, but it can change while Matricxon runs (granite/granitemoe/nemotron_h landed live), and a stale
+    "not supported" had no refresh short of restarting pAIring. Every call must hit Matricxon fresh, even back to back.
+    """
     calls: list[str] = []
     responses = iter([{"supported_architectures": ["mistral3"]}, {"supported_architectures": ["mistral3", "granite"]}])
     monkeypatch.setattr(matricxon_pool, "pick_host", lambda: "http://pool-picked:8420")
@@ -129,7 +129,7 @@ async def test_get_capabilities_never_reuses_a_previous_result(monkeypatch):
     second = await matricxon_client.get_capabilities()
 
     assert first == {"supported_architectures": ["mistral3"]}
-    assert second == {"supported_architectures": ["mistral3", "granite"]}  # a real, live-updated answer
+    assert second == {"supported_architectures": ["mistral3", "granite"]}
     assert calls == ["http://pool-picked:8420/api/health", "http://pool-picked:8420/api/health"]
 
 
@@ -199,7 +199,7 @@ async def test_chat_stream_routes_the_actual_http_call_through_stream_with_failo
     seen_hosts: list[str] = []
     sent_payloads: list[dict] = []
 
-    async def fake_stream_with_failover(make_stream):
+    async def fake_stream_with_failover(make_stream, prefer=None):
         async for chunk in make_stream("http://chosen-by-pool:8420"):
             yield chunk
 
@@ -241,7 +241,7 @@ async def test_chat_stream_routes_the_actual_http_call_through_stream_with_failo
 
     assert result == ["hi"]
     assert seen_hosts == ["http://chosen-by-pool:8420/api/chat"]
-    assert "request_id" not in sent_payloads[0]  # no id given -> none sent
+    assert "request_id" not in sent_payloads[0]
 
     with_id = {**_chat_params(), "request_id": "msg-1"}
     _ = [c async for c in matricxon_client.chat_stream("fake-model", [], with_id)]
@@ -250,12 +250,12 @@ async def test_chat_stream_routes_the_actual_http_call_through_stream_with_failo
 
 @pytest.mark.asyncio
 async def test_chat_stream_surfaces_matricxons_own_error_body_not_the_generic_http_status_text(monkeypatch):
-    """The real bug this covers: httpx.HTTPStatusError's own str() never includes the response body, only
-    status/url — a 503 from Matricxon's own InsufficientMemoryError carries the actual actionable reason (e.g.
-    "not enough memory to load ...: need ~12.9GB, only 10.9GB available") in a {"error": "..."} JSON body, which
-    must reach the admin instead of being silently dropped for a generic "503 Service Unavailable"."""
+    """Covers: httpx.HTTPStatusError's str omits the response body, but a 503 from Matricxon's
+    InsufficientMemoryError carries the actionable reason ("not enough memory to load...: need ~12.9GB, only
+    10.9GB available") in a {"error": "..."} body. It must reach the admin, not a generic "503 Service Unavailable".
+    """
 
-    async def fake_stream_with_failover(make_stream):
+    async def fake_stream_with_failover(make_stream, prefer=None):
         async for chunk in make_stream("http://chosen-by-pool:8420"):
             yield chunk
 
@@ -297,12 +297,12 @@ async def test_chat_stream_surfaces_matricxons_own_error_body_not_the_generic_ht
 
 @pytest.mark.asyncio
 async def test_chat_stream_falls_back_to_raw_body_text_when_it_isnt_json(monkeypatch):
-    """An unhandled exception on Matricxon's side (a real bug, not one of its own typed
-    MatricxonError subclasses) used to reach here as a plain-text, non-JSON body — surfacing as a
-    contentless "Matricxon returned HTTP 500 with no error detail" even though the body itself had
-    real information. Whatever text is actually there should reach the admin instead."""
+    """An unhandled exception on Matricxon's side (not one of its typed MatricxonError subclasses) arrived as a
+    plain-text body and surfaced as a contentless "Matricxon returned HTTP 500 with no error detail"; the text should
+    reach the admin.
+    """
 
-    async def fake_stream_with_failover(make_stream):
+    async def fake_stream_with_failover(make_stream, prefer=None):
         async for chunk in make_stream("http://chosen-by-pool:8420"):
             yield chunk
 
@@ -344,7 +344,7 @@ async def test_chat_stream_falls_back_to_raw_body_text_when_it_isnt_json(monkeyp
 
 @pytest.mark.asyncio
 async def test_chat_stream_raises_matricxon_error_on_http_failure(monkeypatch):
-    async def fake_stream_with_failover(make_stream):
+    async def fake_stream_with_failover(make_stream, prefer=None):
         async for _ in make_stream("http://chosen-by-pool:8420"):
             pass
         raise httpx.ConnectError("boom", request=httpx.Request("POST", "http://x/api/chat"))
@@ -425,6 +425,6 @@ async def test_stop_model_swallows_a_failure_on_one_host_and_still_tries_the_res
         httpx, "AsyncClient", lambda **_kw: _RecordingPostClient(calls, fail_hosts=frozenset(["http://unreachable"]))
     )
 
-    await matricxon_client.stop_model("mistral3:latest")  # must not raise
+    await matricxon_client.stop_model("mistral3:latest")
 
     assert [url for url, _ in calls] == ["http://unreachable:8420/api/chat", "http://host-b:8420/api/chat"]

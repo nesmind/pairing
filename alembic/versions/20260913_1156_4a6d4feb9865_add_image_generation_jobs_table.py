@@ -2,7 +2,7 @@
 
 Revision ID: 4a6d4feb9865
 Revises: e68190d45046
-Create Date: 2026-09-13 11:56:00.000000
+Create Date: 11:56:00.000000
 
 """
 
@@ -10,7 +10,6 @@ import sqlalchemy as sa
 
 from alembic import op
 
-# revision identifiers, used by Alembic.
 revision = "4a6d4feb9865"
 down_revision = "e68190d45046"
 branch_labels = None

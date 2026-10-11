@@ -1,7 +1,7 @@
-"""Request/response shapes for Settings > Model — the default catalog (app/model_catalog.py), the admin-managed
-"browse more models" extended catalog (app/services/extended_model_catalog_service.py), and Hugging Face
-search/lookup (app/services/huggingface_client.py). Split out of app/schemas/settings.py once this many
-model-catalog-specific shapes pushed that file over CLAUDE.md's line cap."""
+"""Shapes for Settings > Model: the default catalog (app/model_catalog.py), the admin-managed extended
+catalog (extended_model_catalog_service.py) and Hugging Face search (huggingface_client.py).
+Split from schemas/settings.py for the file-size cap.
+"""
 
 from pydantic import BaseModel, Field, computed_field
 
@@ -10,23 +10,20 @@ from app.schemas.settings import HardwareSummary
 
 
 class EngineModelSupport(BaseModel):
-    """One engine's own verdict on one model — see
-    app.services.engine_support_checker.SupportVerdict/EngineSupportChecker.estimated_ram_gb, the source of
-    truth this is built from (EngineSupportSet.support_for). Replaces the old per-engine-named fields
-    (min_ram_gb_ollama/min_ram_gb_matricxon/matricxon_supported/matricxon_unsupported_reason below, kept only as
-    computed properties for backward compatibility) with one dict keyed by EngineName, so a third engine needs
-    no new field anywhere."""
+    """One engine's verdict on one model (engine_support_checker.SupportVerdict / EngineSupportChecker.estimated_ram_gb,
+    via EngineSupportSet.support_for). One dict keyed by EngineName replaces the per-engine fields (kept as
+    computed properties), so a new engine needs no new field.
+    """
 
     supported: bool = True
     reason: str | None = None
-    # This engine's own real per-model RAM estimate, or None when unknown/not applicable (see
-    # EngineSupportChecker.estimated_ram_gb's own docstring — never a guess extrapolated from a
-    # *different* engine's own figure).
+    # This engine's own per-model RAM estimate, or None if unknown or not applicable (never extrapolated from another
+    # engine).
     min_ram_gb: float | None = None
 
 
 class CompanionFile(BaseModel):
-    """An extra file a split image model needs (text encoder, VAE) — offered, never downloaded automatically."""
+    """An extra file a split image model needs (text encoder, VAE); offered, never downloaded automatically."""
 
     flag: str
     label: str
@@ -35,11 +32,9 @@ class CompanionFile(BaseModel):
 
 
 class CatalogEntry(BaseModel):
-    """One model Settings can offer — either already pulled into the ML engine,
-    pullable-and-compatible, or blocked by hardware. See
-    app/model_catalog.py for where these come from and
-    app/services/settings_service.py for how `installed`/`hardware_ok`
-    are computed."""
+    """One model Settings can offer: already pulled, pullable and compatible, or hardware-blocked
+    (source: app/model_catalog.py; `installed`/`hardware_ok`: settings_service.py).
+    """
 
     family: str
     vendor: str
@@ -47,106 +42,62 @@ class CatalogEntry(BaseModel):
     parameter_size: str
     context_length: int | None = None
     download_gb: float | None = None
-    # The hardware-gating threshold a not-yet-installed entry is checked against (see
-    # ChatModelCatalogBuilder's hardware_ok / app.routers.settings's pull-time capacity check) — this is
-    # app/model_catalog.py's own hand-typed figure, kept as-is for that purpose. For *display*, prefer
-    # min_ram_gb_ollama/min_ram_gb_matricxon below — real, computed-per-engine numbers, not a
-    # hand-typed guess that can drift from either engine's actual real requirement (confirmed live,
-    # 2026-09-21: Matricxon dequantizes to bf16 before computing, so its real need for a real
-    # Ministral-3B Q4_K_M file runs to ~7.5GB, not the ~3GB this field alone implied).
+    # Hardware-gating threshold for a not-yet-installed entry (ChatModelCatalogBuilder hardware_ok, routers/settings.py
+    # pull check): app/model_catalog.py's hand-typed figure. For display prefer min_ram_gb_ollama/min_ram_gb_matricxon,
+    # which are computed per engine (Matricxon dequantizes to bf16, so a Ministral-3B Q4_K_M needs ~7.5GB, not ~3GB,
+    # ).
     min_ram_gb: float
-    # Every registered engine's own verdict on this exact model (see EngineModelSupport above) — built by
-    # app.services.engine_support_checker.EngineSupportSet.support_for, once per catalog build. The
-    # min_ram_gb_ollama/min_ram_gb_matricxon/matricxon_supported/matricxon_unsupported_reason properties below
-    # read from this and exist only so old callers/tests keep working unchanged; new code should read this
-    # dict directly.
+    # Every engine's verdict on this model (EngineModelSupport), built once per catalog build by
+    # EngineSupportSet.support_for. The min_ram_gb_*/matricxon_supported/... properties read it for old callers;
+    # new code should read the dict.
     engine_support: dict[EngineName, EngineModelSupport] = Field(default_factory=dict)
     locally_runnable: bool
     installed: bool
     hardware_ok: bool
     unavailable_reason: str | None = None
-    # Whether this model can see an image attachment (see
-    # app.services.chat_attachment_service and the "Default vision
-    # model" picker in Settings). For a not-yet-installed curated
-    # app/model_catalog.py entry, hand-annotated there as a pre-install
-    # estimate only; once a tag is actually installed (curated or not),
-    # read live from the active engine's own "vision" capability tag
-    # instead — confirmed live, 2026-09-22: the curated flag reflects
-    # Ollama's own auto-pairing behavior for a hf.co/ pull and can
-    # disagree with what's actually installed under a different engine
-    # (e.g. Matricxon, which doesn't auto-pair a projector the same way).
+    # Whether the model can see an image attachment (chat_attachment_service, "Default vision model" picker).
+    # For a not-yet-installed curated entry it is a hand-annotated estimate; once installed it is read live
+    # from the active engine's "vision" tag (the curated flag mirrors Ollama's projector auto-pairing and can
+    # disagree under Matricxon).
     vision: bool = False
-    # Whether this model can also hold an ordinary text conversation —
-    # true for every entry this catalog can currently produce (see
-    # ChatModelCatalogBuilder's own "completion" capability filter, which
-    # every entry here already passed), so `vision and text_capable`
-    # ("+Vision", a normal chat model that also sees images, e.g.
-    # gemma4:12b) is the only combination reachable today; `vision and
-    # not text_capable` ("Vision" alone, a vision-only model with no
-    # text chat ability) is modeled honestly for correctness but can't
-    # actually appear in this catalog as currently scoped.
+    # Whether the model can also hold a text conversation: true for every entry (they pass ChatModelCatalogBuilder's
+    # "completion" filter), so only `vision and text_capable` ("+Vision") occurs; `vision and not text_capable` is
+    # modeled but unreachable.
     text_capable: bool = True
-    # Whether the active engine actually has *no real confirmation* of this model's true chat/
-    # instruction format (Matricxon's own "chat_format_unverified" capability tag — see
-    # ../matricxon/app/models/capabilities.py's own docstring: true for a "completion"-capable
-    # model with no real chat_template and no mistral3 tokenizer, meaning Matricxon is falling
-    # back to a best-effort guess). Only ever read live, post-install, like `vision` above — there
-    # is no meaningful pre-install guess for this (unlike vision's HF-repo-tag hint, nothing in a
-    # not-yet-downloaded repo's listing reveals whether its own instruction format will actually
-    # be followed). Surfaced so the model list can flag "this might not behave like a normal chat
-    # model" instead of looking identical to one that's fully confirmed — added 2026-09-27 after
-    # Hebrew-Mistral-7B-Q5_K_M produced incoherent, non-chat-like output regardless of prompt
-    # format, with nothing in the list distinguishing it from a well-behaved model.
+    # Whether the active engine has no confirmed chat format for this model (Matricxon's "chat_format_unverified"
+    # tag,../matricxon/app/models/capabilities.py: a "completion" model with no chat_template and no mistral3
+    # tokenizer falls back to a guess). Read live post-install only (nothing pre-install reveals it). Flags models that
+    # may not behave like chat models (a Hebrew Mistral fine-tune answered incoherently).
     chat_format_unverified: bool = False
-    # Whether an admin has hidden this model from regular users' picker
-    # (see POST /api/settings/hide-model). Non-admin callers never
-    # receive a hidden entry at all — this field only ever comes back
-    # `true` for an admin, so their own catalog view can show which
-    # models they've hidden and offer an "Unhide" action.
+    # Whether an admin hid this model from regular users (POST /api/settings/hide-model). Hidden entries are never
+    # sent to non-admins; for admins it is true so they can offer "Unhide".
     hidden: bool = False
-    # Whether "Remove from list" should be offered (admin-only, see DELETE /api/settings/model-catalog/extended)
-    # — true only for a not-yet-installed entry from the admin-managed extended catalog (see
-    # app.services.extended_model_catalog_service.ExtendedModelCatalog.build); always False for a hand-curated
-    # app/model_catalog.py default (there's nothing stored to delete) and for an installed model (that gets
-    # "Uninstall" instead — removing it from a *list* while it's still actually pulled into the ML engine would just be
-    # confusing, and re-adding it later would need a redundant Hugging Face re-verification for no reason).
+    # Whether to offer "Remove from list" (admin-only, DELETE /api/settings/model-catalog/extended): true only for
+    # a not-yet-installed extended-catalog entry (ExtendedModelCatalog.build). Never for curated defaults (nothing
+    # stored) or installed models (they get "Uninstall").
     removable: bool = False
-    # Whether this model's architecture+quantization is actually implemented by the Matricxon engine (see
-    # ../matricxon/app/architectures/registry.py and .../gguf/dequant/registry.py) — independent of Ollama, which
-    # can run every entry this catalog offers. For a hand-curated app/model_catalog.py entry, hand-verified True
-    # or False against those two registries (see that entry's own comment for which and why). Defaults True here
-    # only as the field's bare fallback; an admin-added extended-catalog entry (arbitrary Hugging Face repo, no
-    # verified architecture) is explicitly constructed with this False instead — see
-    # app.services.extended_model_catalog_service.ExtendedModelCatalog.build's own comment — since Matricxon fails
-    # closed on an unrecognized architecture and a false "supported" badge would be actively misleading.
-    # A vision-projector (mmproj) sidecar, pulled alongside its own paired text model rather than run as a
-    # standalone chat model — see
-    # app.services.huggingface_client.HuggingFaceCatalogSearch.is_projector_file's own docstring. Lets the
-    # frontend skip the matricxon_supported "Not supported" badge for one of these specifically: that badge
-    # means "Matricxon can't run this as a chat model," which is a true but actively misleading thing to say
-    # about a file that was never meant to be run as one on its own — confirmed live, it read as "Matricxon
-    # can't handle this," when the paired text model this projector exists to be paired with may well be
-    # supported on its own (see MatricxonSupportChecker.verdict_for's own docstring on is_projector).
+    # Whether Matricxon implements this architecture+quantization (../matricxon/app/architectures/registry.py,
+    # .../gguf/dequant/registry.py); Ollama runs every entry. Curated entries are hand-verified. Defaults True as a
+    # bare fallback; admin-added extended entries (arbitrary repos) are built False (ExtendedModelCatalog.build),
+    # since Matricxon fails closed on unknown architectures and a false "supported" badge would mislead.
+    # A vision-projector (mmproj) sidecar, pulled with its paired text model, not run as a chat model
+    # (HuggingFaceCatalogSearch.is_projector_file). Lets the frontend skip the "Not supported" badge for it, which
+    # would mislead: the paired model may be supported (MatricxonSupportChecker.verdict_for, is_projector).
     is_projector: bool = False
-    # True for an installed model that isn't in app/model_catalog.py's hand-curated list at all — surfaced
-    # through ChatModelCatalogBuilder._auto_discovered_entry, InstalledProjectorCatalog.entries, or
-    # ExtendedModelCatalog.build (the latter always paired with installed=False, so it never actually changes
-    # what the frontend shows there). Lets the frontend label a stray/manually-added install ("Not in catalog")
-    # instead of it looking like a hand-curated entry with broken/missing data — confirmed live (2026-09-21)
-    # that a duplicate model pulled under an unfamiliar repo name showed up as a bare "Phi2 · unknown" row with
-    # nothing explaining why it looked so different from every other entry.
+    # True for an installed model absent from the curated list (ChatModelCatalogBuilder._auto_discovered_entry,
+    # InstalledProjectorCatalog.entries, ExtendedModelCatalog.build, the last always with installed=False). Labels it
+    # "Not in catalog" instead of looking like a curated entry with broken data (a bare "Phi2 · unknown" row,
+    # ).
     is_auto_discovered: bool = False
-    # A diffusion model installed into the image engine's own store (see app.services.image_model_service), not
-    # an Ollama/Matricxon chat model: the frontend offers Pull/Uninstall (via /api/settings/image-models) but no
-    # Select/Disable, and no chat-engine support badge.
+    # A diffusion model in the image engine's store (image_model_service), not a chat model: Pull/Uninstall via
+    # /api/settings/image-models, no Select/Disable, no engine support badge.
     is_image: bool = False
-    # Image models only: extra files the model needs beside its weights, and whether each is on disk.
+    # Image models only: extra files needed beside the weights, and whether each is on disk.
     companions: list[CompanionFile] = Field(default_factory=list)
 
-    # --- Backward-compatible views onto engine_support above -----------------------------------------------
-    # Computed, not settable at construction time — every producer builds engine_support directly instead (see
-    # app.services.engine_support_checker.EngineSupportSet.support_for). Kept only so old callers/tests reading
-    # entry.matricxon_supported (etc.) keep working unchanged; new code should read engine_support directly.
+    # Backward-compatible views onto engine_support
+    # Computed, not settable: producers build engine_support (EngineSupportSet.support_for). Kept for old
+    # callers/tests; new code should read engine_support.
     @computed_field  # type: ignore[prop-decorator]
     @property
     def min_ram_gb_ollama(self) -> float | None:
@@ -171,35 +122,32 @@ class CatalogEntry(BaseModel):
 class ModelCatalogResponse(BaseModel):
     entries: list[CatalogEntry]
     hardware: HardwareSummary
-    # The active engine's own EngineCapabilities.model_management (see app.services.engines.base) - False for a
-    # connector like RunPod, which manages its own model(s) remotely and has nothing here to Pull/Uninstall/Hide,
-    # nor a Hugging Face catalog to browse. The Model tab greys out those actions instead of rendering ones that
-    # would just fail or do nothing.
+    # The active engine's EngineCapabilities.model_management (engines.base): False for connectors like RunPod,
+    # which manage models remotely, so the Model tab greys out Pull/Uninstall/Hide and the Hugging Face browser.
     model_management: bool = True
 
 
 class EmbeddingCatalogEntry(BaseModel):
-    """One embedding model from app/model_catalog.py's EMBEDDING_CATALOG — the embedding-model analogue of
-    CatalogEntry above, kept as its own type rather than reusing that one since several of its fields (hidden,
-    removable, text_capable, vision) are meaningless for an embedding-only model."""
+    """One embedding model from EMBEDDING_CATALOG; separate from CatalogEntry since hidden, removable,
+    text_capable and vision mean nothing for embeddings.
+    """
 
     family: str
     vendor: str
     tag: str
     parameter_size: str
     context_length: int | None = None
-    # Output vector size (768 for nomic-embed-text, 384 for MiniLM) — not meaningful for a chat model, so kept
-    # here rather than added to CatalogEntry.
+    # Output vector size (768 nomic-embed-text, 384 MiniLM).
     embedding_dim: int
     download_gb: float | None = None
     min_ram_gb: float
-    # See CatalogEntry.engine_support's own docstring — same meaning here.
+    # See CatalogEntry.engine_support.
     engine_support: dict[EngineName, EngineModelSupport] = Field(default_factory=dict)
     installed: bool
     hardware_ok: bool
     unavailable_reason: str | None = None
 
-    # See CatalogEntry's identical computed properties — same "old field name, new dict underneath" reasoning.
+    # See CatalogEntry's computed properties.
     @computed_field  # type: ignore[prop-decorator]
     @property
     def min_ram_gb_ollama(self) -> float | None:
@@ -223,15 +171,12 @@ class EmbeddingCatalogEntry(BaseModel):
 
 class EmbeddingModelCatalogResponse(BaseModel):
     entries: list[EmbeddingCatalogEntry]
-    # Whichever tag app.config.EMBEDDING_MODEL currently resolves to, so the UI can label which entry is
-    # actually in use without every entry needing its own is_default flag.
+    # The tag app.config.EMBEDDING_MODEL resolves to, so the UI marks the one in use.
     default_tag: str
     hardware: HardwareSummary
 
 
 class InstalledModelsResponse(BaseModel):
-    """GET /api/settings/installed-models — the chat page's model-switch
-    picker on an existing conversation, which only needs plain tags, not
-    get_model_catalog's hardware/download info."""
+    """GET /api/settings/installed-models: plain tags for the chat page's model switcher."""
 
     models: list[str]

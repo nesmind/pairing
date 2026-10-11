@@ -1,15 +1,6 @@
-"""
-ORM (database table) definitions, split one class-group per file (see
-CLAUDE.md's file-size rule) instead of one large models.py. Every class
-is re-exported here so the rest of the app keeps writing
-`from app.models import User, Conversation, ...` exactly as before —
-this package boundary is an internal reorganization, not a change to
-any call site outside it.
+"""ORM definitions, one class-group per file, re-exported here so `from app.models import User,...` works.
 
-Import order matters: Alembic (see alembic/env.py) and app.database.init_db
-just need every model registered on Base.metadata before comparing
-against the live database, which happens as a side effect of importing
-this package — the actual order below doesn't affect correctness.
+Importing the package registers every model on Base.metadata (needed by Alembic and app.database.init_db).
 """
 
 from app.models._base import ID_LEN, new_id, utcnow

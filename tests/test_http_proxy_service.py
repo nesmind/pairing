@@ -1,7 +1,6 @@
-"""Unit tests for app/services/http_proxy_service.py and
-app/schemas/http_proxy_config.py's HttpProxyConfig.proxy_url() — mirrors
-tests/test_settings_service.py's own get_comfyui_config/set_comfyui_config
-round-trip convention."""
+"""Tests for services/http_proxy_service.py and schemas/http_proxy_config.py's HttpProxyConfig.proxy_url;
+the round-trip convention of tests/test_settings_service.py's get/set_comfyui_config.
+"""
 
 import pytest
 
@@ -46,9 +45,8 @@ def test_proxy_url_percent_encodes_special_characters_in_credentials():
 
 
 def test_proxy_url_ignores_a_password_with_no_username():
-    # A password with no username to pair it with isn't a valid "user:pass"
-    # auth segment — proxy_url() only ever includes credentials when
-    # there's a username to anchor them to.
+    # A password with no username isn't a valid "user:pass" segment: proxy_url includes credentials only with a
+    # username.
     config = HttpProxyConfig(enabled=True, host="10.0.0.5", port=8080, password="orphaned")
     assert config.proxy_url() == "http://10.0.0.5:8080"
 
@@ -93,7 +91,7 @@ async def test_get_http_proxy_config_for_display_redacts_the_password(db):
 
     assert displayed.password is None
     assert displayed.has_password is True
-    assert displayed.username == "alice"  # username isn't a secret — still shown
+    assert displayed.username == "alice"
 
 
 @pytest.mark.asyncio
@@ -110,8 +108,7 @@ async def test_set_http_proxy_config_with_a_blank_password_keeps_the_existing_on
     await http_proxy_service.set_http_proxy_config(
         db, HttpProxyConfig(enabled=True, host="1.2.3.4", port=3128, password="original")
     )
-    # Simulates the admin saving again (e.g. just flipping "enabled")
-    # without retyping a password they were never shown back.
+    # Simulates the admin saving again (e.g. flipping "enabled") without retyping a password they were never shown.
     await http_proxy_service.set_http_proxy_config(db, HttpProxyConfig(enabled=False, host="1.2.3.4", port=3128))
 
     config = await http_proxy_service.get_http_proxy_config(db)
@@ -148,9 +145,8 @@ async def test_set_http_proxy_config_stores_the_password_encrypted_not_plaintext
 
 @pytest.mark.asyncio
 async def test_get_http_proxy_config_reads_a_legacy_plaintext_password(db):
-    # A row saved before encryption was added would still carry a plain
-    # "password" key rather than "password_encrypted" — must still read
-    # back correctly rather than erroring or silently losing it.
+    # A row from before encryption still has a plain "password" key, not "password_encrypted": it must read back, not
+    # error or lose it.
     db.add(
         AppSetting(
             owner_id=SYSTEM_OWNER_ID,

@@ -1,9 +1,10 @@
-"""Installs stable-diffusion.cpp from GitHub — the "local" auto-install behind Settings > Image's Install button.
-Downloads the pinned release's prebuilt Linux x86_64 CPU zip (`sd-server` + its shared libs, which include per-CPU
-ggml backends down to SSE4.2 — no AVX2 requirement, unlike ComfyUI's PyTorch) and unzips it into EXTERNAL_DIR.
+"""Installs stable-diffusion.cpp from GitHub: the "local" auto-install behind Settings > Image's Install.
+Downloads the pinned release's prebuilt Linux x86_64 CPU zip (`sd-server` plus shared libs with per-CPU ggml
+backends down to SSE4.2, so no AVX2 requirement unlike ComfyUI's PyTorch) and unzips it into EXTERNAL_DIR.
 
-A reinstall preserves target_dir's own "models" subdirectory (same reasoning as comfyui_installer): downloaded
-models are the admin's library, not disposable engine artifacts."""
+A reinstall preserves target_dir's "models" subdirectory (as comfyui_installer): downloaded models are the
+admin's library, not disposable artifacts.
+"""
 
 import ctypes.util
 import logging
@@ -48,7 +49,7 @@ def _marker_path() -> Path:
 
 
 def is_installed() -> bool:
-    """Marker-gated (written only after extraction) so a half-finished install isn't reported as installed."""
+    """Marker-gated (written after extraction) so a half-finished install isn't reported installed."""
     return _marker_path().exists() and binary_path().exists()
 
 
@@ -64,8 +65,9 @@ def _has_gpu() -> bool:
 
 
 def resolve_build(build: SdCppBuild = "auto") -> str:
-    """ "auto" -> "vulkan" when a GPU and the Vulkan loader are both present (the Vulkan build works on NVIDIA, AMD
-    and Intel and still falls back to CPU if the device is unusable), else "cpu". An explicit choice is kept."""
+    """ "auto" -> "vulkan" when a GPU and the Vulkan loader are present (works on NVIDIA, AMD, Intel; falls back to
+    CPU if the device is unusable), else "cpu". An explicit choice is kept.
+    """
     if build != "auto":
         return build
     return "vulkan" if _has_gpu() and ctypes.util.find_library("vulkan") else "cpu"
@@ -80,8 +82,9 @@ def _matches(name: str, build: str) -> bool:
 
 
 async def _find_asset_url(repo: str, version: str, proxy_url: str | None, build: str = "cpu") -> str:
-    """The Linux x86_64 zip of `build` ("cpu"/"vulkan"/"rocm") in release `version` (asset names embed the commit
-    hash and distro version, so they're looked up from the release, not constructed). RuntimeError if none."""
+    """The Linux x86_64 zip of `build` ("cpu"/"vulkan"/"rocm") in release `version`. Asset names embed the commit hash
+    and distro version, so they're looked up, not constructed. RuntimeError if none.
+    """
     if platform.machine().lower() not in ("x86_64", "amd64"):
         raise RuntimeError(
             f"No prebuilt stable-diffusion.cpp release for this CPU architecture ({platform.machine()})."
@@ -122,7 +125,7 @@ async def install_stream(
     proxy_url: str | None = None,
     build: SdCppBuild = "auto",
 ) -> AsyncIterator[dict]:
-    """Same event shape as the other installers ({"status"...}, then {"done": True, ...} or {"error": ...})."""
+    """Same event shape as the other installers ({"status"...}, then {"done": True,...} or {"error":...})."""
     version_override = version  # a source build follows the default branch unless the admin pinned a ref
     repo = repo or SDCPP_GITHUB_REPO
     version = version or SDCPP_PINNED_VERSION

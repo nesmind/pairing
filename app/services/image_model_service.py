@@ -1,14 +1,14 @@
-"""Diffusion models for the local stable-diffusion.cpp engine. An image model found through Settings > Model's
-Hugging Face browser (see HuggingFaceCatalogSearch.is_image_repo) is downloaded straight from Hugging Face into
-the engine's own models folder — never into Ollama/Matricxon, whose chat loaders reject it — and offered in the
-engine form's Model dropdown. Only the *local* engine has a folder to manage; in Remote mode nothing happens here.
+"""Diffusion models for the local stable-diffusion.cpp engine. A model found via Settings > Model's Hugging
+Face browser (HuggingFaceCatalogSearch.is_image_repo) downloads into the engine's models folder, never
+Ollama/Matricxon (whose chat loaders reject it), and appears in the engine form's Model dropdown. Only the
+*local* engine has a folder; Remote mode does nothing here.
 
-Where: the engine's "Models folder" if set, else a `diffusion` sibling of the Matricxon/Ollama models folder
-(so everything lives under one tree: models/ollama, models/matricxon, models/diffusion), else the
-engine install's own models folder.
+Where: the engine's "Models folder", else a `diffusion` sibling of the Matricxon/Ollama models folder
+(models/ollama, models/matricxon, models/diffusion), else the engine install's models folder.
 
-Layout: <models dir>/<org>/<repo>/<file>.gguf, so a catalog tag (`hf.co/<org>/<repo>:<file minus .gguf>`) maps to
-a path and back exactly. Loose files an admin dropped into the folder by hand are listed too (without a tag)."""
+Layout: <models dir>/<org>/<repo>/<file>.gguf, so a catalog tag (`hf.co/<org>/<repo>:<file minus.gguf>`)
+maps to a path and back. Loose files dropped in by hand are listed without a tag.
+"""
 
 import logging
 import re
@@ -28,7 +28,7 @@ from app.services.image_companions import FOLDER as COMPANIONS_DIR, ImageCompani
 logger = logging.getLogger("llama_chat")
 
 _REPO_RE = re.compile(r"^[\w.-]+/[\w.-]+$")
-# Rough working-set multiplier over the file size for a CPU diffusion run (weights + activations + VAE).
+# Working-set multiplier over file size for a CPU diffusion run (weights + activations + VAE).
 _RAM_MULTIPLIER = 1.3
 
 
@@ -62,8 +62,8 @@ class ImageModelStore:
 
     @staticmethod
     def parse_tag(tag: str) -> tuple[str, str]:
-        """(repo_id, filename) for `hf.co/<org>/<repo>:<stem>`; ValueError for anything else, including path
-        tricks — the tag is client-supplied and becomes a filesystem path."""
+        """(repo_id, filename) for `hf.co/<org>/<repo>:<stem>`; ValueError otherwise, including path tricks (the tag is
+        client-supplied and becomes a path)."""
         if not tag.startswith("hf.co/") or ":" not in tag:
             raise ValueError("Not a Hugging Face model tag.")
         repo_id, stem = tag.removeprefix("hf.co/").split(":", 1)
@@ -83,7 +83,7 @@ class ImageModelStore:
         return self.root / repo_id / filename
 
     def tag_for(self, path: Path) -> str | None:
-        """The catalog tag of a file that sits at <org>/<repo>/<file>.gguf, else None (a hand-placed file)."""
+        """The catalog tag of a file at <org>/<repo>/<file>.gguf, else None (hand-placed)."""
         parts = path.relative_to(self.root).parts
         if len(parts) < 3 or path.suffix != ".gguf":
             return None
@@ -117,8 +117,9 @@ class ImageModelStore:
         return (await image_engine_service.get_sdcpp_config(self._db)).mode == "local"
 
     async def catalog_entries(self, is_admin: bool = False) -> list[CatalogEntry]:
-        """Settings > Model's Diffusion models rows: the curated defaults, then admin-added image models, then any
-        other tagged file already in the folder — each marked installed or not."""
+        """Settings > Model's Diffusion models rows: curated defaults, admin-added image models, then other tagged
+        files in the folder, each marked installed or not.
+        """
         added = {e["tag"]: e for e in await ExtendedModelCatalog(self._db).list() if e.get("kind") == "image"}
         installed = {f.tag: f for f in self.list_files() if f.tag}
         curated = {m.tag: m for m in CATALOG.diffusion_models}
@@ -152,8 +153,9 @@ class ImageModelStore:
         return entries
 
     async def prepare_pull(self, tag: str) -> tuple[str, str, Path]:
-        """Validates a pull request and returns (repo_id, filename, destination). ValueError (-> 400) if the tag
-        isn't a curated or admin-added image model, or the engine isn't local."""
+        """Validates a pull and returns (repo_id, filename, destination). ValueError (-> 400) if the tag isn't a
+        curated or admin-added image model, or the engine isn't local.
+        """
         entries = await ExtendedModelCatalog(self._db).list()
         if CATALOG.find_diffusion(tag) is None and not any(
             e["tag"] == tag and e.get("kind") == "image" for e in entries
@@ -165,9 +167,11 @@ class ImageModelStore:
         return repo_id, filename, self.path_for(tag)
 
     async def download(self, repo_id: str, filename: str, dest: Path, proxy_url: str | None) -> AsyncIterator[dict]:
-        """Streams the file from Hugging Face to `dest` (via a .part file, renamed once complete) as the same
-        {"status","completed","total"} progress events a chat-model pull emits; the last event is either
-        {"done": True} or {"error": ...}. On success, an unset engine Model is pointed at it."""
+        """Streams the file from Hugging Face to `dest` (via.part, renamed when complete) as
+        {"status","completed","total"}
+        events like a chat-model pull; the last is {"done": True} or {"error":...}. On success an unset engine Model
+        points at it.
+        """
         url = f"https://huggingface.co/{repo_id}/resolve/main/{quote(filename)}"
         async for event in stream_file(url, dest, proxy_url, filename):
             yield event
@@ -177,7 +181,7 @@ class ImageModelStore:
         yield {"done": True}
 
     async def download_companions(self, tag: str, flags: list[str], proxy_url: str | None) -> AsyncIterator[dict]:
-        """Downloads only the companion files the user ticked (see image_companions); same event format."""
+        """Downloads only the ticked companion files (image_companions); same events."""
         async for event in ImageCompanions.download(self.path_for(tag), flags, proxy_url):
             yield event
         yield {"done": True}
@@ -197,13 +201,14 @@ class ImageModelStore:
             await image_engine_service.set_sdcpp_config(self._db, config)
 
     async def delete(self, tag: str) -> None:
-        """Removes the file (and any now-empty org/repo folders) and clears the engine's Model if it was this one.
-        ValueError for a bad tag or Remote mode; a missing file is fine (already gone)."""
+        """Removes the file (and empty org/repo folders) and clears the engine's Model if it was this one.
+        ValueError for a bad tag or Remote mode; a missing file is fine.
+        """
         if not await self.is_local():
             raise ValueError(self.LOCAL_ONLY_MESSAGE)
         path = self.path_for(tag)
         path.unlink(missing_ok=True)
-        if not any(  # companions are shared by every quant in this folder: keep them while another remains
+        if not any(  # companions are shared by every quant here: keep them while another remains
             f.is_file() and f.suffix in self.EXTENSIONS for f in path.parent.iterdir()
         ):
             ImageCompanions.remove(path)

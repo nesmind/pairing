@@ -1,14 +1,8 @@
-"""
-CRUD endpoints for chat sessions ("conversations") and their message
-history. The chat UI calls these to list past chats in the sidebar, load
-a chat's messages when it's clicked, rename/re-configure it, or delete it.
-Sending a *new* message lives in app/routers/chat.py instead, since that
-path also talks to the ML engine and streams a response.
+"""CRUD for chats and their message history (sidebar list, load, rename/configure, delete). New messages
+go through app/routers/chat.py, which streams from the engine.
 
-Every endpoint here requires a logged-in user (Depends(get_current_user))
-and every query is scoped to that user's own conversations — one user
-never sees, and can't be told the existence of, another user's chats.
-See app/services/conversation_service.py for the actual business logic.
+Every endpoint needs a logged-in user and is scoped to their own conversations, so others' chats are
+neither visible nor confirmable. Logic: app/services/conversation_service.py.
 """
 
 from datetime import datetime
@@ -38,8 +32,7 @@ router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
 @router.get("", response_model=list[ConversationOut])
 async def list_conversations(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    """Newest-first list of the current user's own chats, for populating
-    the sidebar."""
+    """The user's chats, newest first (sidebar)."""
     return (
         (
             await db.execute(
@@ -86,12 +79,9 @@ async def get_latest_messages(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """ "Cheap" channel delivery mode's poll endpoint (see
-    app.services.chat_settings_service.get_channel_delivery_mode) — chat.js
-    calls this every few seconds for a channel chat it has open instead
-    of refetching the full history each tick. `since` should be the
-    `server_time` echoed back by the previous call to this same
-    endpoint; omitted, it returns the full current history."""
+    """Poll endpoint for "cheap" channel delivery (chat_settings_service.get_channel_delivery_mode): chat.js
+    calls it every few seconds. `since` is the previous call's `server_time`; omitted returns the full history.
+    """
     conversation = await conversation_service.get_accessible_conversation_or_404(db, conversation_id, user)
     return await conversation_service.get_messages_since(db, conversation, since)
 
@@ -103,14 +93,10 @@ async def delete_message(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Channel admins/managers only — removes a single message from a
-    channel's shared conversation, live if it's still generating (see
-    conversation_service.delete_message, whose return value — every id
-    actually soft-deleted, one or two — chat.js uses to remove every
-    affected bubble from the deleter's own tab immediately). Not offered
-    for a personal chat: only its owner could ever see it there, and this
-    endpoint exists for moderating a *shared* conversation, not editing
-    your own history."""
+    """Channel admins/managers only: removes one message from a channel's shared conversation, live if still
+    generating. conversation_service.delete_message returns every soft-deleted id (one or two) so chat.js
+    can remove all bubbles. Not for personal chats; this moderates shared ones.
+    """
     conversation = await conversation_service.get_accessible_conversation_or_404(db, conversation_id, user)
     if conversation.channel_id is None or not channel_service.can_manage_channel_conversation(conversation, user):
         raise HTTPException(status_code=403, detail="Only this channel's admins/managers can delete a message.")
@@ -129,8 +115,9 @@ async def share_message(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Posts a copy of one message from the caller's own private chat into a channel they belong to, as a
-    plain message from them (no AI reply) - see MessageShareService. Returns the new channel message."""
+    """Copies one message from the caller's private chat into a channel they belong to, as their own plain
+    message (no AI reply; MessageShareService). Returns the new message.
+    """
     conversation = await conversation_service.get_accessible_conversation_or_404(db, conversation_id, user)
     return await MessageShareService(db).share_to_channel(user, conversation, message_id, body.channel_id)
 
@@ -142,10 +129,8 @@ async def update_conversation(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Used by the Settings page to save per-conversation params, by the
-    sidebar to rename a chat, and by the chat page's model badge to
-    switch an existing conversation to a different (installed) model
-    mid-conversation."""
+    """Saves per-conversation params (Settings page), renames (sidebar) and switches the model mid-chat (model
+    badge)."""
     conversation = await conversation_service.get_accessible_conversation_or_404(db, conversation_id, user)
     return await conversation_service.update_conversation(db, conversation, body, user)
 

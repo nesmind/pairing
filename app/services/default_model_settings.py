@@ -1,15 +1,10 @@
-"""
-The one place every "which model is the default" read/write goes through — consolidates what used to be three
-separate, independently-maintained function pairs scattered across app/services/model_catalog_service.py
-(default model for brand-new user accounts, default vision model for an image-attachment reply, default
-embedding model for the RAG knowledge base). Deliberately its own isolated module, not folded into
-ChatModelCatalogBuilder/EmbeddingModelCatalogService (which each depend on this, never the other way around):
-a future change to how a default is read/validated/falls back can now only be made in one place, not silently
-missed in one of three near-identical copies.
+"""The one place every "which model is the default" read/write goes through, replacing three scattered pairs
+in model_catalog_service.py: default for new accounts, default vision model (image-attachment replies) and
+default embedding model (RAG). Isolated from ChatModelCatalogBuilder/EmbeddingModelCatalogService (which
+depend on it, not the reverse), so a change to reading, validation or fallback is made once.
 
-Not the same setting as app.services.settings_service.get_default_model/set_default_model — that one is a
-*per-user* "which model my own new conversations start with" preference, unrelated to any of the three
-system-wide defaults here, and stays exactly where and what it is today.
+Not settings_service.get_default_model/set_default_model: that is a per-user preference for the user's own
+new conversations, separate from these three system-wide defaults.
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,10 +36,9 @@ class DefaultModelSettings:
         await self._db.commit()
 
     async def for_new_users(self, installed: list[str]) -> str | None:
-        """The admin-configured model new accounts are created with (see app.services.user_service.create_user)
-        — falls back to whichever installed model comes first if never configured, or if the configured one
-        was since uninstalled. `installed` is passed in rather than fetched here since every caller already has
-        it (avoids a redundant engine round trip)."""
+        """The admin-configured model for new accounts (user_service.create_user); falls back to the first installed
+        model if unset or since uninstalled. `installed` is passed in since callers already have it.
+        """
         configured = await self._get(self.FOR_NEW_USERS_KEY)
         if configured in installed:
             return configured
@@ -54,11 +48,10 @@ class DefaultModelSettings:
         await self._set(self.FOR_NEW_USERS_KEY, model)
 
     async def vision(self) -> str | None:
-        """The admin-configured model any message with an image attachment is answered by, for that one reply
-        only — see app.services.chat_service.build_reply_stream, which never changes the conversation's own
-        `model` column for this, so the very next message (with no image) reverts automatically. Same
-        installed/fallback contract as for_new_users above; None if no vision-capable model is installed at
-        all."""
+        """The admin-configured model that answers any message with an image attachment, for that reply only
+        (chat_service.build_reply_stream never changes the conversation's `model`, so the next message reverts).
+        Same installed/fallback contract as for_new_users; None if no vision model is installed.
+        """
         installed = await self._installed_with_capability("vision")
         configured = await self._get(_VISION_KEY)
         if configured in installed:
@@ -69,12 +62,11 @@ class DefaultModelSettings:
         await self._set(_VISION_KEY, model)
 
     async def embedding(self) -> str | None:
-        """The admin-configured model app.services.inference_client.embed calls use for the Knowledge base
-        (RAG) feature — see app.services.document_ingest/document_retrieval/document_sync, every one of which
-        reads this instead of the old fixed app.config.EMBEDDING_MODEL constant. Same fallback pattern as
-        vision() above. None if no embedding model is installed at all — every caller treats that the same way
-        "no embedding model" already degraded before this was configurable (RAG silently unavailable, not a
-        hard error)."""
+        """The model inference_client.embed uses for the Knowledge base
+        (document_ingest/document_retrieval/document_sync),
+        replacing the fixed app.config.EMBEDDING_MODEL. Same fallback as vision. None if no embedding model is
+        installed; callers degrade as before (RAG silently unavailable, no hard error).
+        """
         installed = await self._installed_with_capability("embedding")
         configured = await self._get(_EMBEDDING_KEY)
         if configured in installed:

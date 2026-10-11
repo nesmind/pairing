@@ -1,52 +1,43 @@
-"""
-Pure history-assembly helpers for app/services/chat_service.py's build_reply_stream — split out under
-CLAUDE.md's file-size rule (same reasoning as title_service.py: separable enough, and substantial enough on
-its own, to keep out of chat_service.py directly). No DB access of its own; both functions take/return plain
-data (Message objects in, {"role", "content"} dicts out).
+"""Pure history-assembly helpers for chat_service.build_reply_stream, split out for the file-size rule
+(like title_service.py). No DB access: Message objects in, {"role", "content"} dicts out.
 """
 
 import itertools
 
 from app.models import Message
 
-# Rough characters-per-token ratio for English text. The ML engine doesn't expose
-# a cheap client-side tokenizer, so this estimate is used only to decide
-# how much history to keep on our side of the wire — the ML engine still applies
-# its own real token limit (num_ctx) server-side as the source of truth.
+# Rough characters per token for English. The engine offers no cheap client-side tokenizer, so this only
+# sizes history locally; the engine still enforces num_ctx.
 _CHARS_PER_TOKEN = 4
 
 
 def only_addressed_to_ai(messages: list[Message]) -> list[Message]:
-    """Channel history without the messages posted without asking the AI (see channel_history_setting): a user
-    message stays only if an assistant reply answers it (a failed one counts). The question being asked right
-    now is added by the caller afterwards."""
+    """Channel history without messages posted without asking the AI (channel_history_setting): a user message
+    stays only if an assistant reply answers it (failed counts). The current question is added by the caller.
+    """
     answered = {m.reply_to_message_id for m in messages if m.role == "assistant" and m.reply_to_message_id}
     return [m for m in messages if m.role != "user" or m.id in answered]
 
 
 def without_failed_replies(messages: list[Message]) -> list[Message]:
-    """Drops replies that failed or were cancelled (status "error"): their text is a partial or empty answer
-    plus a notice for the person, nothing the model should read again, and every such turn costs tokens on
-    every later message. The question it was answering stays, so the next reply can still answer it."""
+    """Drops failed or cancelled replies (status "error"): partial text plus a notice, not worth re-reading, and
+    costly each turn. The question stays so the next reply can answer it.
+    """
     return [m for m in messages if m.status != "error"]
 
 
-# Trimming moves forward in steps of this fraction of the budget (see trim_history).
+# Trimming advances in steps of this fraction of the budget (see trim_history).
 _TRIM_STEPS = 4
 
 
 def trim_history(messages: list[Message], num_ctx: int, reserved_tokens: int = 512) -> list[dict]:
-    """Keeps only as much recent history as should comfortably fit in the
-    model's context window, so a long-running chat doesn't silently lose
-    coherence by overflowing num_ctx. `reserved_tokens` leaves headroom
-    for the system prompt, RAG context, and the model's own reply.
+    """Keeps only the recent history that fits the context window, so long chats don't overflow num_ctx.
+    `reserved_tokens` leaves room for the system prompt, RAG context and the reply.
 
-    The oldest messages go first, but in steps: the history may only start at a message where the
-    running character count crosses a multiple of a quarter of the budget. Those start points depend
-    only on the messages before them, so a growing chat keeps the *same* first message for many turns
-    - the model's prompt cache matches from the start of the prompt, so dropping one message per turn
-    (a sliding window) made it re-read the whole chat every turn. Each step drops about a quarter of
-    the window at once instead.
+    Oldest messages go first, in steps: the history starts only where the running character count crosses a
+    multiple of a quarter of the budget. Start points depend only on earlier messages, so a growing chat keeps
+    the same first message for many turns. The prompt cache matches from the start, and a sliding window made
+    it re-read the whole chat every turn.
     """
     budget_chars = max(num_ctx - reserved_tokens, 256) * _CHARS_PER_TOKEN
     step = max(budget_chars // _TRIM_STEPS, 1)
@@ -62,7 +53,7 @@ def trim_history(messages: list[Message], num_ctx: int, reserved_tokens: int = 5
 
 
 def _newest_that_fit(messages: list[Message], budget_chars: int) -> list[Message]:
-    """The newest messages within the budget - always at least the last one, even if it alone is over."""
+    """The newest messages within the budget; always at least the last one."""
     kept: list[Message] = []
     used = 0
     for message in reversed(messages):
@@ -75,18 +66,13 @@ def _newest_that_fit(messages: list[Message], budget_chars: int) -> list[Message
 
 
 def _merge_consecutive_same_role(messages: list[Message]) -> list[dict]:
-    """Folds any run of consecutive same-role messages into one turn — a channel's shared conversation can
-    accumulate several "user"-role messages in a row (any member can post with ask_ai=False; the AI only ever
-    replies when a message explicitly asks it to, see build_reply_stream's own docstring), which a real,
-    strict chat template (Mistral/Ministral's — used by both Ollama and Matricxon for every model this app
-    currently ships) rejects outright: "After the optional system message, conversation roles must alternate
-    user and assistant roles" — confirmed live against Ollama's own server logs, not assumed from docs. A
-    personal chat never needs this (its owner always asks the AI every time, so history already alternates
-    naturally) but paying the cost unconditionally here is simpler than a channel-only branch, and correct
-    either way. Single-message turns (the overwhelming common case) are left byte-for-byte identical to
-    before this existed; only an actual run of 2+ gets its lines joined, each prefixed with its own sender's
-    display name (see Message.sender_display_name) so folding several members' messages into one turn doesn't
-    lose who said what — an "assistant"/"system" message has no sender to prefix, so those stay plain."""
+    """Folds runs of same-role messages into one turn. A channel can hold several "user" messages in a row
+    (ask_ai=False; the AI replies only when asked), which strict chat templates (Mistral/Ministral, used by
+    Ollama and Matricxon) reject: "conversation roles must alternate" (seen in Ollama's logs). Personal chats
+    already alternate; paying the cost unconditionally is simpler. Single messages are unchanged; runs of 2+
+    are joined with each line prefixed by the sender's display name (Message.sender_display_name).
+    Assistant/system messages stay plain.
+    """
     merged: list[dict] = []
     for role, group in itertools.groupby(messages, key=lambda m: m.role):
         group = list(group)

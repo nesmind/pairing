@@ -1,26 +1,13 @@
-"""
-The ComfyUI process-supervision admin feature (Settings > System): lets
-an admin point this app at an already-installed ComfyUI (its venv python
-+ main.py path) and start/stop it directly, the same way an admin manages
-"Local instances" — but unlike that feature, this is an explicit,
-imperative action, not a declarative "reconcile to N" target. See
-app/services/comfyui_process.py for the subprocess/file primitives this
-orchestrates (split out purely to stay under CLAUDE.md's file-size rule,
-same reasoning app/services/instance_service.py was split from
-instance_process.py for).
+"""ComfyUI process-supervision admin (Settings > System): point this app at an installed ComfyUI (venv
+python + main.py) and start/stop it, an explicit imperative action unlike "Local instances"' declarative
+"reconcile to N". Primitives: comfyui_process.py (split for the file-size rule, like instance_service.py).
 
-Deliberately has no reconcile_on_startup/terminate_all_siblings
-equivalent: ComfyUI is a heavyweight, potentially GPU-bound external
-process an admin explicitly starts/stops ("get it running from the
-settings section" — the literal ask this feature was built for), not a
-lightweight disposable copy of this app's own process the way a sibling
-instance is. It is expected to keep running across an app restart, and
-this app never auto-starts or auto-stops it on its own boot/shutdown.
+No reconcile_on_startup/terminate_all_siblings equivalent: ComfyUI is a heavyweight, possibly GPU-bound
+process an admin starts and stops explicitly, expected to outlive an app restart. This app never starts or
+stops it on its own boot/shutdown.
 
-Only the *primary* process (app.config.IS_PRIMARY) may start/stop it —
-see start/stop's own guard — since two processes racing to spawn/kill the
-same external executable would corrupt each other's view of it in a
-multi-instance deployment.
+Only the primary (app.config.IS_PRIMARY) may start/stop it (see start/stop): two processes racing to
+spawn/kill one executable would corrupt each other's view.
 """
 
 import asyncio
@@ -34,9 +21,8 @@ from app.services import comfyui_installer, comfyui_process, settings_service
 
 _HEALTH_CHECK_TIMEOUT = httpx.Timeout(3.0, connect=2.0)
 
-# Only one caller at a time may spawn/terminate/rewrite tracking state —
-# a live Start/Stop click racing a status poll could otherwise corrupt
-# the tracking file. Same reasoning as instance_service._lock.
+# One caller at a time may spawn/terminate/rewrite tracking state; a Start/Stop racing a status poll could
+# corrupt the tracking file (like instance_service._lock).
 _lock = asyncio.Lock()
 
 
@@ -50,9 +36,8 @@ async def _ping_health() -> bool:
 
 
 async def get_status(db: AsyncSession) -> ComfyUIStatus:
-    """The fast synchronous PID check (is_alive) is the real source of
-    truth; the health ping is read-only, informational status for the
-    admin UI only, the same split instance_service.get_status uses."""
+    """The PID check (is_alive) is the truth; the health ping is informational for the admin UI (as in
+    instance_service.get_status)."""
     tracked = comfyui_process.read_tracking()
     config = await settings_service.get_comfyui_config(db)
     installed = comfyui_installer.is_installed() or bool(config.main_py_path)
@@ -62,9 +47,7 @@ async def get_status(db: AsyncSession) -> ComfyUIStatus:
 
 
 async def start(db: AsyncSession) -> ComfyUIStatus:
-    """Backs POST .../start. Raises ValueError (router turns this into a
-    400) if the launch path isn't configured yet, or if called on
-    anything but the primary instance."""
+    """POST.../start. Raises ValueError (router: 400) if the launch path isn't configured or this isn't the primary."""
     if not IS_PRIMARY:
         raise ValueError("ComfyUI can only be managed from the primary instance.")
     config = await settings_service.get_comfyui_config(db)
@@ -81,8 +64,7 @@ async def start(db: AsyncSession) -> ComfyUIStatus:
 
 
 async def stop(db: AsyncSession) -> ComfyUIStatus:
-    """Backs POST .../stop. Raises ValueError on anything but the
-    primary instance, same as start."""
+    """POST.../stop. Raises ValueError on non-primary, like start."""
     if not IS_PRIMARY:
         raise ValueError("ComfyUI can only be managed from the primary instance.")
     config = await settings_service.get_comfyui_config(db)

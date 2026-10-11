@@ -1,9 +1,8 @@
-"""Unit tests for app/services/engine_support_service.py and its GET /api/stats/engine-support router. The
-active engine is set via engine_service._cached_engine directly (same pattern tests/test_health.py already
-uses); matricxon_client.get_capabilities (reached through MatricxonEngine.get_format_support — see
-tests/test_engine_adapters.py for that forwarding link itself) is monkeypatched on its own module, not on any
-particular importer's binding of it, since module objects are singletons regardless of which file imports them
-(see the module-split import-binding gotcha)."""
+"""Tests for services/engine_support_service.py and GET /api/stats/engine-support. The active engine is set via
+engine_service._cached_engine directly (as tests/test_health.py); matricxon_client.get_capabilities (reached
+through MatricxonEngine.get_format_support; forwarding: tests/test_engine_adapters.py) is patched on its own
+module, not an importer's binding, since module objects are singletons.
+"""
 
 import pytest
 

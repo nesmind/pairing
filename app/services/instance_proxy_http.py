@@ -1,51 +1,34 @@
-"""
-Pure/plumbing helpers for app/services/instance_proxy.py's ASGI
-middleware — exemption/job-routing path matching, header filtering, and
-ASGI request-body reading. Split out purely to stay under CLAUDE.md's
-file-size rule, same reasoning app/services/instance_process.py was
-split from instance_service.py for.
+"""Plumbing helpers for instance_proxy.py: exemption/job-routing path matching, header filtering and ASGI
+body reading. Split out for the file-size rule, like instance_process.py from instance_service.py.
 """
 
 import re
 
 import httpx
 
-# Endpoints whose state only exists meaningfully on the primary process
-# itself — must never be proxied away, in either mode:
-#   - the local-instances supervisor's own tracking/reconcile state
-#   - db_admin's switch_database(), which only changes *that process's*
-#     own live DB connection, not the whole fleet's
-#   - this feature's own proxy-mode setting
-#   - ollama_process's restart action — Ollama is one shared process for
-#     every local instance; this must fire exactly once, not risk a
-#     concurrent/duplicate restart if it landed on a random sibling
-#   - /health, which must always answer for the specific port it was
-#     asked about, or the whole health-check mechanism means nothing
-# /static/ is exempted too, purely as an optimization — identical files
-# on every instance, no reason to add a hop.
+# Endpoints whose state exists only on the primary and must never be proxied, in either mode:
+#   - the local-instances supervisor's tracking/reconcile state
+#   - db_admin's switch_database, which changes only *that process's* connection
+#   - the proxy-mode setting
+#   - ollama_process's restart (one shared Ollama; it must fire once, not twice on a random sibling)
+#   - /health, which must answer for the port asked, or health checks mean nothing
+# /static/ is exempt as an optimization (identical files everywhere, no need for a hop).
 EXEMPT_PREFIXES = (
     "/api/settings/instances",
     "/api/settings/database",
     "/api/settings/proxy-mode",
-    # Ollama process state (app/services/ollama_process.py) only exists
-    # meaningfully on the primary — same reasoning as the ComfyUI entry
-    # right below. Covers both local-mode start/stop/status and the old
-    # "Ollama concurrency" config, now folded into the same prefix.
+    # Ollama process state (ollama_process.py) exists only on the primary, as for ComfyUI below. Covers
+    # local-mode start/stop/status and the old "Ollama concurrency" config, now under the same prefix.
     "/api/settings/ollama",
-    # ComfyUI process state (app/services/comfyui_service.py) only exists
-    # meaningfully on the primary — same reasoning as the other
-    # process-supervision entries above. Without this, a start/stop/status
-    # call load-balanced onto a sibling would either 400 (comfyui_service's
-    # own IS_PRIMARY guard correctly refusing to manage a process it
-    # doesn't own) or silently read/write that *sibling's* own separate
-    # comfyui.json instead of the primary's.
+    # ComfyUI process state (comfyui_service.py) exists only on the primary, like the other supervision entries.
+    # Without this, a start/stop/status load-balanced to a sibling would 400 (comfyui_service's IS_PRIMARY guard)
+    # or read/write that *sibling's* own comfyui.json.
     "/api/settings/comfyui",
-    # stable-diffusion.cpp's sd-server — same primary-only process state as ComfyUI above.
+    # stable-diffusion.cpp's sd-server: primary-only process state, as ComfyUI.
     "/api/settings/sdcpp",
-    # Matricxon process state (app/services/matricxon_process.py) only exists meaningfully on the primary — same
-    # reasoning as Ollama/ComfyUI above. This one was missing outright (confirmed live: a start/stop call that
-    # happened to round-robin onto a sibling 400'd with "Matricxon can only be managed from the primary instance",
-    # making the button appear to work about half the time) rather than degrading gracefully like the other two.
+    # Matricxon process state (matricxon_process.py) exists only on the primary, like Ollama/ComfyUI. It was
+    # missing: a start/stop landing on a sibling 400'd with "Matricxon can only be managed from the primary
+    # instance", so the button worked about half the time.
     "/api/settings/matricxon",
     "/health",
     "/static/",
@@ -56,12 +39,8 @@ def is_exempt(path: str) -> bool:
     return path.startswith(EXEMPT_PREFIXES)
 
 
-# A RAG upload job (app/services/document_upload.py) lives only in the
-# in-memory dict of whichever instance's POST /api/documents/upload
-# started it — its id is prefixed with that instance's own index at
-# creation time specifically so a later poll can be routed straight
-# back to it deterministically, with no proxy-side state of its own and
-# no need to inspect any response body.
+# A RAG upload job (document_upload.py) lives in the in-memory dict of the instance that started it. Its id
+# is prefixed with that instance's index so a poll routes straight back, with no proxy-side state or body inspection.
 _UPLOAD_JOB_RE = re.compile(r"^/api/documents/upload/(\d+)-[0-9a-f]{32}$")
 
 
@@ -70,26 +49,17 @@ def job_target_index(path: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
-# Small JSON API bodies (the overwhelming majority of this app's
-# requests — chat messages, login, settings saves) are worth buffering
-# so a pre-first-byte connection failure can safely retry on a
-# different instance. A body above this (e.g. a document upload) is
-# streamed straight through unbuffered instead — retrying it would mean
-# either buffering something potentially many MB (defeating true
-# streaming) or re-reading an already-drained ASGI receive() stream
-# (impossible), so those get a single attempt only.
+# Small JSON bodies (most requests: chat, login, settings) are buffered so a failure before the first byte can
+# retry on another instance. Larger ones (e.g. an upload) stream unbuffered with a single attempt: retrying
+# would need buffering many MB or re-reading a drained ASGI receive stream.
 MAX_RETRY_BODY_BYTES = 262_144
 
 PROXY_TIMEOUT = httpx.Timeout(300.0, connect=5.0)
 
-# "x-forwarded-for" must be dropped from the client's own headers, not
-# just "host" — otherwise a client can send its own X-Forwarded-For and
-# it rides along *ahead of* the trusted one appended below, and Starlette's
-# Headers.get() (what app.services.auth_service.resolve_client_ip reads on
-# the receiving sibling) returns the *first* match — the attacker's
-# forged value, not the real one, silently defeating the loopback-trust
-# check that value exists for (see resolve_client_ip's own docstring) and
-# letting a client bypass the per-IP login rate limiter at will.
+# Drop "x-forwarded-for" from the client's headers, not just "host". Otherwise a forged X-Forwarded-For
+# precedes the trusted one appended below, and Starlette's Headers.get (used by
+# auth_service.resolve_client_ip on the sibling) returns the first match: the forged value, defeating the
+# loopback-trust check and the per-IP login rate limiter.
 _DROP_REQUEST_HEADERS = {"host", "x-forwarded-for"}
 _DROP_RESPONSE_HEADERS = {"content-length", "transfer-encoding", "connection"}
 

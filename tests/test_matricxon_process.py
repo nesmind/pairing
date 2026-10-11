@@ -1,6 +1,6 @@
-"""Unit tests for app/services/matricxon_process.py — the local Matricxon process supervisor behind Settings >
-External servers. The actual real start/stop of a real Matricxon process isn't exercised here — see
-tests/test_ollama_process.py's own docstring for why (subprocess/os.kill/httpx are all monkeypatched)."""
+"""Tests for services/matricxon_process.py, the local Matricxon supervisor behind Settings > External servers.
+A real start/stop isn't exercised (subprocess/os.kill/httpx are patched; see tests/test_ollama_process.py).
+"""
 
 import httpx
 import pytest
@@ -141,16 +141,17 @@ def test_auto_detect_models_dir_is_none_when_no_checkout_found(monkeypatch):
 
 @pytest.mark.parametrize("value", [1.0, 1.09, 1.81, 2.0])
 def test_memory_safety_margin_rejects_values_outside_the_matricxon_supported_range(value):
-    """1.1-1.8 mirrors the same bound matricxon's own Settings.memory_safety_margin enforces
-    server-side (see ../matricxon/app/config.py) — rejected here too so a bad value is caught at
-    Save time with a clear message instead of only failing on matricxon's next restart."""
+    """1.1-1.8 mirrors matricxon's Settings.memory_safety_margin bound (../matricxon/app/config.py), rejected here
+    too so a bad value is caught at Save, not at matricxon's next restart.
+    """
     with pytest.raises(ValidationError):
         MatricxonServerConfig(memory_safety_margin=value)
 
 
 def test_build_env_fresh_install_defaults():
-    """A fresh install's defaults, which match matricxon's own (see ../matricxon/app/config.py's Settings):
-    memory safety margin 1.2, quantized native compute on with the native C kernels, log level 0."""
+    """A fresh install's defaults, matching matricxon's (../matricxon/app/config.py Settings): memory safety
+    margin 1.2, quantized native compute on with the native C kernels, log level 0.
+    """
     env = matricxon_process._build_env(_config())
     assert env["MATRICXON_MEMORY_SAFETY_MARGIN"] == "1.2"
     assert env["MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE"] == "true"
@@ -172,16 +173,15 @@ def test_build_env_passes_through_quantized_native_compute_and_log_level():
 
 
 def test_gemv_backend_rejects_unknown_values():
-    """Only matricxon's own two Settings.gemv_backend values - rejected at Save time, same reasoning as
-    memory_safety_margin above."""
+    """Only matricxon's two Settings.gemv_backend values; rejected at Save like memory_safety_margin."""
     with pytest.raises(ValidationError):
         MatricxonServerConfig(gemv_backend="cuda")
 
 
 @pytest.mark.parametrize("value", [-1, 3])
 def test_log_level_rejects_values_outside_the_matricxon_supported_range(value):
-    """0-2 mirrors matricxon's own Settings.log_level bound (../matricxon/app/config.py) — same
-    "reject at Save time" reasoning as memory_safety_margin above."""
+    """0-2 mirrors matricxon's Settings.log_level bound (../matricxon/app/config.py); rejected at Save like
+    memory_safety_margin."""
     with pytest.raises(ValidationError):
         MatricxonServerConfig(log_level=value)
 
@@ -417,7 +417,7 @@ def test_write_env_file_omits_unset_optional_fields(tmp_path):
     assert "MATRICXON_MODELS_DIR" not in env_text
     assert "MATRICXON_MAX_LOADED_MODELS" not in env_text
     assert "MATRICXON_TORCH_THREADS" not in env_text
-    # Never Optional (see MatricxonServerConfig) — always written, with the fresh-install defaults.
+    # Never Optional (MatricxonServerConfig): always written, with the fresh-install defaults.
     assert "MATRICXON_MEMORY_SAFETY_MARGIN=1.2" in env_text
     assert "MATRICXON_ENABLE_QUANTIZED_NATIVE_COMPUTE=true" in env_text
     assert "MATRICXON_GEMV_BACKEND=native" in env_text
@@ -425,9 +425,9 @@ def test_write_env_file_omits_unset_optional_fields(tmp_path):
 
 
 def test_write_env_file_removes_a_previously_set_field_once_cleared(tmp_path):
-    """Confirmed important: clearing models_path back to "use Matricxon's own default" must remove the
-    line entirely, not write MATRICXON_MODELS_DIR= (empty) — an empty override is still an override,
-    and would keep pointing Matricxon at an empty path instead of falling back to its own default."""
+    """Clearing models_path back to "Matricxon's default" must remove the line, not write MATRICXON_MODELS_DIR=
+    (empty): an empty override still overrides and would point Matricxon at an empty path.
+    """
     checkout = _make_checkout(tmp_path)
     matricxon_process.write_env_file(_config(project_dir=str(checkout), models_path="/custom/path"))
     assert "MATRICXON_MODELS_DIR=/custom/path" in (checkout / ".env").read_text()
@@ -438,9 +438,9 @@ def test_write_env_file_removes_a_previously_set_field_once_cleared(tmp_path):
 
 
 def test_write_env_file_preserves_unrelated_lines(tmp_path):
-    """An admin-set env var this app's own config form doesn't expose (e.g. MATRICXON_DEVICE — see
-    MatricxonServerConfig's own docstring on why keep_alive_seconds/device were dropped from the form
-    but still work if set directly) must survive a save untouched."""
+    """An admin-set env var the form doesn't expose (e.g. MATRICXON_DEVICE; see MatricxonServerConfig on why
+    keep_alive_seconds/device left the form but still work if set directly) must survive a save.
+    """
     checkout = _make_checkout(tmp_path)
     (checkout / ".env").write_text("MATRICXON_DEVICE=cpu\n")
 
@@ -453,7 +453,7 @@ def test_write_env_file_preserves_unrelated_lines(tmp_path):
 
 def test_write_env_file_is_a_noop_when_the_project_dir_cannot_be_resolved(tmp_path, monkeypatch):
     monkeypatch.setattr(matricxon_process, "_DEFAULT_PROJECT_DIR", tmp_path / "nowhere")
-    matricxon_process.write_env_file(_config())  # must not raise
+    matricxon_process.write_env_file(_config())
 
 
 @pytest.mark.parametrize("value", [0, 1441])

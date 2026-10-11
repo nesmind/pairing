@@ -1,21 +1,13 @@
-"""Aggregation queries behind GET /api/telemetry/{ollama,matricxon}/summary — the Telemetry page's per-engine
-dashboard (see app/routers/telemetry.py and app/static/js/telemetry.js), one engine's rows at a time: every
-query here filters on TelemetryEvent.engine rather than grouping by it, since the dashboard itself only ever
-shows one engine's data at once (see telemetry.js's own docstring on why — the admin picks which). Request
-counts grouped by host/model are plain SQL group_by() (small cardinality, matches
-app/services/stats_service.py's own convention).
+"""Aggregation queries behind GET /api/telemetry/{ollama,matricxon}/summary, the per-engine Telemetry dashboard
+(routers/telemetry.py, telemetry.js). One engine's rows at a time: queries filter on TelemetryEvent.engine
+rather than group by it (the admin picks which, see telemetry.js). Counts by host/model use plain SQL group_by
+(small cardinality; as stats_service.py).
 
-Latency-over-time buckets and the p95 figure are deliberately NOT SQL:
-SQLite's strftime() has no MySQL equivalent (that's DATE_FORMAT, a
-different function), and plain MySQL 8 has no portable percentile
-function either. Instead, one bounded range query (_LOOKBACK_WINDOW +
-_MAX_EVENTS_FETCHED as a hard safety cap — never an unbounded scan, and
-telemetry_events' own 30-day retention already keeps the table itself
-small) fetches the raw rows once, and both the hourly buckets and the
-p95 are computed from that single result set in Python. This is a
-narrow, deliberate exception to "always aggregate in SQL" — justified
-specifically because the fetch is bounded, not because Python happens to
-be easier here.
+Latency-over-time buckets and p95 are deliberately NOT SQL: SQLite's strftime has no MySQL equivalent
+(DATE_FORMAT) and MySQL 8 has no portable percentile. One bounded range query (_LOOKBACK_WINDOW with
+_MAX_EVENTS_FETCHED as a hard cap; telemetry_events' 30-day retention also keeps the table small) fetches the
+rows once, and the hourly buckets and p95 are computed in Python from that set. A narrow exception to
+"aggregate in SQL", justified because the fetch is bounded.
 """
 
 import statistics
@@ -52,9 +44,9 @@ async def _counts_by_model(db: AsyncSession, engine: str) -> list[CountByKey]:
 
 
 async def _stats_by_host(db: AsyncSession, engine: str) -> list[HostStats]:
-    """Two small group_by queries (row count = one per configured host,
-    always tiny) rather than one query with a conditional-sum for the
-    error count — plain group_by(host) is portable and reads clearly."""
+    """Two small group_by queries (one row per host, always tiny) instead of one conditional-sum for the error
+    count: plain group_by(host) is portable and reads clearly.
+    """
     totals = dict(
         (
             await db.execute(
@@ -106,9 +98,8 @@ def _latency_by_model(events: list[TelemetryEvent]) -> list[ModelLatencyStats]:
             by_model.setdefault(event.model, []).append(event.duration_ms)
     stats = []
     for model, durations in by_model.items():
-        # method="inclusive" (rather than statistics' default "exclusive") keeps p95 within the observed
-        # min/max — the default can extrapolate past the actual max with a handful of samples, which reads as
-        # obviously wrong on a dashboard ("p95 higher than every request we've seen").
+        # method="inclusive" (not statistics' default "exclusive") keeps p95 within the observed min/max; the default
+        # can extrapolate past the max with few samples ("p95 higher than every request seen").
         p95 = statistics.quantiles(durations, n=100, method="inclusive")[94] if len(durations) >= 2 else durations[0]
         stats.append(
             ModelLatencyStats(
@@ -133,9 +124,9 @@ def _latency_time_series(events: list[TelemetryEvent]) -> list[LatencyTimeBucket
 
 
 async def get_engine_telemetry_summary(db: AsyncSession, engine: str) -> OllamaTelemetrySummary:
-    """The one entry point app/routers/telemetry.py calls — `engine` is "ollama" or "matricxon" (see
-    app.services.engine_service.EngineName), never "whichever is active right now": the Telemetry page lets an
-    admin look at either engine's history regardless of which one is actually serving live traffic."""
+    """The one entry point routers/telemetry.py calls. `engine` is "ollama" or "matricxon" (engine_service.EngineName),
+    never "whichever is active": the Telemetry page shows either engine's history regardless of what serves traffic.
+    """
     total = (
         await db.execute(select(func.count(TelemetryEvent.id)).where(TelemetryEvent.engine == engine))
     ).scalar_one()

@@ -1,7 +1,6 @@
-"""Unit tests for app/services/matricxon_support_checker.py. verdict_for is a pure method (no I/O) — covered
-directly against a manually-constructed checker; load() is covered separately with matricxon_client/
-engine_service monkeypatched, mirroring the "module-split import-binding gotcha" pattern this codebase already
-tracks (patched on this module's own imported binding, not matricxon_client's origin)."""
+"""Tests for services/matricxon_support_checker.py. verdict_for is pure, covered on a hand-built checker; load
+separately with matricxon_client/engine_service patched on this module's binding (module-split gotcha).
+"""
 
 import pytest
 
@@ -18,7 +17,7 @@ async def _async_return(value):
     return value
 
 
-# ---- verdict_for (pure) -----------------------------------------------------------------------------------
+# verdict_for (pure)
 
 
 def test_verdict_for_true_when_architecture_and_every_quantization_are_supported():
@@ -56,8 +55,7 @@ def test_verdict_for_false_when_matricxon_was_unreachable():
 
 
 def test_verdict_for_always_rejects_a_projector_regardless_of_architecture():
-    """is_projector wins even with a real, supported architecture — a vision-projector sidecar was never a
-    standalone chat model to begin with."""
+    """is_projector wins even with a supported architecture: a projector sidecar was never a standalone chat model."""
     checker = MatricxonSupportChecker(_CAPS, None)
     verdict = checker.verdict_for("mistral3", ["Q4_K"], is_projector=True)
     assert verdict.supported is False
@@ -65,8 +63,8 @@ def test_verdict_for_always_rejects_a_projector_regardless_of_architecture():
 
 
 def test_verdict_for_gives_an_honest_reason_when_architecture_is_unknown():
-    """A None architecture (an admin-added entry whose real GGUF header couldn't be probed) gets its own
-    reason rather than the misleading 'doesn't implement architecture None'."""
+    """A None architecture (an admin-added entry whose GGUF header couldn't be probed) gets its own reason, not the
+    misleading 'doesn't implement architecture None'."""
     checker = MatricxonSupportChecker(_CAPS, None)
     verdict = checker.verdict_for(None, None)
     assert verdict.supported is False
@@ -74,12 +72,10 @@ def test_verdict_for_gives_an_honest_reason_when_architecture_is_unknown():
 
 
 def test_verdict_for_ignores_vision_pairing_entirely():
-    """matricxon_supported is deliberately just the architecture+quantization check, regardless of whether the
-    entry is a vision model and regardless of whether its vision (mmproj) half happens to be paired — confirmed
-    live (2026-09-21) that gating this on vision-pairing too made an installed, demonstrably-working chat model
-    (moondream2, text half confirmed running) show a plain "Not supported" badge, wrongly implying the whole
-    model doesn't work. Same verdict whether or not Matricxon's own installed-capabilities happen to include
-    "vision" for this tag."""
+    """matricxon_supported is just the architecture+quantization check, whether or not the entry is a vision model or
+    its mmproj is paired. Gating on pairing made an installed, working chat model (moondream2) show "Not supported".
+    Same verdict whether or not Matricxon's installed capabilities include "vision" for this tag.
+    """
     checker = MatricxonSupportChecker(_CAPS, {"some-tag": {"capabilities": ["completion"]}})
     assert checker.verdict_for("mistral3", ["Q4_K"]) == SupportVerdict(True)
 
@@ -87,7 +83,7 @@ def test_verdict_for_ignores_vision_pairing_entirely():
     assert checker.verdict_for("mistral3", ["Q4_K"]) == SupportVerdict(True)
 
 
-# ---- estimated_ram_gb --------------------------------------------------------------------------------------
+# estimated_ram_gb
 
 
 def test_estimated_ram_gb_reads_the_installed_info():
@@ -100,7 +96,7 @@ def test_estimated_ram_gb_none_for_an_uninstalled_tag():
     assert checker.estimated_ram_gb("some-tag") is None
 
 
-# ---- load ---------------------------------------------------------------------------------------------------
+# load
 
 
 @pytest.fixture(autouse=True)
@@ -111,9 +107,9 @@ def _reset_engine_cache():
 
 
 def test_unloaded_gives_an_honest_could_not_reach_verdict():
-    """The "not active" instance a caller uses instead of calling load() at all when this engine isn't the
-    active one (see app.services.engine_support_checker.EngineSupportSet.load, which now owns the "only the
-    active engine's checker does real I/O" rule this class used to enforce on itself inside load())."""
+    """The "not active" instance a caller uses instead of load when the engine isn't active
+    (EngineSupportSet.load now owns the "only the active engine does real I/O" rule this class enforced in load).
+    """
     checker = MatricxonSupportChecker.unloaded()
 
     assert checker.verdict_for("mistral3", ["Q4_K"]).supported is False
@@ -154,12 +150,11 @@ async def test_load_degrades_cleanly_when_matricxon_is_unreachable(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_load_skips_its_own_list_models_call_when_given_an_already_fetched_list(monkeypatch):
-    """Real bug found live, 2026-09-22: every catalog builder (ChatModelCatalogBuilder,
-    EmbeddingModelCatalogService, ExtendedModelCatalog.build) already fetches list_models() for its own
-    separate reasons before ever reaching here — load() used to always fetch it *again* on top of that, doubling
-    Matricxon's own /api/tags traffic on every single catalog page load for no reason (and, since that endpoint
-    can be slow to answer while Matricxon is mid-generation, doubling the chance of the whole page load timing
-    out). Passing the caller's own list must skip the redundant fetch entirely."""
+    """Bug found: every catalog builder (ChatModelCatalogBuilder, EmbeddingModelCatalogService,
+    ExtendedModelCatalog.build) already fetches list_models, and load fetched it *again*, doubling /api/tags on
+    every catalog page load (and, since it can be slow mid-generation, the chance of the page timing out). Passing the
+    caller's list must skip it.
+    """
     engine_service._cached_engine = "matricxon"
     monkeypatch.setattr(matricxon_client, "get_capabilities", lambda: _async_return(_CAPS))
 

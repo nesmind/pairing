@@ -1,11 +1,7 @@
-"""Unit tests for app/services/ollama_process.py — the local Ollama
-process supervisor behind Settings > External servers. The actual real
-stop/start of a real Ollama process isn't exercised here — see this
-project's live end-to-end verification instead (real process, real
-curl), same as every other feature this session that manages an OS
-process (app/services/instance_process.py/comfyui_process.py's own
-tests take the same approach). subprocess/pgrep/pkill and httpx are all
-monkeypatched."""
+"""Tests for services/ollama_process.py, the local Ollama supervisor behind Settings > External servers. A real
+stop/start isn't exercised here (verified live with a real process and curl, like instance_process.py and
+comfyui_process.py's tests); subprocess/pgrep/pkill and httpx are patched.
+"""
 
 import subprocess
 
@@ -71,9 +67,8 @@ def test_find_binary_falls_back_to_auto_detect_when_no_override_given(monkeypatc
 
 
 def test_build_env_omits_unset_fields(monkeypatch):
-    # The real ambient environment (this shell's own) may already carry
-    # some of these — cleared so the assertion reflects _build_env's own
-    # behavior, not whatever happens to be set outside this test.
+    # The ambient environment (this shell's) may already set some of these; cleared so the assertion reflects
+    # _build_env, not outside state.
     for key in ("OLLAMA_NUM_PARALLEL", "OLLAMA_KEEP_ALIVE", "OLLAMA_MAX_LOADED_MODELS", "OLLAMA_CONTEXT_LENGTH"):
         monkeypatch.delenv(key, raising=False)
     env = ollama_process._build_env(_config())
@@ -81,7 +76,7 @@ def test_build_env_omits_unset_fields(monkeypatch):
     assert "OLLAMA_KEEP_ALIVE" not in env
     assert "OLLAMA_MAX_LOADED_MODELS" not in env
     assert "OLLAMA_CONTEXT_LENGTH" not in env
-    assert "OLLAMA_MODELS" in env  # always set
+    assert "OLLAMA_MODELS" in env
     assert env["OLLAMA_MODELS"] == ollama_process.auto_detect_models_path()
 
 
@@ -266,13 +261,9 @@ def test_process_name_derives_from_a_given_binary_paths_own_filename():
 
 
 def test_process_name_truncates_to_15_bytes_to_match_the_kernels_comm_field():
-    # A real, confirmed-live gap: a custom binary_path not literally named
-    # "ollama" made Start genuinely work while every is_running/stop check
-    # kept reporting it as not running — pgrep/pkill -x need an exact
-    # match against the kernel's own comm, which is always truncated to
-    # exactly 15 bytes (TASK_COMM_LEN), same as this codebase's own
-    # sibling-instance naming already accounts for (see
-    # instance_process.py).
+    # A confirmed-live gap: a custom binary_path not named "ollama" let Start work while every is_running/stop check
+    # said not running: pgrep/pkill -x need an exact match against the kernel's comm, truncated to 15 bytes
+    # (TASK_COMM_LEN), as sibling-instance naming handles (instance_process.py).
     name = ollama_process._process_name("/opt/custom/ollama-a-genuinely-long-custom-filename")
     assert name == "ollama-a-genuin"
     assert len(name) == 15
@@ -300,15 +291,14 @@ def test_stop_targets_the_derived_process_name(monkeypatch):
         calls.append(argv)
 
         class _Result:
-            # Running for the first pgrep check (so _stop actually
-            # proceeds to pkill), not running for every check after.
+            # Running for the first pgrep check (so _stop proceeds to pkill), not running for every later check.
             returncode = 0 if argv[0] == "pgrep" and len(calls) == 1 else 1
 
         return _Result()
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     ollama_process._stop("/opt/custom/my-ollama")
-    assert calls[0] == ["pgrep", "-x", "my-ollama"]  # the initial _is_running check
+    assert calls[0] == ["pgrep", "-x", "my-ollama"]
     assert calls[1] == ["pkill", "-x", "my-ollama"]
 
 

@@ -2,7 +2,7 @@
 
 Revision ID: 9c2e5b7a1f34
 Revises: 5586124f9a41
-Create Date: 2026-09-14 12:00:00.000000
+Create Date: 12:00:00.000000
 
 """
 
@@ -10,7 +10,6 @@ import sqlalchemy as sa
 
 from alembic import op
 
-# revision identifiers, used by Alembic.
 revision = "9c2e5b7a1f34"
 down_revision = "5586124f9a41"
 branch_labels = None
@@ -36,10 +35,7 @@ def upgrade() -> None:
         sa.Column("eval_count", sa.Integer(), nullable=True),
         sa.Column("attempt_count", sa.Integer(), nullable=False),
     )
-    # Every dashboard query for this table is a bounded started_at range
-    # scan (see app/services/telemetry_service.py) — only cheap with an
-    # index, unlike the plain-PK-only image_generation_jobs table this
-    # migration's style is otherwise copied from.
+    # Dashboard queries are bounded started_at range scans (telemetry_service.py): need the index.
     op.create_index("ix_telemetry_events_started_at", "telemetry_events", ["started_at"])
 
     op.create_table(

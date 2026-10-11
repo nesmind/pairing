@@ -1,6 +1,7 @@
-"""Thin async client for stable-diffusion.cpp's `sd-server`: generation through its native async job API
-(/sdcpp/v1/img_gen + /jobs/{id}, which — unlike the blocking A1111 txt2img — can be cancelled mid-run), and the
-model list through the A1111-compatible /sdapi/v1/sd-models."""
+"""Thin async client for stable-diffusion.cpp's `sd-server`: generation via its native async job API
+(/sdcpp/v1/img_gen + /jobs/{id}, cancellable mid-run unlike the blocking A1111 txt2img) and the model list via
+the A1111-compatible /sdapi/v1/sd-models.
+"""
 
 import base64
 
@@ -13,14 +14,14 @@ _LIST_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 
 
 class SdCppError(Exception):
-    """sd-server unreachable or returned an error — becomes a job's error_message / a clean HTTP error."""
+    """sd-server unreachable or errored; becomes a job's error_message / a clean HTTP error."""
 
 
 async def submit_job(params: dict) -> tuple[str, str]:
-    """Submits one txt2img job via the native async API (/sdcpp/v1/img_gen), pool-routed with failover (safe: nothing
-    exists yet). Returns (host, job_id) — a job only exists on the host that accepted it, so every later call about
-    it (get_job, cancel) must use that exact host. The checkpoint isn't sent: sd-server serves exactly the model it
-    was launched with."""
+    """Submits one txt2img job via /sdcpp/v1/img_gen, pool-routed with failover (safe: nothing exists yet). Returns
+    (host, job_id); a job exists only on its accepting host, so later calls (get_job, cancel) must use it. No
+    checkpoint is sent: sd-server serves the model it launched with.
+    """
     payload = {
         "prompt": params["prompt"],
         "negative_prompt": params.get("negative_prompt") or "",
@@ -47,7 +48,7 @@ async def submit_job(params: dict) -> tuple[str, str]:
 
 
 async def get_job(host: str, job_id: str) -> dict:
-    """The job's current state ({"status": queued|generating|completed|failed|cancelled, ...}) on `host`."""
+    """The job's state ({"status": queued|generating|completed|failed|cancelled,...}) on `host`."""
     async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
         try:
             resp = await client.get(f"{host}/sdcpp/v1/jobs/{job_id}")

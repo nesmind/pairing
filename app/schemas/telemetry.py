@@ -1,7 +1,4 @@
-"""Response shapes for GET /api/telemetry/ollama/summary — the
-Telemetry page's ML engine dashboard (see app/services/telemetry_service.py
-for the aggregation queries and app/static/js/telemetry.js for how
-these render)."""
+"""Shapes for GET /api/telemetry/ollama/summary, the Telemetry dashboard (telemetry_service.py, telemetry.js)."""
 
 from datetime import datetime
 
@@ -24,8 +21,7 @@ class ModelLatencyStats(BaseModel):
 
 
 class LatencyTimeBucket(BaseModel):
-    """One hour-wide bucket — bucket_start is an ISO-ish "YYYY-MM-DDTHH:00:00" string, computed in Python
-    (see telemetry_service's own docstring on why this isn't a SQL group_by)."""
+    """One hour-wide bucket; bucket_start is "YYYY-MM-DDTHH:00:00", computed in Python (see telemetry_service)."""
 
     bucket_start: str
     avg_duration_ms: float

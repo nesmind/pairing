@@ -1,9 +1,6 @@
-"""Unit tests for app/services/reply_termination_service.py's
-_persist_cancelled_reply, in isolation from the full detached-generation
-machinery tests/test_reply_generation_service.py already covers end to
-end. Uses that same module's own lightweight in-memory session_factory
-pattern rather than the shared `db` fixture, since AsyncSessionLocal is
-monkeypatched directly.
+"""Tests for reply_termination_service's _persist_cancelled_reply, apart from the full detached-generation
+machinery (tests/test_reply_generation_service.py covers it end to end). Uses that module's in-memory
+session_factory pattern, not the shared `db` fixture, since AsyncSessionLocal is patched directly.
 """
 
 import pytest
@@ -34,12 +31,10 @@ async def _make_streaming_message(session_factory) -> tuple[str, str]:
 
 @pytest.mark.asyncio
 async def test_persist_cancelled_reply_stops_the_model_when_the_message_row_is_gone(monkeypatch):
-    """The bug this guards: deleting a whole conversation mid-reply
-    cascade-deletes its Message row before this ever runs, so the
-    message-lookup below returns None. That must NOT skip the stop_model
-    call — Matricxon/Ollama needs the stop signal regardless of whether
-    there's still a row left to write the cancelled text into (see
-    conversation_service.delete_conversation, which relies on this)."""
+    """Guards the bug where deleting a whole conversation mid-reply cascade-deletes its Message row first, so the
+    message lookup returns None. That must NOT skip stop_model: the engine needs the stop signal even with no row
+    to write the cancelled text into (conversation_service.delete_conversation relies on it).
+    """
     engine, session_factory = await _build_session_factory()
     monkeypatch.setattr(reply_termination_service, "AsyncSessionLocal", session_factory)
     stopped_models = []
@@ -59,8 +54,7 @@ async def test_persist_cancelled_reply_stops_the_model_when_the_message_row_is_g
 
 @pytest.mark.asyncio
 async def test_persist_cancelled_reply_writes_the_message_and_stops_the_model(monkeypatch):
-    """The normal case: the row still exists, so both the error write and
-    the stop_model call must happen."""
+    """The normal case: the row exists, so both the error write and the stop_model call happen."""
     engine, session_factory = await _build_session_factory()
     monkeypatch.setattr(reply_termination_service, "AsyncSessionLocal", session_factory)
     conversation_id, message_id = await _make_streaming_message(session_factory)

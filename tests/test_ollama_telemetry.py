@@ -1,8 +1,7 @@
-"""Unit tests for app/services/ollama_telemetry.py — mainly the
-"never touch the global OTel registry" guarantee (see that module's own
-docstring for why: a test that called opentelemetry.trace.set_tracer_provider
-would leak into every other test in the same pytest process, since
-that's process-global, effectively set-once state)."""
+"""Tests for services/ollama_telemetry.py, mainly the "never touch the global OTel registry" guarantee (see the
+module: opentelemetry.trace.set_tracer_provider is process-global, effectively set-once state, so a test calling
+it would leak into every other test in the pytest process).
+"""
 
 import asyncio
 

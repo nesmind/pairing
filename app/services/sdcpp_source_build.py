@@ -1,11 +1,12 @@
-"""Builds stable-diffusion.cpp from source — the "Build from source" choice of Settings > Image's Install (Linux).
-Clones the repo's default branch (or the admin's install_version tag/branch) into <install>/src, compiles
-`sd-server` with CMake for this machine's own CPU in <install>/build, and swaps it into the install folder. Needs git,
-cmake and a C++ compiler on the PATH (never installed by pAIring).
+"""Builds stable-diffusion.cpp from source: the "Build from source" choice of Settings > Image's Install (Linux).
+Clones the default branch (or the admin's install_version tag/branch) into <install>/src, compiles `sd-server`
+with CMake for this CPU in <install>/build and swaps it into the install folder. Needs git, cmake and a C++
+compiler on PATH (never installed by pAIring).
 
-The source and the build tree are kept, so the code can be read or patched and the next build only recompiles what
-changed (an update fetches into the same clone, and refuses if tracked files were edited). The "models" folder,
-src/ and build/ are never touched by an install swap."""
+Source and build tree are kept, so code can be read or patched and the next build recompiles only changes
+(an update fetches into the same clone and refuses if tracked files were edited). models/, src/ and build/
+are never touched by the install swap.
+"""
 
 import asyncio
 import logging
@@ -21,7 +22,7 @@ from app.config import SDCPP_GITHUB_REPO
 logger = logging.getLogger("llama_chat")
 
 _TOTAL_STEPS = 4
-_KEEP = {"models", "src", "src.partial", "build"}  # what an install swap leaves alone
+_KEEP = {"models", "src", "src.partial", "build"}
 _PERCENT_RE = re.compile(r"^\[\s*(\d+)%\]\s*(.*)")
 _TAIL_LINES = 15
 _building = False  # one build at a time: a second would fight the first over src/ and build/
@@ -32,7 +33,7 @@ class BuildError(RuntimeError):
 
 
 def missing_tools() -> list[str]:
-    """Names of the build tools that aren't on the PATH."""
+    """Names of build tools not on PATH."""
     missing = [tool for tool in ("git", "cmake") if shutil.which(tool) is None]
     if shutil.which("c++") is None and shutil.which("g++") is None:
         missing.append("a C++ compiler (g++)")
@@ -40,7 +41,7 @@ def missing_tools() -> list[str]:
 
 
 def _jobs() -> int:
-    """Half the cores: a full build is long, and a laptop CPU should stay cool enough to keep working."""
+    """Half the cores: a full build is long and a laptop CPU should stay cool enough to work."""
     return max(1, (os.cpu_count() or 2) // 2)
 
 
@@ -52,8 +53,9 @@ def _env(proxy_url: str | None) -> dict[str, str]:
 
 
 async def _stream_command(argv: list[str], cwd: Path | None, env: dict[str, str]) -> AsyncIterator[str]:
-    """Yields each output line (stderr merged in) of a low-priority subprocess; BuildError on a non-zero exit. The
-    process is killed if the consumer goes away (the admin closed the page)."""
+    """Yields each output line (stderr merged) of a low-priority subprocess; BuildError on non-zero exit. The
+    process is killed if the consumer goes away (the admin closed the page).
+    """
     if shutil.which("nice"):
         argv = ["nice", "-n", "10", *argv]
     proc = await asyncio.create_subprocess_exec(
@@ -87,8 +89,9 @@ async def _output(argv: list[str], cwd: Path | None, env: dict[str, str]) -> str
 
 
 async def _prepare_source(repo: str, ref: str | None, src: Path, env: dict[str, str]) -> None:
-    """Makes `src` hold the wanted revision: an update of the kept clone, or a fresh one (cloned beside it and renamed
-    into place, so an interrupted clone never leaves a half repo behind)."""
+    """Makes `src` hold the wanted revision: an update of the kept clone, or a fresh clone (cloned beside it and
+    renamed in, so an interrupted clone never leaves a half repo).
+    """
     if (src / ".git").is_dir():
         if (await _output(["git", "status", "--porcelain", "--untracked-files=no"], src, env)).strip():
             raise BuildError(f"{src} has local changes - commit or discard them, or delete the folder to re-clone it.")
@@ -98,7 +101,7 @@ async def _prepare_source(repo: str, ref: str | None, src: Path, env: dict[str, 
         return
     partial = src.with_name("src.partial")
     shutil.rmtree(partial, ignore_errors=True)
-    shutil.rmtree(src, ignore_errors=True)  # a leftover that is not a repo
+    shutil.rmtree(src, ignore_errors=True)
     clone = ["git", "clone", "--depth", "1", "--recurse-submodules", "--shallow-submodules"]
     await _run([*clone, *(["--branch", ref] if ref else []), f"https://github.com/{repo}", str(partial)], None, env)
     partial.rename(src)
@@ -121,7 +124,7 @@ def _swap_in(built: Path, target_dir: Path) -> None:
 async def build_stream(
     repo: str | None, ref: str | None, proxy_url: str | None, target_dir: Path
 ) -> AsyncIterator[dict]:
-    """Same event shape as the other installers: progress events, then {"done": True, ...} or {"error": ...}."""
+    """Same event shape as the other installers: progress events, then {"done": True,...} or {"error":...}."""
     repo = repo or SDCPP_GITHUB_REPO
     if missing := missing_tools():
         yield {

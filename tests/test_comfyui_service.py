@@ -1,7 +1,6 @@
-"""Unit tests for app/services/comfyui_service.py — async orchestration
-+ locking around app/services/comfyui_process.py's primitives, all
-monkeypatched (same convention as tests/test_instance_service.py for the
-equivalent "local instances" feature)."""
+"""Tests for services/comfyui_service.py (async orchestration and locking around comfyui_process.py's
+primitives), all monkeypatched like tests/test_instance_service.py.
+"""
 
 import pytest
 

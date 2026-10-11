@@ -1,21 +1,19 @@
-/**
- * "Share to a channel" for private-chat messages, and the matching "Shared from a private chat" remark on
- * the channel side (loaded before chat.js, which calls ChannelShare.decorate / ChannelShare.remark — see
- * addMessageBubble and streamAssistantReply there). The server does the actual work and all the checks
- * (app/services/message_share_service.py); this only offers the button, lets the user pick one of their
- * channels, and shows the result. The shared copy is plain text posted as the sharer's own message: no AI
- * reply is triggered, and nothing links back to the private chat.
- *
- * Reads chat.js's globals (activeConversationId, channelsByConversationId, api) at call time only.
+/*
+ * "Share to a channel" for private-chat messages, plus the "Shared from a private chat" remark on the channel side
+ * (loaded before chat.js, which calls ChannelShare.decorate / ChannelShare.remark in addMessageBubble and
+ * streamAssistantReply). The server does the work and all checks (app/services/message_share_service.py); this offers
+ * the button, lets the user pick a channel and shows the result. The shared copy is plain text posted as the sharer's
+ * own message: no AI reply, no link back to the private chat.
+ * 
+ * Reads chat.js globals (activeConversationId, channelsByConversationId, api) at call time only.
  */
 class ChannelShare {
   static #menu = null;
 
-  /** Adds a small share button beside a finished message's timestamp — private chats only, and only if the
-   * user belongs to at least one channel. Safe to call twice for the same bubble. */
+  /* Adds a share button beside a finished message's timestamp: private chats only, and only if the user is in a channel. Safe to call twice per bubble. */
   static decorate(wrapper, messageId, role) {
     if (!wrapper || !messageId || !["user", "assistant"].includes(role)) return;
-    if (channelsByConversationId[activeConversationId]) return; // already inside a channel
+    if (channelsByConversationId[activeConversationId]) return;
     if (Object.keys(channelsByConversationId).length === 0) return;
     const time = wrapper.querySelector(".message-time");
     if (!time || wrapper.querySelector(".share-message-btn")) return;
@@ -43,16 +41,12 @@ class ChannelShare {
     footer.appendChild(btn);
   }
 
-  /** The side/style a bubble is drawn with: an AI answer someone shared into a channel is still stored as
-   * the sharer's own "user" message (so it never triggers a reply), but it reads as an AI reply - on the
-   * left, in the AI colours - with the sharer's name and the remark above it. Everything else keeps its role. */
+  /* The side/style a bubble is drawn with: an AI answer shared into a channel is stored as the sharer's "user" message (so it triggers no reply) but drawn as an AI reply (left, AI colours) with the sharer's name and the remark above it. Other messages keep their role. */
   static visualRole(role, sharedFrom) {
     return sharedFrom === "assistant" ? "assistant" : role;
   }
 
-  /** Adds the small "Shared by <name> from a private chat" line above a channel bubble whose message was
-   * shared (`sharedFrom` is the original's role: "user" or "assistant"; falsy for every normal message;
-   * `sharerName` is the sender's display name, when known). */
+  /* Adds the "Shared by <name> from a private chat" line above a shared channel bubble (`sharedFrom` is the original's role, "user" or "assistant", falsy for normal messages; `sharerName` is the sender's display name when known). */
   static remark(wrapper, sharedFrom, sharerName) {
     if (!wrapper || !sharedFrom || wrapper.querySelector(".shared-remark")) return;
     const note = document.createElement("div");
@@ -80,8 +74,8 @@ class ChannelShare {
     const menu = document.createElement("div");
     menu.dataset.messageId = messageId;
     menu.className = "min-w-[10rem] max-w-xs rounded-lg border border-slate-700 bg-slate-900 py-1 text-sm shadow-lg";
-    // Inline styles, not utility classes: the menu is created on the fly and must be positioned from its very
-    // first paint (a late-generated class left it as a plain flex item at the far right of the page).
+    // Inline styles, not classes: the menu is created on the fly and must be positioned from its first paint (a late
+    // class left it as a flex item at the far right).
     menu.style.position = "fixed";
     menu.style.zIndex = "50";
     menu.style.visibility = "hidden";
@@ -102,7 +96,7 @@ class ChannelShare {
       menu.appendChild(item);
     }
     document.body.appendChild(menu);
-    // Viewport coordinates, clamped so the menu is fully visible whichever side the message sits on.
+    // Viewport coordinates, clamped so the menu is fully visible on either side.
     const rect = button.getBoundingClientRect();
     const margin = 8;
     const left = Math.min(Math.max(margin, rect.left), window.innerWidth - menu.offsetWidth - margin);
@@ -133,7 +127,7 @@ class ChannelShare {
 }
 
 document.addEventListener("click", () => ChannelShare.closeMenuFromOutside());
-// A fixed menu would stay put while the chat scrolls away under it.
+// A fixed menu would stay put while the chat scrolls under it.
 document.addEventListener("scroll", () => ChannelShare.closeMenuFromOutside(), true);
 window.addEventListener("resize", () => ChannelShare.closeMenuFromOutside());
 document.addEventListener("keydown", (event) => {

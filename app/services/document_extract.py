@@ -1,8 +1,5 @@
-"""
-Turns a knowledge-base file's raw bytes into plain text, then into
-overlapping chunks ready to embed. Pure text processing — no database,
-no ML engine — see app/services/document_ingest.py for what happens to a
-chunk once it exists.
+"""Turns a knowledge-base file's bytes into plain text, then overlapping chunks to embed. Pure text
+processing, no DB or engine (the next step: document_ingest.py).
 """
 
 import csv
@@ -21,10 +18,8 @@ from striprtf.striprtf import rtf_to_text
 
 from app.config import RAG_CHUNK_OVERLAP, RAG_CHUNK_SIZE
 
-# File types the knowledge-folder scanner knows how to turn into plain
-# text. Anything else sitting in a knowledge folder is silently ignored
-# rather than erroring, since these are plain filesystem folders an
-# admin might also use for their own notes (e.g. a README).
+# File types the folder scanner can read. Anything else is ignored, not an error: these are plain folders
+# an admin may also use for other files (e.g. a README).
 SUPPORTED_EXTENSIONS = {
     ".txt",
     ".md",
@@ -40,15 +35,13 @@ SUPPORTED_EXTENSIONS = {
 
 
 class _HTMLTextExtractor(HTMLParser):
-    """Minimal HTML-to-text conversion using only the standard library —
-    strips tags/scripts/styles and keeps the visible text, which is all
-    RAG chunking needs (formatting doesn't matter once text is embedded).
-    """
+    """Minimal stdlib HTML-to-text: strips tags/scripts/styles, keeps visible text (formatting is irrelevant once
+    embedded)."""
 
     def __init__(self):
         super().__init__()
         self._chunks = []
-        self._skip_depth = 0  # inside <script> or <style>
+        self._skip_depth = 0
 
     def handle_starttag(self, tag, attrs):
         if tag in ("script", "style"):
@@ -67,9 +60,8 @@ class _HTMLTextExtractor(HTMLParser):
 
 
 def extract_text(raw: bytes, suffix: str) -> str:
-    """Turns a knowledge-folder file's raw bytes into plain text to chunk
-    and embed. Each format needs its own parsing since none of these
-    (besides .txt/.md) are plain UTF-8 text under the hood."""
+    """Turns a file's bytes into plain text to chunk and embed; each format needs its own parsing (only.txt/.md are
+    plain UTF-8)."""
     if suffix == ".pdf":
         reader = PdfReader(BytesIO(raw))
         return "\n\n".join(page.extract_text() or "" for page in reader.pages)
@@ -93,8 +85,7 @@ def extract_text(raw: bytes, suffix: str) -> str:
 
     if suffix == ".csv":
         text = raw.decode("utf-8", errors="ignore")
-        # Rendered as space-joined rows rather than raw comma-separated
-        # values, so cell contents read naturally once embedded/chunked.
+        # Space-joined rows rather than raw CSV, so cells read naturally once chunked.
         return "\n".join(" ".join(row) for row in csv.reader(StringIO(text)))
 
     if suffix == ".json":
@@ -105,19 +96,13 @@ def extract_text(raw: bytes, suffix: str) -> str:
 
 
 def hash_bytes(raw: bytes) -> str:
-    """Content fingerprint used to detect whether a knowledge-folder file
-    has changed since it was last ingested, so an unchanged file can be
-    skipped instead of being re-embedded on every sync."""
+    """Content fingerprint to skip unchanged files instead of re-embedding on every sync."""
     return hashlib.sha256(raw).hexdigest()
 
 
 def chunk_text(text: str, size: int = RAG_CHUNK_SIZE, overlap: int = RAG_CHUNK_OVERLAP) -> list[str]:
-    """Splits `text` into overlapping windows of ~`size` characters.
-
-    Overlap means the tail of one chunk repeats at the start of the
-    next, so a sentence that happens to fall right on a chunk boundary
-    still appears whole in at least one chunk.
-    """
+    """Splits `text` into overlapping windows of ~`size` characters; the overlap keeps a sentence on a boundary whole in
+    at least one chunk."""
     text = text.strip()
     if not text:
         return []

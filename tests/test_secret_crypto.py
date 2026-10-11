@@ -1,4 +1,4 @@
-"""Unit tests for app/services/secret_crypto.py."""
+"""Tests for services/secret_crypto.py."""
 
 from app.services import secret_crypto
 

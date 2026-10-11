@@ -1,9 +1,7 @@
-"""GET /api/settings/rag-availability (app/routers/settings.py) - checks the active engine's own
-capabilities.embeddings before ever asking whether an embedding model tag is configured, so a
-connector like RunPod (embeddings=False) gets an accurate, actionable reason instead of the
-"no embedding model found" message, which would be true-but-misleading there (no embedding model
-would ever fix it). Active engine set via engine_service._cached_engine directly, same pattern
-tests/test_engine_support_service.py already uses.
+"""GET /api/settings/rag-availability (routers/settings.py): checks the active engine's capabilities.embeddings
+before asking whether an embedding model is configured, so a connector like RunPod (embeddings=False) gets an
+accurate reason, not "no embedding model found" (true but misleading: no model would fix it). The active
+engine is set via engine_service._cached_engine, as tests/test_engine_support_service.py.
 """
 
 import pytest
@@ -53,9 +51,9 @@ async def test_available_once_an_embedding_model_is_configured(db, user, monkeyp
 
 @pytest.mark.asyncio
 async def test_unavailable_when_admin_disabled_rag_regardless_of_engine_or_configured_model(db, user, monkeypatch):
-    """The admin on/off switch (RagLimits.enabled, Settings > System) is checked before anything else - an
-    embeddings-capable engine with a real model configured must still come back unavailable once this is
-    off, with the exact message Settings > Knowledge shows on its page title."""
+    """The admin switch (RagLimits.enabled, Settings > System) is checked first: an embeddings-capable engine with a
+    configured model must still be unavailable once it's off, with the message shown on Settings > Knowledge's title.
+    """
     engine_service._cached_engine = "ollama"
     monkeypatch.setattr(
         default_model_settings_module,
@@ -73,9 +71,10 @@ async def test_unavailable_when_admin_disabled_rag_regardless_of_engine_or_confi
 
 @pytest.mark.asyncio
 async def test_unavailable_on_an_engine_that_cannot_embed_regardless_of_any_configured_model(db, user):
-    """The active engine's own capabilities.embeddings is checked first, before ever asking whether a model
-    tag is configured (see rag_availability's own docstring) - no set_default_embedding_model call here at
-    all, to prove this short-circuits rather than happening to pass because nothing was configured either."""
+    """The engine's capabilities.embeddings is checked first, before asking whether a model is configured
+    (rag_availability): no set_default_embedding_model call here, proving it short-circuits rather than passing because
+    nothing was configured.
+    """
     engine_service._cached_engine = "runpod"
 
     result = await rag_availability(db=db, _user=user)

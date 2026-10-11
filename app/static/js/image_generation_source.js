@@ -1,19 +1,15 @@
-/**
- * Image-to-image controls of the Images page: the Mode select, the source-image picker and its strength. Exposes
- * window.generationSource for image_generation.js; the picture is resized in the browser to exactly the requested
- * width x height and sent as a base64 PNG (never stored by the server).
- */
+/* Image-to-image controls of the Images page: Mode select, source-image picker and strength. Exposes window.generationSource for image_generation.js; the picture is resized in the browser to the requested width x height and sent as a base64 PNG (never stored by the server). */
 (() => {
   const MAX_SIDE = 512;
   const modeSelect = document.getElementById("gen-mode");
   const panel = document.getElementById("gen-source-panel");
   const fileInput = document.getElementById("gen-source-file");
   const preview = document.getElementById("gen-source-preview");
-  let source = null; // the decoded <img>
+  let source = null;
 
   modeSelect.addEventListener("change", () => panel.classList.toggle("hidden", modeSelect.value !== "image_to_image"));
 
-  // Size inputs follow the picture (long side <= MAX_SIDE, multiples of 64 - what the model works in).
+  // Size inputs follow the picture (long side <= MAX_SIDE, multiples of 64, what the model works in).
   const snap = (value) => Math.max(64, Math.round(value / 64) * 64);
   function sizeFor(img) {
     const scale = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));

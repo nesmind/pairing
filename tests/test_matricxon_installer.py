@@ -1,11 +1,9 @@
-"""Unit tests for app/services/matricxon_installer.py — the Matricxon-flavored twin of
-tests/test_comfyui_installer.py (see that file's own docstring for the shared testing approach: every subprocess
-call (git/venv/pip) is monkeypatched via a fake asyncio.create_subprocess_exec, no real network access, clone,
-or pip install happens here). Differs from ComfyUI's own installer/tests in the ways Matricxon's own project
-shape differs — a `.venv` (not `venv`) directory name, a saved project_dir (not python_path/main_py_path) in
-the completion event, no GPU/--cpu extra_args concept (Matricxon is CPU-only unconditionally), no AVX2 gate
-(see install_stream's own docstring for the real, confirmed-live evidence that one doesn't apply here), and an
-is_installed() that delegates to app.services.matricxon_process rather than a dedicated completion marker."""
+"""Tests for services/matricxon_installer.py, the twin of tests/test_comfyui_installer.py (same approach: every
+git/venv/pip call goes through a fake asyncio.create_subprocess_exec; no network, clone or pip install).
+Differences from ComfyUI's: a `.venv` directory, a saved project_dir (not python_path/main_py_path) in the
+completion event, no GPU/--cpu extra_args (Matricxon is CPU-only), no AVX2 gate (see install_stream) and an
+is_installed that delegates to matricxon_process, not a completion marker.
+"""
 
 import shutil
 
@@ -21,10 +19,10 @@ def _assume_linux_by_default(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _assume_a_real_pinned_default(monkeypatch):
-    """install_stream refuses outright with no repo/version at all (see
-    test_install_stream_reports_error_when_no_repo_or_version_is_configured below for that behavior itself) —
-    pinned to real-looking defaults here so the rest of this file's tests exercise the clone/venv/pip flow
-    without needing to pass repo=/version= explicitly every time."""
+    """install_stream refuses with no repo/version
+    (test_install_stream_reports_error_when_no_repo_or_version_is_configured);
+    pinned to real-looking defaults so other tests exercise clone/venv/pip without passing repo=/version=.
+    """
     monkeypatch.setattr(matricxon_installer, "MATRICXON_GITHUB_REPO", "nesmind/matricxon")
     monkeypatch.setattr(matricxon_installer, "MATRICXON_DEFAULT_VERSION", "v0.1")
 
@@ -71,15 +69,14 @@ async def test_install_stream_blocks_on_an_unsupported_os(monkeypatch, tmp_path)
 
     assert len(events) == 1
     assert "Darwin" in events[0]["error"]
-    assert called == []  # refused before even checking for git
+    assert called == []
 
 
 def test_install_stream_has_no_avx2_gate_unlike_comfyui_installer():
-    """The real bug this covers: an earlier version of this module copied comfyui_installer's AVX2 gate
-    verbatim, which refused every reinstall attempt on a real, confirmed-working machine (a Sandy Bridge CPU
-    with no AVX2 at all) — see install_stream's own docstring for the live evidence that Matricxon's actual
-    dependency versions don't need it (unlike ComfyUI's own gate, deliberately left untouched). Asserts the
-    absence of the import directly rather than trying to prove a negative through install_stream's behavior."""
+    """An earlier version copied comfyui_installer's AVX2 gate, refusing every reinstall on a working machine (Sandy
+    Bridge, no AVX2); see install_stream for why Matricxon's dependencies don't need it (ComfyUI's gate stays).
+    Asserts the import is absent rather than proving a negative through behavior.
+    """
     assert not hasattr(matricxon_installer, "has_avx2")
 
 
@@ -111,9 +108,10 @@ class _FakeSubprocess:
 
 
 def _fake_clone_and_venv(tmp_path):
-    """Shared fake create_subprocess_exec: simulates git actually creating the target directory +
-    requirements.txt, and venv creation actually producing the interpreter path install_stream's own pip step
-    invokes — same idiom as test_comfyui_installer's identical helper, inlined per-test there."""
+    """Shared fake create_subprocess_exec: git creates the target directory + requirements.txt, and venv creation
+    produces the interpreter install_stream's pip step invokes (the idiom of test_comfyui_installer's helper, inlined
+    there).
+    """
 
     async def fake_create_subprocess_exec(*argv, **_kwargs):
         if argv[0] == "git":
@@ -151,7 +149,7 @@ async def test_install_stream_runs_clone_venv_and_pip_in_order(monkeypatch, tmp_
     assert calls[0][0] == "git"
     assert calls[1][1:3] == ("-m", "venv")
     assert str(tmp_path / "matricxon" / ".venv") in calls[1]
-    assert calls[2][-2:] == ("install", "--help")  # PipProgressTracker.supports_raw's probe
+    assert calls[2][-2:] == ("install", "--help")
     assert "pip" in calls[3]
     assert str(tmp_path / "matricxon" / ".venv" / "bin" / "python") == calls[3][0]
     assert calls[3][4:6] == ("--progress-bar", "raw")
@@ -173,13 +171,13 @@ def test_preserve_and_restore_data_dir_round_trips_real_files(tmp_path):
     preserved = matricxon_installer._preserve_data_dir(target_dir)
 
     assert preserved is not None
-    assert not (target_dir / "data").exists()  # moved out, not copied
+    assert not (target_dir / "data").exists()
     assert (preserved / "models" / "ministral-3b.gguf").read_text() == "fake weights"
 
     matricxon_installer._restore_data_dir(preserved, target_dir)
 
     assert (target_dir / "data" / "models" / "ministral-3b.gguf").read_text() == "fake weights"
-    assert not preserved.parent.exists()  # the tempfile.mkdtemp() holding dir was cleaned up
+    assert not preserved.parent.exists()
 
 
 def test_preserve_data_dir_is_a_noop_when_theres_nothing_there(tmp_path):
@@ -190,10 +188,9 @@ def test_preserve_data_dir_is_a_noop_when_theres_nothing_there(tmp_path):
 
 @pytest.mark.asyncio
 async def test_install_stream_preserves_previously_downloaded_models_across_a_reinstall(monkeypatch, tmp_path):
-    """The real bug this covers: reinstalling used to `shutil.rmtree` the whole target_dir outright, silently
-    destroying every already-pulled model living at data/models (Matricxon's real Settings.models_dir default)
-    — pAIring's own managed model library, not a disposable install artifact, unlike Ollama's own installer,
-    whose models live in a completely separate location this app never touches."""
+    """Reinstalling used to `shutil.rmtree` the whole target_dir, destroying every pulled model in data/models
+    (Matricxon's default models_dir): pAIring's managed library, unlike Ollama's models in a separate location.
+    """
     monkeypatch.setattr(matricxon_installer, "EXTERNAL_DIR", tmp_path)
     monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/git")
 
@@ -253,7 +250,7 @@ async def test_install_stream_sets_proxy_env_for_clone_and_pip_but_not_venv(monk
 
     [event async for event in matricxon_installer.install_stream(proxy_url="http://10.0.0.5:8080")]
 
-    # calls[2] is PipProgressTracker.supports_raw's local `pip install --help` probe - no network, no proxy.
+    # calls[2] is PipProgressTracker.supports_raw's local `pip install --help` probe: no network, no proxy.
     git_env, venv_env, pip_env = calls[0][1], calls[1][1], calls[3][1]
     for env in (git_env, pip_env):
         assert env["HTTP_PROXY"] == "http://10.0.0.5:8080"

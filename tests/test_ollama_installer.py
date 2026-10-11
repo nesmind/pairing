@@ -1,6 +1,5 @@
-"""Unit tests for app/services/ollama_installer.py — every httpx call
-and subprocess.run (tar extraction) is monkeypatched; no real network
-access or multi-GB download happens in this test suite."""
+"""Tests for services/ollama_installer.py. Every httpx call and subprocess.run (tar extraction) is patched: no network
+or multi-GB download."""
 
 import subprocess
 
@@ -134,7 +133,7 @@ async def test_install_stream_downloads_extracts_and_reports_done(monkeypatch, t
     monkeypatch.setattr(httpx, "AsyncClient", _Client)
 
     def fake_run(argv, **_kwargs):
-        # Simulate tar actually producing the expected binary layout.
+        # Simulate tar producing the expected binary layout.
         target_dir = tmp_path / "ollama"
         (target_dir / "bin").mkdir(parents=True, exist_ok=True)
         (target_dir / "bin" / "ollama").write_text("#!/bin/sh\n")
@@ -151,7 +150,7 @@ async def test_install_stream_downloads_extracts_and_reports_done(monkeypatch, t
         "binary_path": str(ollama_installer.binary_path()),
     }
     assert ollama_installer.binary_path().exists()
-    assert not (tmp_path / "ollama" / "ollama.tar.zst").exists()  # archive cleaned up
+    assert not (tmp_path / "ollama" / "ollama.tar.zst").exists()
 
 
 @pytest.mark.asyncio
@@ -218,18 +217,15 @@ async def test_install_stream_passes_no_proxy_when_not_configured(monkeypatch, t
 
 @pytest.mark.asyncio
 async def test_install_stream_only_reports_progress_on_whole_percent_changes(monkeypatch, tmp_path):
-    """A real, confirmed-live perf issue: yielding an SSE event on every
-    1MB chunk of a multi-GB download (thousands of events) measurably
-    slowed the download itself down — a slow-to-render browser creates
-    real backpressure on this same coroutine's own network read loop.
-    500 chunks here move the percentage by 0.1% each — reporting on every
-    single one would yield 500 events; reporting only on whole-percent
-    changes should yield roughly 50."""
+    """A confirmed-live perf issue: yielding an SSE event per 1MB chunk of a multi-GB download slowed the download
+    itself (a slow-rendering browser backpressures the coroutine's network read loop). 500 chunks here move the
+    percentage 0.1% each: per-chunk reporting would yield 500 events; whole-percent reporting about 50.
+    """
     monkeypatch.setattr(ollama_installer, "EXTERNAL_DIR", tmp_path)
     monkeypatch.setattr(ollama_installer.shutil, "which", lambda _name: "/usr/bin/tar")
     monkeypatch.setattr(ollama_installer.platform, "machine", lambda: "x86_64")
 
-    chunks = [b"x" * 1000] * 500  # 500,000 of 1,000,000 total bytes
+    chunks = [b"x" * 1000] * 500
     response = _FakeStreamResponse(chunks, total=1_000_000)
 
     class _Client:
@@ -259,8 +255,7 @@ async def test_install_stream_only_reports_progress_on_whole_percent_changes(mon
 
     download_events = [e for e in events if e.get("step") == 1 and "completed" in e]
     assert 0 < len(download_events) <= 51
-    # Every reported percentage is genuinely distinct — no duplicate
-    # back-to-back events for the same whole percent.
+    # Every reported percentage is distinct: no back-to-back duplicates for the same whole percent.
     reported_pcts = [e["completed"] * 100 // e["total"] for e in download_events]
     assert reported_pcts == sorted(set(reported_pcts))
 

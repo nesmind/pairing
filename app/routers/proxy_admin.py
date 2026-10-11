@@ -1,11 +1,6 @@
-"""
-Settings > System > Proxy mode admin endpoints: whether this app
-load-balances across local instances itself ("local" — the default) or
-leaves that to an external reverse proxy, if any ("proxy"). See
-app/services/instance_pool.py + instance_proxy.py for the built-in
-balancer this toggles. Changes here take effect immediately (the
-primary's cached copy of the mode is updated in the same request), no
-restart required.
+"""Settings > System > Proxy mode: this app load-balances across local instances itself ("local", default)
+or leaves it to an external reverse proxy ("proxy"). Built-in balancer: instance_pool.py + instance_proxy.py.
+Applies immediately (the primary's cached mode updates in the same request).
 """
 
 from fastapi import APIRouter, Depends

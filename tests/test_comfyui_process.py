@@ -1,9 +1,7 @@
-"""Unit tests for app/services/comfyui_process.py — the subprocess/PID/
-file primitives behind ComfyUI process supervision. No real ComfyUI
-process is ever spawned; subprocess.Popen and /proc reads are
-monkeypatched or redirected to tmp_path, matching
-tests/test_instance_service.py's own conventions for the equivalent
-sibling-process primitives."""
+"""Tests for services/comfyui_process.py (subprocess/PID/file primitives behind ComfyUI supervision). No real
+process is spawned; subprocess.Popen and /proc reads are monkeypatched or redirected to tmp_path, like
+tests/test_instance_service.py for sibling-process primitives.
+"""
 
 import subprocess
 
@@ -44,7 +42,7 @@ def test_spawn_builds_argv_from_python_and_main_path_and_extra_args(tmp_path, mo
         pid = 4242
 
         def poll(self):
-            return None  # still running — a successful launch
+            return None
 
     def fake_popen(argv, **kwargs):
         captured["argv"] = argv
@@ -83,10 +81,9 @@ def test_spawn_returns_none_when_extra_args_is_none(tmp_path, monkeypatch):
 
 
 def test_spawn_returns_none_on_a_bad_path_instead_of_raising(tmp_path, monkeypatch):
-    """A nonexistent python_path/main_py_path (a real, likely admin
-    typo) makes subprocess.Popen itself raise OSError before there's
-    ever a process to poll() — this must degrade to None, not crash the
-    whole request with a raw 500 (a real bug found via live QA)."""
+    """A nonexistent python_path/main_py_path (a likely admin typo) makes subprocess.Popen raise OSError before any
+    poll; this must give None, not a raw 500 (found in live QA).
+    """
 
     def fake_popen(_argv, **_kwargs):
         raise FileNotFoundError(2, "No such file or directory", "/opt/does-not-exist")
@@ -102,7 +99,7 @@ def test_spawn_returns_none_on_immediate_exit(tmp_path, monkeypatch):
         returncode = 1
 
         def poll(self):
-            return 1  # already exited
+            return 1
 
     monkeypatch.setattr(subprocess, "Popen", lambda argv, **kwargs: _FakeProc())
     monkeypatch.setattr(comfyui_process.time, "sleep", lambda _seconds: None)
@@ -113,11 +110,10 @@ def test_spawn_returns_none_on_immediate_exit(tmp_path, monkeypatch):
 
 
 def test_is_alive_false_for_a_pid_with_no_proc_entry():
-    # A pid this test process definitely isn't the parent of, and that
-    # (almost certainly) doesn't exist on the box at all.
+    # A pid this test process isn't the parent of and that almost certainly doesn't exist.
     assert comfyui_process.is_alive(2**30, "/opt/ComfyUI/main.py") is False
 
 
 def test_terminate_is_a_noop_for_an_already_gone_pid():
-    # Must not raise — ProcessLookupError from os.kill is caught.
+    # Must not raise: os.kill's ProcessLookupError is caught.
     comfyui_process.terminate(2**30, "/opt/ComfyUI/main.py")

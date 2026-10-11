@@ -1,27 +1,14 @@
-"""Cancellation bookkeeping for in-progress reply generation — split out
-of app.services.reply_generation_service purely to keep that file under
-CLAUDE.md's file-size rule; this is still that module's own mechanism,
-just the two pieces of state conversation_service.delete_message needs
-to reach in from outside.
+"""Cancellation bookkeeping for in-progress replies, split from reply_generation_service for the file-size
+rule: the two pieces of state conversation_service.delete_message needs from outside.
 
-Two independent registries:
-- `_active_generation_tasks`: message_id -> its live asyncio.Task, so
-  cancel_generation can find and cancel one from outside
-  reply_generation_service (an admin deleting someone else's in-progress
-  reply, not the sender's own request disconnecting — see
-  reply_generation_service.stream_reply's own cancel_on_disconnect for
-  that other case).
-- `_deleted_message_ids`: message_ids conversation_service.delete_message
-  has taken down, checked by every write path in
-  reply_generation_service (_mark_error, and _run_generation's own
-  success path) before it persists anything. Needed because a plain
-  "read the DB, see it's not deleted yet, then write" guard is racy: two
-  independent commits (delete_message's own, and this module's write for
-  the very reply it just cancelled) can interleave in either order, so
-  seeing "not deleted yet" proves nothing about which write actually
-  lands last. mark_message_deleted must be called *before*
-  cancel_generation, synchronously, with no `await` in between — see its
-  own docstring for why that ordering is what actually closes the race.
+Two registries:
+- `_active_generation_tasks`: message_id -> its asyncio.Task, so cancel_generation can cancel from outside
+  (an admin deleting someone's in-progress reply; stream_reply's cancel_on_disconnect covers the sender disconnecting).
+- `_deleted_message_ids`: ids conversation_service.delete_message took down, checked by every write in
+  reply_generation_service (_mark_error, _run_generation's success path) before persisting. A "read the DB,
+  see not deleted, write" guard is racy: two commits (delete_message's and this module's write for the cancelled
+  reply) can interleave either way. mark_message_deleted must run *before* cancel_generation, synchronously with
+  no `await` between; see its docstring.
 """
 
 import asyncio
@@ -31,18 +18,17 @@ _deleted_message_ids: set[str] = set()
 
 
 def register_task(message_id: str, task: asyncio.Task) -> None:
-    """Called once, right after a generation task is created (see
-    reply_generation_service._schedule_generation) — removed by the
-    task's own done-callback, so this never outlives it."""
+    """Called right after a generation task is created (reply_generation_service._schedule_generation); removed by
+    the task's own done-callback.
+    """
     _active_generation_tasks[message_id] = task
     task.add_done_callback(lambda _t, mid=message_id: _active_generation_tasks.pop(mid, None))
 
 
 def cancel_generation(message_id: str) -> bool:
-    """Cancels an in-progress reply's task outright — used by
-    conversation_service.delete_message, always *after*
-    mark_message_deleted below; unlike cancel_on_disconnect, works
-    regardless of who's still connected. False if nothing to cancel."""
+    """Cancels an in-progress reply's task, used by conversation_service.delete_message *after*
+    mark_message_deleted. Unlike cancel_on_disconnect, works whoever is connected. False if nothing to cancel.
+    """
     task = _active_generation_tasks.get(message_id)
     if task is None or task.done():
         return False
@@ -51,9 +37,8 @@ def cancel_generation(message_id: str) -> bool:
 
 
 def mark_message_deleted(message_id: str) -> None:
-    """Call *before* cancel_generation, synchronously (no `await` in
-    between) — see this module's own docstring for why the ordering is
-    load-bearing, not just tidy."""
+    """Call *before* cancel_generation, synchronously (no `await` between); the ordering is load-bearing (see module
+    docstring)."""
     _deleted_message_ids.add(message_id)
 
 

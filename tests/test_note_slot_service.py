@@ -1,7 +1,6 @@
-"""Unit tests for app/services/note_slot_service.py — the chat page's
-one-slot-at-a-time view: resolving a slot (default vs. override vs.
-turned-off), and editing it via the "Only for this chat" checkbox split
-(update_slot_content)."""
+"""Tests for services/note_slot_service.py, the chat page's one-slot view: resolving a slot (default vs.
+override vs. turned-off) and editing it via the "Only for this chat" checkbox (update_slot_content).
+"""
 
 import pytest
 from sqlalchemy import select
@@ -13,15 +12,14 @@ from app.services import channel_service, note_slot_service
 
 @pytest.mark.asyncio
 async def test_save_disabled_slots_replaces_params_dict(db, user):
-    """SQLAlchemy's JSON column only tracks reassignment, not in-place
-    mutation — this test would still pass with a buggy in-place
-    `.update()` implementation on sqlite's in-memory session, but
-    documents the contract this function must uphold in production
-    (MySQL/Postgres JSON columns behave the same way)."""
+    """SQLAlchemy's JSON column tracks reassignment, not in-place mutation. This would still pass with a buggy
+    in-place `.update` on sqlite's in-memory session, but documents the contract for production (MySQL/Postgres JSON
+    columns behave the same).
+    """
     conversation = Conversation(owner_id=user.id, params={"temperature": 0.8})
     note_slot_service.save_disabled_slots(conversation, {"persona"})
     assert conversation.params["disabled_default_notes"] == ["persona"]
-    assert conversation.params["temperature"] == 0.8  # untouched
+    assert conversation.params["temperature"] == 0.8
 
 
 @pytest.mark.asyncio
@@ -77,8 +75,7 @@ async def test_resolve_slot_prefers_explicit_pin_over_default(db, user):
 
 @pytest.mark.asyncio
 async def test_update_slot_content_global_updates_the_default_note(db, user):
-    """The default behavior (checkbox unchecked): updates the shared
-    default note directly, not a new per-chat note."""
+    """The default (checkbox unchecked): updates the shared default note directly, not a new per-chat note."""
     conversation = Conversation(owner_id=user.id, params={})
     db.add(conversation)
     default_note = Note(owner_id=user.id, title="Persona", content="Old.", default_type="persona")
@@ -95,7 +92,7 @@ async def test_update_slot_content_global_updates_the_default_note(db, user):
     assert default_note.content == "New global content."
 
     all_notes = (await db.execute(select(Note).where(Note.owner_id == user.id))).scalars().all()
-    assert len(all_notes) == 1  # no new note forked
+    assert len(all_notes) == 1
 
     slot = await note_slot_service.resolve_slot(db, conversation, user, "persona")
     assert slot.is_override is False
@@ -104,9 +101,8 @@ async def test_update_slot_content_global_updates_the_default_note(db, user):
 
 @pytest.mark.asyncio
 async def test_update_slot_content_global_removes_an_existing_override(db, user):
-    """Editing globally while this chat currently has its own override
-    must drop that override — otherwise this chat would keep showing
-    stale pinned content instead of the newly-updated global default."""
+    """Editing globally while this chat has its own override must drop it, or the chat keeps showing stale pinned
+    content."""
     conversation = Conversation(owner_id=user.id, params={})
     db.add(conversation)
     default_note = Note(owner_id=user.id, title="Persona", content="Default.", default_type="persona")
@@ -137,8 +133,7 @@ async def test_update_slot_content_global_removes_an_existing_override(db, user)
 
 @pytest.mark.asyncio
 async def test_update_slot_content_only_this_chat_forks_a_new_note(db, user):
-    """Checked: creates a private per-chat note, leaving the shared
-    default note untouched."""
+    """Checked: creates a private per-chat note, leaving the shared default untouched."""
     conversation = Conversation(owner_id=user.id, params={})
     db.add(conversation)
     default_note = Note(owner_id=user.id, title="Persona", content="Default.", default_type="persona")
@@ -152,7 +147,7 @@ async def test_update_slot_content_only_this_chat_forks_a_new_note(db, user):
     await db.commit()
 
     await db.refresh(default_note)
-    assert default_note.content == "Default."  # untouched
+    assert default_note.content == "Default."
 
     slot = await note_slot_service.resolve_slot(db, conversation, user, "persona")
     assert slot.is_override is True
@@ -163,10 +158,9 @@ async def test_update_slot_content_only_this_chat_forks_a_new_note(db, user):
 async def test_update_slot_content_only_this_chat_forks_note_titled_after_channel(
     db, admin_user, user, channel_manager_user
 ):
-    """A channel's shared conversation always has title "New chat" (see
-    Conversation.title) — its real display name lives on Channel.name
-    instead. A forked per-chat note must use that channel name, not the
-    generic conversation title."""
+    """A channel's conversation always has title "New chat" (Conversation.title); its display name is Channel.name.
+    A forked per-chat note must use the channel name, not the generic title.
+    """
     channel = await channel_service.create_channel(
         db,
         ChannelCreate(
@@ -189,8 +183,7 @@ async def test_update_slot_content_only_this_chat_forks_note_titled_after_channe
 
 @pytest.mark.asyncio
 async def test_update_slot_content_only_this_chat_edits_existing_override_in_place(db, user):
-    """Checked, with an override already pinned: edits that note's
-    content directly rather than forking yet another one."""
+    """Checked, with an override already pinned: edits that note's content rather than forking another."""
     conversation = Conversation(owner_id=user.id, params={})
     db.add(conversation)
     override_note = Note(owner_id=user.id, title="Override", content="Old.")
@@ -210,19 +203,18 @@ async def test_update_slot_content_only_this_chat_edits_existing_override_in_pla
     assert override_note.content == "Updated override."
 
     all_notes = (await db.execute(select(Note).where(Note.owner_id == user.id))).scalars().all()
-    assert len(all_notes) == 1  # edited in place, not forked again
+    assert len(all_notes) == 1
 
 
 @pytest.mark.asyncio
 async def test_update_slot_content_global_creates_default_note_if_somehow_missing(db, user):
-    """Defensive fallback: seed_default_notes guarantees one default
-    note per slot for every user in practice, but this must not
-    silently no-op if that invariant is ever violated."""
+    """Defensive: seed_default_notes guarantees one default note per slot, but this must not silently no-op if that is
+    ever violated."""
     conversation = Conversation(owner_id=user.id, params={})
     db.add(conversation)
     await db.commit()
     await db.refresh(conversation)
-    # Deliberately no default "persona" note exists yet for this user.
+    # No default "persona" note exists yet for this user.
 
     await note_slot_service.update_slot_content(
         db, conversation, user, "persona", "First ever content.", only_this_chat=False
@@ -246,20 +238,20 @@ async def _channel_with_different_default_notes(db, admin_user, user, channel_ma
         ),
         admin_user,
     )
-    channel.conversation.params = {**channel.conversation.params, "disabled_default_notes": []}  # notes on
+    channel.conversation.params = {**channel.conversation.params, "disabled_default_notes": []}
     for member, text in ((user, "alice's persona"), (channel_manager_user, "carol's persona"), (admin_user, "admin's")):
         await note_service.seed_default_notes(db, member)
         (await note_service.get_default_note(db, member.id, "persona")).content = text
     await db.commit()
     conversation_id = channel.conversation.id
-    db.expunge_all()  # reload like a real request does, with the channel and its members loaded
+    db.expunge_all()
     return await db.get(Conversation, conversation_id)
 
 
 @pytest.mark.asyncio
 async def test_a_channel_uses_the_same_default_notes_whoever_is_asking(db, admin_user, user, channel_manager_user):
-    """Different system prompts per sender would make the model's prompt cache start over every time the
-    speaker changes."""
+    """Different system prompts per sender would make the model's prompt cache start over each time the speaker
+    changes."""
     from app.services import note_service
 
     conversation = await _channel_with_different_default_notes(db, admin_user, user, channel_manager_user)
@@ -270,7 +262,7 @@ async def test_a_channel_uses_the_same_default_notes_whoever_is_asking(db, admin
         prompts.append(note_service.build_pinned_system_prompt(notes))
     slots = [(await note_slot_service.resolve_slot(db, conversation, u, "persona")).content for u in (user, admin_user)]
 
-    assert len(set(prompts)) == 1 and "admin's" in prompts[0]  # the channel's admin's, not the manager's
+    assert len(set(prompts)) == 1 and "admin's" in prompts[0]
     assert slots == ["admin's"] * 2
 
 
@@ -301,8 +293,8 @@ async def test_editing_a_channel_note_always_pins_it_to_the_channel(db, admin_us
     )
     await db.commit()
 
-    assert (await note_service.get_default_note(db, user.id, "persona")).content == "alice's persona"  # untouched
-    assert (await note_service.get_default_note(db, admin_user.id, "persona")).content == "admin's"  # too
+    assert (await note_service.get_default_note(db, user.id, "persona")).content == "alice's persona"
+    assert (await note_service.get_default_note(db, admin_user.id, "persona")).content == "admin's"
     notes = await note_service.resolve_conversation_notes(db, conversation, admin_user.id)
     assert notes["persona"][0].content == "New channel text."
 

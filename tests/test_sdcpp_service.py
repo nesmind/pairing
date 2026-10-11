@@ -1,4 +1,4 @@
-"""Unit tests for app/services/sdcpp_service.py + sdcpp_process.py — process primitives are monkeypatched."""
+"""Tests for services/sdcpp_service.py + sdcpp_process.py; process primitives are patched."""
 
 import pytest
 
@@ -146,7 +146,7 @@ async def test_stop_rejects_on_a_non_primary_instance(db, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_status_reports_installed_when_a_configured_binary_exists(db, tmp_path, monkeypatch):
-    monkeypatch.setattr(sdcpp_service.sdcpp_installer, "is_installed", lambda: False)  # not the real install
+    monkeypatch.setattr(sdcpp_service.sdcpp_installer, "is_installed", lambda: False)
     binary = tmp_path / "sd-server"
     binary.write_text("x")
     await _configure(db, binary_path=str(binary))
@@ -155,7 +155,7 @@ async def test_status_reports_installed_when_a_configured_binary_exists(db, tmp_
 
 @pytest.mark.asyncio
 async def test_status_reports_not_installed_when_the_saved_binary_is_gone(db, tmp_path, monkeypatch):
-    monkeypatch.setattr(sdcpp_service.sdcpp_installer, "is_installed", lambda: False)  # not the real install
+    monkeypatch.setattr(sdcpp_service.sdcpp_installer, "is_installed", lambda: False)
     await _configure(db, binary_path=str(tmp_path / "removed-sd-server"))
     assert (await sdcpp_service.get_status(db)).installed is False
 

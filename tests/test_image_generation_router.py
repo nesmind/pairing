@@ -1,4 +1,4 @@
-"""Unit tests for the cancel/progress parts of app/routers/image_generation.py — called directly."""
+"""Tests for the cancel/progress parts of routers/image_generation.py, called directly."""
 
 from types import SimpleNamespace
 

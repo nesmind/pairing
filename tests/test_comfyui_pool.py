@@ -1,8 +1,6 @@
-"""Unit tests for app/services/comfyui_pool.py — mirrors
-tests/test_ollama_pool.py's shape exactly (same thin-wrapper contract
-around app/services/server_pool.py's HostPool), just for ComfyUI's own
-config schema and the call_with_failover shape it uses instead of
-stream_with_failover."""
+"""Tests for services/comfyui_pool.py, mirroring tests/test_ollama_pool.py (same thin wrapper around
+server_pool.HostPool), for ComfyUI's config schema and call_with_failover instead of stream_with_failover.
+"""
 
 import pytest
 

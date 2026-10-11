@@ -1,4 +1,4 @@
-"""Unit tests for app/services/channel_reset_service.py (admin "Reset channel")."""
+"""Tests for services/channel_reset_service.py (admin "Reset channel")."""
 
 import pytest
 from sqlalchemy import func, select
@@ -27,7 +27,7 @@ async def _channel_with_history(db, admin_user, user, channel_manager_user):
 
 
 async def _reload(db, channel):
-    """The channel as a real request sees it: loaded fresh, with its conversation, messages and members."""
+    """The channel as a real request sees it: freshly loaded with conversation, messages and members."""
     channel_id = channel.id
     db.expunge_all()
     return await db.get(Channel, channel_id)
@@ -84,7 +84,7 @@ async def test_my_channels_flags_who_can_manage_them(db, admin_user, user, chann
 async def _admin_with_notes(db, admin_user, persona: str):
     from app.services import default_notes_setting, note_service
 
-    await default_notes_setting.set_default_notes_enabled(db, admin_user, True)  # new channels start with notes on
+    await default_notes_setting.set_default_notes_enabled(db, admin_user, True)
     await note_service.seed_default_notes(db, admin_user)
     (await note_service.get_default_note(db, admin_user.id, "persona")).content = persona
     await db.commit()
@@ -94,8 +94,9 @@ async def _admin_with_notes(db, admin_user, persona: str):
 async def test_a_new_channel_gets_its_notes_once_and_later_edits_do_not_change_them(
     db, admin_user, user, channel_manager_user
 ):
-    """The channel's system prompt must stay the same (so the model's cache stays valid) whoever asks and
-    whatever anyone edits afterwards - its notes are copied in at creation."""
+    """The channel's system prompt must stay the same (keeping the model's cache valid) whoever asks and whatever is
+    edited later: its notes are copied in at creation.
+    """
     from app.services import note_service
 
     await _admin_with_notes(db, admin_user, "first persona")

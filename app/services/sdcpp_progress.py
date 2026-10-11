@@ -1,11 +1,12 @@
-"""Live progress for a running stable-diffusion.cpp generation, read from sd-server's own log (its API has no
-progress endpoint). sd.cpp prints a `|===>   | 3/20 - 2.41s/it` bar per sampling step, a `|###| 294/686 - 2.3GB/s`
-bar while loading weights, and a few stage lines; each job remembers the log size at its start (see
-ImageGenerationJob.log_offset) so only its own lines are read.
+"""Live progress of a running stable-diffusion.cpp generation, read from sd-server's log (its API has no progress
+endpoint). sd.cpp prints a `|===>   | 3/20 - 2.41s/it` bar per sampling step, a `|###| 294/686 - 2.3GB/s` bar
+while loading weights, and stage lines; each job stores the log size at its start (ImageGenerationJob.log_offset)
+so it reads only its own lines.
 
-Overall progress is split by stage: loading weights 0-15%, encoding the prompt 15-25%, sampling 25-85%
-(proportional to steps), decoding 85-100%. sd.cpp loads the text encoder and the VAE lazily, so a weights bar
-also shows up mid-job: it fills the band of the stage it appears in instead of resetting progress."""
+Progress is split by stage: loading weights 0-15%, encoding 15-25%, sampling 25-85% (by steps), decoding
+85-100%. sd.cpp loads the text encoder and VAE lazily, so a weights bar also appears mid-job; it fills the
+current stage's band instead of resetting.
+"""
 
 import re
 from dataclasses import dataclass
@@ -21,14 +22,14 @@ _LOAD_RE = re.compile(r"(\d+)/(\d+) - [\d.]+\s*[KMG]?B/s")
 
 @dataclass(frozen=True)
 class Progress:
-    progress: float  # 0-100
+    progress: float
     stage: str
     eta_seconds: int | None = None
     phase: str = "load"  # load -> encode -> sample -> decode -> done; keeps a lazy weights bar in its own band
 
 
 def current_offset(path: Path = LOG_PATH) -> int:
-    """The log's size right now — a job's starting point."""
+    """The log's size now: a job's starting point."""
     try:
         return path.stat().st_size
     except OSError:

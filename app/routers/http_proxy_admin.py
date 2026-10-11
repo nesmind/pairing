@@ -1,15 +1,7 @@
-"""
-Settings > System > Outbound HTTP proxy admin endpoints: the single
-admin-configured IP:port (with optional username/password) that this
-app's own genuinely internet-facing downloads should route through —
-Ollama's and ComfyUI's own GitHub-release/git-clone/pip installers (see
-app/services/ollama_installer.py, app/services/comfyui_installer.py) and,
-only when Ollama runs in local mode, Ollama's own outbound model-pull
-requests (see app/services/ollama_process.py's _build_env). Distinct
-from app/routers/proxy_admin.py, an unrelated pre-existing feature about
-load-balancing this app's own incoming requests across local instances
-(labeled "Local pAIring server mode" in the UI specifically to avoid
-this naming collision).
+"""Settings > System > Outbound HTTP proxy: the admin-configured IP:port (optional username/password) for
+internet-facing downloads: Ollama/ComfyUI installers (ollama_installer.py, comfyui_installer.py) and, in
+local mode, Ollama's model pulls (ollama_process.py _build_env). Unrelated to proxy_admin.py, which
+load-balances incoming requests across local instances ("Local pAIring server mode" in the UI).
 """
 
 from fastapi import APIRouter, Depends
@@ -35,11 +27,8 @@ async def update_http_proxy(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),
 ):
-    """No internal-refresh/broadcast needed the way Ollama/ComfyUI's own
-    host-pool config gets — nothing caches this in-process; every call
-    site (the installer endpoints, ollama_process.start/apply_local_config)
-    re-fetches it fresh from the DB per action. Returns a fresh masked
-    re-read (never the raw submitted body) so a real password an admin
-    just typed is never echoed straight back."""
+    """No broadcast needed: nothing caches it; every call site re-reads it from the DB. Returns a fresh masked
+    read, never echoing the submitted password.
+    """
     await http_proxy_service.set_http_proxy_config(db, body)
     return await http_proxy_service.get_http_proxy_config_for_display(db)

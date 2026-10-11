@@ -1,8 +1,4 @@
-"""
-The read side of RAG: turning a live question into the most relevant
-stored chunks. See app/services/document_ingest.py for how those chunks
-got there in the first place.
-"""
+"""The read side of RAG: turns a question into the most relevant stored chunks (written by document_ingest.py)."""
 
 from pathlib import Path
 
@@ -27,19 +23,12 @@ async def retrieve_context(
     user_id: str | None,
     top_k: int = RAG_TOP_K,
 ) -> list[dict]:
-    """Embeds `query` and returns the top_k most similar chunks the
-    caller is allowed to see, best match first. `user_id` set means a
-    personal chat: `user_id`'s own private documents plus every shared
-    "global" one. `user_id=None` means a channel chat (see
-    app/models/conversation.py's channel_id) — global documents only,
-    since a channel has no single private RAG scope of its own and must
-    never expose one member's private uploads to the rest of the channel
-    (see app/services/chat_service.py's call site). Each result carries
-    the chunk's text plus which document it came from (as a plain
-    display name, not its full owner-scoped path), so callers can both
-    build the model's prompt (build_augmented_system_prompt below) and
-    show the user which sources were actually used. Returns an empty
-    list if nothing in that scope exists yet.
+    """Embeds `query` and returns the top_k most similar chunks `user_id` may see, best first. `user_id` set =
+    personal chat: own private documents plus shared "global" ones. `user_id=None` = channel chat
+    (Conversation.channel_id): global only, so one member's private uploads are never exposed to the channel
+    (chat_service.py call site). Each result has the chunk text and its document's display name (not the
+    owner-scoped path), to build the prompt (build_augmented_system_prompt) and show sources. Empty list if
+    nothing exists in scope.
     """
     scope = (
         Document.owner_id.is_(None)
@@ -52,8 +41,8 @@ async def retrieve_context(
 
     embedding_model = await model_catalog_service.get_default_embedding_model(db)
     if embedding_model is None:
-        # No embedding model installed (or the one used to build these chunks was since uninstalled) — degrades
-        # the same way document_sync already does elsewhere, not a hard failure.
+        # No embedding model installed (or the chunks' model was uninstalled): degrade as document_sync does, no hard
+        # failure.
         return []
 
     query_vector = np.asarray(await embed(query, embedding_model), dtype=np.float32)
@@ -63,13 +52,9 @@ async def retrieve_context(
     for chunk in chunks:
         vector = _bytes_to_vector(chunk.embedding)
         norm = np.linalg.norm(vector) or 1.0
-        # Cosine similarity: how aligned two vectors are in direction,
-        # ignoring magnitude — the standard way to compare embeddings.
+        # Cosine similarity: direction alignment, ignoring magnitude; the standard embedding comparison.
         similarity = float(np.dot(query_vector, vector) / (query_norm * norm))
-        # chunk.document is loaded via the "selectin" relationship
-        # strategy (see app/models/document.py) so this attribute access
-        # is safe under the app's async session without an explicit
-        # eager-load option on the query above.
+        # chunk.document is selectin-loaded (models/document.py), so access is safe under the async session.
         scored.append((similarity, chunk))
 
     scored.sort(key=lambda pair: pair[0], reverse=True)
@@ -80,9 +65,8 @@ async def retrieve_context(
 
 
 def build_augmented_system_prompt(base_prompt: str, retrieved_chunks: list[dict]) -> str:
-    """Appends retrieved document excerpts to the conversation's system
-    prompt, clearly labeled so the model can distinguish "background
-    material it was given" from "instructions about how to behave"."""
+    """Appends retrieved excerpts to the system prompt, labeled so the model tells background material from
+    instructions."""
     if not retrieved_chunks:
         return base_prompt
     context_block = "\n\n---\n\n".join(chunk["text"] for chunk in retrieved_chunks)
@@ -97,12 +81,9 @@ def build_augmented_system_prompt(base_prompt: str, retrieved_chunks: list[dict]
 
 
 def build_attachment_system_prompt(base_prompt: str, filename: str, text: str) -> str:
-    """Same layering approach as build_augmented_system_prompt above, for
-    a single ad-hoc file the user attached to this one message (see
-    app.services.chat_attachment_service and
-    app.services.chat_service.build_reply_stream's `attachment` handling)
-    rather than a RAG-retrieved chunk — labeled by its own filename since
-    there's only ever one, not a list of sources to disambiguate."""
+    """Like build_augmented_system_prompt, for one ad-hoc file attached to this message
+    (chat_attachment_service, chat_service.build_reply_stream); labeled by filename since there's only one.
+    """
     return (
         f"{base_prompt}\n\n"
         f'The user has attached a file named "{filename}" with this message. '

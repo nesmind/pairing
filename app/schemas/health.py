@@ -1,4 +1,4 @@
-"""Schema for GET /health (see app/routers/health.py)."""
+"""Schema for GET /health (app/routers/health.py)."""
 
 from typing import Literal
 
@@ -10,8 +10,6 @@ from app.schemas.common import EngineName
 class HealthStatus(BaseModel):
     status: Literal["ok", "unhealthy"]
     database: bool
-    # Whichever engine (Ollama or Matricxon) is actually live right now (see
-    # app.services.engine_service) — `engine_hosts` reports THAT engine's own host reachability,
-    # not always Ollama's, so this stays meaningful after an admin switches the active engine.
+    # The live engine (engine_service); `engine_hosts` reports that engine's host reachability.
     active_engine: EngineName
     engine_hosts: dict[str, bool]

@@ -1,6 +1,7 @@
-"""Unit tests for app/services/matricxon_pool.py — mirrors tests/test_ollama_pool.py's own coverage exactly
-(local/remote resolution, wrapper delegation to the live HostPool), just against the independent Matricxon
-pool instance — see that file's own docstring for the shared server_pool.HostPool logic tested once there."""
+"""Tests for services/matricxon_pool.py, mirroring tests/test_ollama_pool.py (local/remote resolution, wrapper
+delegation to the live HostPool) against the independent Matricxon pool; shared server_pool.HostPool logic is tested
+there.
+"""
 
 import httpx
 import pytest
@@ -11,11 +12,9 @@ from app.services import matricxon_pool
 
 @pytest.fixture(autouse=True)
 def isolated_pool(monkeypatch):
-    # matricxon_pool._pool is a module-level singleton — set_hosts() calls made during a test (directly, or via
-    # refresh_from_config) aren't undone by monkeypatch's own auto-revert, so without restoring it explicitly on
-    # teardown a fake host from this file would otherwise leak into every later test in the suite (confirmed
-    # live: it did, breaking an unrelated test elsewhere that happened to run afterward and hit this pool for
-    # real).
+    # matricxon_pool._pool is a module-level singleton: set_hosts calls (directly or via refresh_from_config)
+    # aren't undone by monkeypatch, so restore it on teardown; a fake host leaked into later tests and broke an
+    # unrelated one.
     real_hosts = matricxon_pool.get_effective_hosts()
     monkeypatch.setattr(matricxon_pool, "LOCAL_MATRICXON_HOST", "http://local-matricxon:8420")
     matricxon_pool._pool.set_hosts(["http://local-matricxon:8420"])
@@ -112,3 +111,24 @@ async def test_check_host_pings_an_arbitrary_host_not_necessarily_saved(monkeypa
 
     monkeypatch.setattr(httpx, "AsyncClient", lambda **_kw: _FakeClient())
     assert await matricxon_pool.check_host("http://10.9.9.9:8420") is True
+
+
+@pytest.mark.asyncio
+async def test_lease_holder_finds_the_owner_and_knows_whether_consensus_runs(monkeypatch):
+    pool = matricxon_pool
+    monkeypatch.setattr(pool._pool, "get_hosts", lambda: ["http://a:8420", "http://b:8420", "http://c:8420"])
+    statuses = {
+        "http://a:8420": {"enabled": True, "holds": []},
+        "http://b:8420": {"enabled": True, "holds": ["model_pull"]},
+        "http://c:8420": None,
+    }
+
+    async def fake_status(_client, host):
+        return statuses[host]
+
+    monkeypatch.setattr(pool, "_consensus_status", fake_status)
+    assert await pool.lease_holder("model_pull") == (True, "http://b:8420")
+    statuses["http://b:8420"] = {"enabled": True, "holds": []}
+    assert await pool.lease_holder("model_pull") == (True, None)
+    statuses.update({"http://a:8420": None, "http://b:8420": None})
+    assert await pool.lease_holder("model_pull") == (False, None)

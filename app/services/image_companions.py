@@ -1,6 +1,7 @@
-"""Extra files a split image model needs beside its diffusion weights (text encoder, VAE). Fetched with the model
-and passed to sd-server automatically, so the user never types --llm/--vae. They live in a `_companions` folder
-next to the model file. Add a recipe to RECIPES to support another model family."""
+"""Extra files a split image model needs beside its diffusion weights (text encoder, VAE), fetched with the
+model and passed to sd-server automatically (no typing --llm/--vae). They live in a `_companions` folder next
+to the model. Add a recipe to RECIPES for another model family.
+"""
 
 import shutil
 from collections.abc import AsyncIterator
@@ -16,7 +17,7 @@ FOLDER = "_companions"
 class Companion:
     flag: str
     repo: str
-    filename: str  # path inside the repo
+    filename: str
     label: str
     size_gb: float
 
@@ -58,14 +59,14 @@ class ImageCompanions:
 
     @classmethod
     def args(cls, model_path: Path) -> dict[str, str]:
-        """{"--llm": path, "--vae": path} for the companions already on disk."""
+        """{"--llm": path, "--vae": path} for companions already on disk."""
         paths = {c.flag: cls.dir_for(model_path) / c.local_name for c in cls.for_model(model_path)}
         return {flag: str(path) for flag, path in paths.items() if path.is_file()}
 
     @classmethod
     async def download(cls, model_path: Path, flags: list[str], proxy_url: str | None) -> AsyncIterator[dict]:
-        """Downloads the missing companions among `flags` (the user's explicit choice). Progress events; the
-        last is {"error": ...} if one failed."""
+        """Downloads the missing companions among `flags` (the user's choice) as progress events; the last is
+        {"error":...} on failure."""
         for c in cls.missing(model_path):
             if c.flag not in flags:
                 continue

@@ -1,20 +1,11 @@
-"""
-Schema-compatibility check for Settings > System > Database (see
-app/services/db_config_service.py, which this is split out of purely to
-stay under CLAUDE.md's file-size rule). Read-only: lists whatever tables
-already exist at a candidate database, without ever running DDL.
+"""Schema-compatibility check for Settings > System > Database (split from db_config_service.py for the
+file-size rule). Read-only: lists a candidate database's existing tables, no DDL.
 
-A raw connection can succeed against a database that already has
-unrelated tables in it — someone else's app, a stale export, a typo'd
-database name that happens to exist. Without this check, build_schema
-would hand that straight to Alembic, whose own "is this a pre-Alembic
-pAIring install?" heuristic (see app.database._run_migrations) would
-wrongly assume any pre-existing tables are exactly that and just *stamp*
-the database as already migrated — without ever creating pAIring's own
-tables. The result: an app that starts up fine and then 500s on every
-request, an admin lockout with no obvious cause. Catching this early,
-while it's still just a read-only "list the tables" check, is the whole
-point of this module.
+A connection can succeed against a database with unrelated tables (another app, a stale export, a typo'd
+name). build_schema would then hand it to Alembic, whose pre-Alembic heuristic
+(app.database._run_migrations) takes any tables for an old pAIring install and just *stamps* it migrated
+without creating pAIring's tables: the app starts, then 500s on every request, with an unexplained admin
+lockout. This read-only check catches that early.
 """
 
 from sqlalchemy import create_engine, inspect
@@ -25,18 +16,14 @@ from app.schemas import DbActionResult
 
 
 class IncompatibleSchemaError(Exception):
-    """Raised by classify_schema when a candidate database already has
-    at least one table pAIring doesn't recognize — see this module's own
-    docstring for why that has to block every write action rather than
-    just being a warning."""
+    """Raised by classify_schema when the database has a table pAIring doesn't recognize; it blocks every write action
+    rather than warn."""
 
 
 def classify_schema(url: str) -> str:
-    """Returns "empty" (no tables — safe to build a fresh schema) or
-    "compatible" (every existing table name is one pAIring's own models
-    define, or alembic_version — safe whether that's a fully-current
-    install, an older one just missing newer tables, or a legacy
-    pre-Alembic one). Raises IncompatibleSchemaError otherwise."""
+    """ "empty" (no tables; safe to build) or "compatible" (every table is one of pAIring's models or
+    alembic_version: current, older or legacy pre-Alembic). Raises IncompatibleSchemaError otherwise.
+    """
     from app import models  # noqa: F401 -- register every table before reading Base.metadata
 
     engine = create_engine(url)
@@ -60,11 +47,9 @@ def classify_schema(url: str) -> str:
 
 
 def connection_result_with_schema_status(url: str, connected_message: str) -> DbActionResult:
-    """Shared by db_config_service's _test_sqlite/_test_mysql once a raw
-    connection has already succeeded: connectivity alone isn't enough to
-    call a candidate database "OK" here — see this module's own
-    docstring. This adds the schema-compatibility verdict on top, before
-    the admin ever gets to build_schema/save with it."""
+    """Used by db_config_service's _test_sqlite/_test_mysql after a successful connection: connectivity alone
+    isn't "OK", so this adds the schema verdict before build_schema/save.
+    """
     try:
         status = classify_schema(url)
     except IncompatibleSchemaError as exc:

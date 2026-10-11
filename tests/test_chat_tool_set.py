@@ -1,4 +1,4 @@
-"""A chat keeps the tools it started with; removed tools stay but fail clearly (app/services/chat_tool_set.py)."""
+"""A chat keeps its starting tools; removed tools stay but fail clearly (services/chat_tool_set.py)."""
 
 import pytest
 
@@ -54,11 +54,11 @@ async def test_the_first_use_saves_the_list_and_later_changes_do_not_alter_it(db
     first = await tool_set.for_chat(conversation.id, [], _live("a", "b"))
     await db.refresh(conversation)
     saved = conversation.params["tool_snapshot"]
-    later = await tool_set.for_chat(conversation.id, saved, _live("a"))  # b removed, c would be new
+    later = await tool_set.for_chat(conversation.id, saved, _live("a"))
 
     assert [t.name for t in first] == ["s__a", "s__b"]
     assert [(t.name, t.available) for t in later] == [("s__a", True), ("s__b", False)]
-    assert await tool_set.for_chat(conversation.id, [], []) == []  # nothing offered, nothing saved
+    assert await tool_set.for_chat(conversation.id, [], []) == []
 
 
 @pytest.mark.asyncio
@@ -71,7 +71,7 @@ async def test_a_loop_over_a_removed_tool_returns_the_error_to_the_model(monkeyp
 
     event = next(i for i in items if isinstance(i, dict))["tool"]
     assert event["is_error"] and "no longer available" in event["result"]
-    assert "no longer available" in engine.seen[1][0][-1]["content"]  # the model reads it in round two
+    assert "no longer available" in engine.seen[1][0][-1]["content"]
 
 
 @pytest.mark.asyncio

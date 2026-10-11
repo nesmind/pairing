@@ -1,17 +1,7 @@
-/**
- * Connectors page — fetches every registered connector (see
- * app.services.connectors, app/routers/connectors.py) and renders one compact row per
- * connector, its config form built generically from that connector's own
- * config_fields so a new connector needs no change here, only a new
- * ConnectorDefinition on the backend. Each row is collapsed by default (same
- * hidden + rotating-chevron idiom as Settings > Model's "Browse more models" panel)
- * — clicking it reveals the form, and opening one collapses whichever other
- * connector's form was open, so at most one is ever expanded at a time.
- */
+/* Connectors page: fetches every registered connector (app.services.connectors, app/routers/connectors.py) and renders a compact row each, with a config form built from its config_fields, so a new connector needs only a backend ConnectorDefinition. Rows start collapsed (the hidden + rotating-chevron idiom of Settings > Model's "Browse more models"); opening one collapses the other, so at most one is expanded. */
 
-// Which connector's form is currently expanded, if any — re-applied across a
-// loadConnectors() re-render (after a save/enable toggle) so the row the admin was
-// just working in doesn't collapse out from under them.
+// The expanded connector's form, re-applied across a loadConnectors re-render (after a save/toggle) so the row being
+// edited doesn't collapse.
 let openConnectorId = null;
 
 async function loadConnectors() {
@@ -43,7 +33,7 @@ function renderConnectorCard(connector) {
 
   card.querySelector(".connector-card-toggle").addEventListener("click", () => {
     const opening = detailEl.classList.contains("hidden");
-    // Accordion: collapse every other connector's form first, so at most one is ever open.
+    // Accordion: collapse the other forms first.
     document.querySelectorAll("#connectors-list .connector-detail").forEach((el) => el.classList.add("hidden"));
     document.querySelectorAll("#connectors-list .connector-chevron").forEach((el) => el.classList.remove("rotate-180"));
     detailEl.classList.toggle("hidden", !opening);
@@ -77,8 +67,8 @@ function renderConnectorCard(connector) {
     row.querySelector(".connector-field-label").textContent = field.label + (field.required ? " *" : "");
     input.type = field.field_type === "password" ? "password" : "text";
     if (field.secret) {
-      // Never re-filled with the real value (see connector_config_service.get_config_for_display) — only
-      // whether one is already saved. A blank submission for a secret field means "keep the existing value".
+      // Secrets are never re-filled (connector_config_service.get_config_for_display); only whether one is saved. A
+      // blank submission keeps the existing value.
       input.placeholder = connector.values[`has_${field.name}`] ? "•••••••• (saved — leave blank to keep)" : "";
     } else {
       input.value = connector.values[field.name] || "";

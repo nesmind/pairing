@@ -1,7 +1,6 @@
-"""Unit tests for app/services/system_metrics_poller.py — the second
-periodic background-loop precedent in this codebase (see its own module
-docstring). Uses the shared `db` fixture; conftest.py already patches
-system_metrics_poller.AsyncSessionLocal at this module."""
+"""Tests for services/system_metrics_poller.py, the second periodic loop in this codebase (see the module). Uses the
+shared `db` fixture; conftest.py patches system_metrics_poller.AsyncSessionLocal.
+"""
 
 import asyncio
 import subprocess
@@ -47,7 +46,7 @@ async def test_poll_once_writes_a_snapshot_row(monkeypatch, db):
 
 @pytest.mark.asyncio
 async def test_poll_once_tolerates_missing_getloadavg(monkeypatch, db):
-    """getloadavg() is POSIX-only — a platform without it must not break the whole sample."""
+    """getloadavg is POSIX-only: a platform without it must not break the whole sample."""
     monkeypatch.setattr(psutil, "cpu_percent", lambda interval=None: 1.0)
     monkeypatch.setattr(psutil, "virtual_memory", lambda: _FakeVirtualMemory())
     monkeypatch.setattr(psutil, "disk_usage", lambda _path: _FakeDiskUsage())
@@ -72,7 +71,7 @@ async def test_run_system_metrics_poller_survives_a_poll_failure(monkeypatch):
         calls += 1
         if calls == 1:
             raise RuntimeError("transient failure")
-        raise SystemExit  # stop the infinite loop cleanly once the second attempt has happened
+        raise SystemExit
 
     monkeypatch.setattr(system_metrics_poller, "_poll_once", fake_poll_once)
     monkeypatch.setattr(system_metrics_poller, "POLL_INTERVAL_SECONDS", 0)
@@ -120,8 +119,7 @@ def test_sample_gpus_sync_parses_multiple_gpus(monkeypatch):
 
     assert len(snapshots) == 2
     assert [s.gpu_index for s in snapshots] == [0, 1]
-    # Both rows from one sample must share the exact same polled_at — see system_metrics_service.py's own
-    # docstring on why "latest GPU list" relies on this.
+    # Both rows of one sample must share the same polled_at (system_metrics_service.py: "latest GPU list" relies on it).
     assert snapshots[0].polled_at == snapshots[1].polled_at
 
 
@@ -135,9 +133,8 @@ def test_sample_gpus_sync_returns_empty_list_without_nvidia_smi(monkeypatch):
     assert system_metrics_poller._sample_gpus_sync() == []
 
 
-# Real, ioreg-confirmed shape of one AGXAccelerator entry's "PerformanceStatistics" IOKit property (see
-# _sample_apple_gpu_sync's own docstring on where "Device Utilization %" comes from and why it's parsed
-# defensively rather than assumed stable).
+# The ioreg-confirmed shape of one AGXAccelerator entry's "PerformanceStatistics" IOKit property
+# (_sample_apple_gpu_sync says where "Device Utilization %" comes from and why it's parsed defensively).
 _IOREG_SAMPLE_OUTPUT = """\
 +-o AGXAccelerator  <class AGXAccelerator, id 0x100000275, registered, matched, active, busy 0, retain 9>
     {
@@ -163,10 +160,10 @@ def test_sample_apple_gpu_sync_parses_utilization_from_ioreg(monkeypatch):
     assert snap.gpu_index == 0
     assert snap.name == "AGXAccelerator"
     assert snap.utilization_percent == 13.0
-    # No discrete VRAM on Apple Silicon (unified memory) — overall system RAM stands in for both fields.
+    # No discrete VRAM on Apple Silicon (unified memory): overall system RAM stands in for both fields.
     assert snap.mem_used_bytes == 9_000_000_000
     assert snap.mem_total_bytes == 17_179_869_184
-    assert snap.temperature_c is None  # no sensor reading available without root
+    assert snap.temperature_c is None
 
 
 def test_sample_apple_gpu_sync_parses_multiple_accelerator_entries(monkeypatch):
@@ -190,8 +187,8 @@ def test_sample_apple_gpu_sync_returns_empty_list_without_ioreg(monkeypatch):
 
 
 def test_sample_apple_gpu_sync_returns_empty_list_for_unparseable_output(monkeypatch):
-    """A future macOS/chip generation renaming or dropping "Device Utilization %" must fail open (no GPU rows),
-    never crash the poller — this is reverse-engineered, not documented, API."""
+    """A future macOS/chip generation renaming or dropping "Device Utilization %" must fail open (no GPU rows), never
+    crash the poller; it's reverse-engineered, not documented, API."""
     monkeypatch.setattr(
         subprocess, "run", lambda *_a, **_kw: _FakeCompletedProcess("+-o AGXAccelerator <class AGXAccelerator>\n")
     )
@@ -201,8 +198,8 @@ def test_sample_apple_gpu_sync_returns_empty_list_for_unparseable_output(monkeyp
 
 
 def test_sample_gpus_sync_falls_back_to_apple_gpu_sampling_on_macos(monkeypatch):
-    """No nvidia-smi is ever present on macOS — _sample_gpus_sync should transparently try the ioreg-based
-    fallback there instead of just giving up, unlike on Linux/Windows where no GPU really means no GPU."""
+    """macOS never has nvidia-smi, so _sample_gpus_sync should try the ioreg fallback, unlike Linux/Windows where no GPU
+    means no GPU."""
 
     def _raise_for_nvidia_smi(argv, **_kw):
         if argv[0] == "nvidia-smi":
@@ -230,7 +227,7 @@ def test_sample_gpus_sync_does_not_try_apple_fallback_on_linux(monkeypatch):
     monkeypatch.setattr(system_metrics_poller.platform, "system", lambda: "Linux")
 
     assert system_metrics_poller._sample_gpus_sync() == []
-    assert called == ["nvidia-smi"]  # never tried ioreg on a platform that was never going to have it
+    assert called == ["nvidia-smi"]
 
 
 @pytest.mark.asyncio
@@ -264,7 +261,7 @@ async def test_poll_once_writes_no_gpu_rows_when_no_gpu_is_present(monkeypatch, 
 
     monkeypatch.setattr(subprocess, "run", _raise)
 
-    await system_metrics_poller._poll_once()  # must not raise
+    await system_metrics_poller._poll_once()
 
     system_rows = (await db.execute(select(SystemMetricSnapshot))).scalars().all()
     gpu_rows = (await db.execute(select(GpuMetricSnapshot))).scalars().all()
@@ -282,9 +279,8 @@ async def test_start_system_metrics_poller_tracks_its_own_task_with_a_strong_ref
     system_metrics_poller.start_system_metrics_poller()
 
     assert len(system_metrics_poller._background_poller_tasks) == 1
-    # Cancel *and* await, not just fire-and-forget cancel() — an unawaited cancellation can keep resolving on
-    # its own schedule after this test returns, bleeding stray event-loop activity into whatever test runs next
-    # in the same process (see title_service's own background-task tests for this same convention).
+    # Cancel *and* await, not fire-and-forget: an unawaited cancellation can resolve after the test returns, bleeding
+    # event-loop activity into the next test (as title_service's background-task tests).
     tasks = list(system_metrics_poller._background_poller_tasks)
     for task in tasks:
         task.cancel()

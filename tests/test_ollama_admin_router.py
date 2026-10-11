@@ -1,10 +1,7 @@
-"""Unit tests for app/routers/ollama_admin.py — called directly, not
-through a TestClient/ASGI app (see tests/test_instance_proxy_http.py's
-own docstring on why this project doesn't use that pattern). The
-underlying start/stop/apply_local_config logic is already covered by
-tests/test_ollama_process.py; this file only covers the router's own
-job — wiring config get/set through settings_service, and mapping
-ollama_process's ValueError/RuntimeError onto the right HTTP status."""
+"""Tests for routers/ollama_admin.py, called directly, not via TestClient/ASGI (see tests/test_instance_proxy_http.py).
+start/stop/apply_local_config logic is in tests/test_ollama_process.py; this covers wiring config through
+settings_service and mapping ollama_process's ValueError/RuntimeError to the right HTTP status.
+"""
 
 import pytest
 from fastapi import HTTPException

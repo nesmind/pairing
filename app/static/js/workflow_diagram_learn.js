@@ -1,11 +1,4 @@
-/**
- * Educational "How it works" sections for the Visual chat workflow's
- * detail panel, keyed by node id (see workflow_diagram_data.js). Kept
- * separate from the diagram data so the step-by-step ML explanations
- * can grow without bloating the node definitions. Engine-neutral on
- * purpose: this describes how a language model works in general, not
- * any particular inference server.
- */
+/* "How it works" sections for the Visual chat workflow's detail panel, keyed by node id (workflow_diagram_data.js). Kept apart from the diagram data so the explanations can grow. Engine-neutral: how a language model works in general, not one server. */
 const WORKFLOW_LEARN = {
   ml_engine_server: {
     heading: "How it works: generating a reply",
@@ -63,7 +56,7 @@ const WORKFLOW_LEARN = {
   },
 };
 
-/** Renders a node's optional "How it works" section as HTML, or "" if it has none. */
+/* Renders a node's optional "How it works" section as HTML, or "" if none. */
 function renderWorkflowLearn(nodeId) {
   const learn = WORKFLOW_LEARN[nodeId];
   if (!learn) return "";

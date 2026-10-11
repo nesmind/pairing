@@ -1,11 +1,7 @@
-"""Unit tests for app/routers/db_admin.py's internal_switch_database —
-the loopback-only endpoint app.services.instance_db_broadcast calls on
-every other local instance after a live database switch. Never reached
-through a real ASGI app in this project's test suite (see
-tests/test_instance_proxy_http.py's own docstring on why: no
-TestClient/ASGI-integration pattern here) — called directly with a
-lightweight stand-in for the one attribute (`request.client.host`) the
-endpoint actually reads."""
+"""Tests for routers/db_admin.py's internal_switch_database, the loopback-only endpoint
+instance_db_broadcast calls on other local instances after a live switch. Called directly with a stand-in for
+`request.client.host`, not via an ASGI app (see tests/test_instance_proxy_http.py).
+"""
 
 import pytest
 from fastapi import HTTPException
@@ -41,8 +37,7 @@ async def test_internal_switch_database_rejects_a_non_loopback_caller(monkeypatc
 
 @pytest.mark.asyncio
 async def test_internal_switch_database_rejects_a_missing_client(monkeypatch):
-    """request.client can be None for some ASGI transports — must fail
-    closed, not treat "unknown" as trusted."""
+    """request.client can be None on some ASGI transports: fail closed, never treat "unknown" as trusted."""
 
     async def fail_if_called(_url):
         raise AssertionError("switch_database must not run when request.client is missing")

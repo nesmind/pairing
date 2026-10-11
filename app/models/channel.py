@@ -1,10 +1,7 @@
-"""Channel + ChannelMember models — a Channel is a named group chat: its
-members share exactly one Conversation (see Conversation.channel_id in
-app/models/conversation.py) instead of each having their own. See
-app/services/channel_service.py for creation/membership logic and
-app/services/conversation_service.py for how a channel's shared
-conversation is gated (any member can read/chat; only an admin or a
-member flagged is_manager can change its model/persona/rules/skill)."""
+"""Channel and ChannelMember: a named group chat whose members share one Conversation
+(Conversation.channel_id). Logic: app/services/channel_service.py; gating: conversation_service.py
+(any member reads/chats; admins and is_manager members change model/persona/rules/skill).
+"""
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import relationship
@@ -14,9 +11,7 @@ from app.models._base import ID_LEN, new_id, utcnow
 
 
 class Channel(Base):
-    """A named group chat. Membership (who's in it, and which members can
-    manage its model/persona/rules/skill) lives on ChannelMember below;
-    the actual chat thread is the one Conversation this channel owns."""
+    """A named group chat; membership is on ChannelMember, the thread is its one Conversation."""
 
     __tablename__ = "channels"
 
@@ -24,10 +19,7 @@ class Channel(Base):
     name = Column(String(255), nullable=False, unique=True)
     created_at = Column(DateTime, default=utcnow)
 
-    # uselist=False: exactly one shared Conversation per channel.
-    # cascade="all, delete-orphan" so deleting a channel takes its chat
-    # thread (and, transitively, that conversation's messages/note_pins —
-    # see Conversation's own cascades) with it.
+    # uselist=False: one shared Conversation per channel. delete-orphan cascade removes its thread and messages.
     conversation = relationship(
         "Conversation",
         back_populates="channel",
@@ -35,12 +27,8 @@ class Channel(Base):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    # lazy="selectin" — see app/models/conversation.py's
-    # Conversation.messages for why the app defaults accessed
-    # relationships to this under the async session;
-    # channel_service.can_manage_channel_conversation reads
-    # conversation.channel.members directly off an already-loaded
-    # Conversation without an extra query.
+    # lazy="selectin" (see Conversation.messages); channel_service.can_manage_channel_conversation reads members without
+    # extra queries.
     members = relationship(
         "ChannelMember",
         back_populates="channel",
@@ -50,13 +38,9 @@ class Channel(Base):
 
 
 class ChannelMember(Base):
-    """One user's membership in one channel. is_manager grants that
-    member the right to change the channel conversation's model/persona/
-    rules/skill (see channel_service.can_manage_channel_conversation) —
-    only users holding the global "channel_manager" role are allowed to
-    be flagged this way (enforced in channel_service, not here, since a
-    role change on User shouldn't retroactively edit existing
-    memberships)."""
+    """One user's membership in a channel. is_manager allows changing the conversation's model/persona/rules/skill;
+    only users with the "channel_manager" role may be flagged (enforced in channel_service).
+    """
 
     __tablename__ = "channel_members"
     __table_args__ = (UniqueConstraint("channel_id", "user_id", name="uq_channel_member_channel_user"),)
@@ -68,6 +52,5 @@ class ChannelMember(Base):
     created_at = Column(DateTime, default=utcnow)
 
     channel = relationship("Channel", back_populates="members", lazy="selectin")
-    # lazy="selectin" — channel_service.to_channel_out reads
-    # member.user.username directly.
+    # lazy="selectin": channel_service.to_channel_out reads member.user.username.
     user = relationship("User", lazy="selectin")

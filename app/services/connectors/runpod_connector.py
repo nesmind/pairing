@@ -1,7 +1,7 @@
-"""RunPod Serverless — pAIring's first Connector. Talks to a RunPod Serverless
-endpoint running the vLLM worker template's OpenAI-compatible API (see
-app.services.runpod_client for the actual HTTP calls); no local process, no host
-pool — an admin points this at an endpoint they've already deployed on RunPod."""
+"""RunPod Serverless, the first Connector: a RunPod endpoint running the vLLM worker template's
+OpenAI-compatible API (calls: runpod_client). No local process or host pool; the admin points it at an endpoint they
+deployed.
+"""
 
 from app.services.connectors.base import ConnectorConfigField, ConnectorDefinition
 

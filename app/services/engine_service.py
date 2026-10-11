@@ -1,24 +1,18 @@
-"""
-Which inference engine — Ollama or Matricxon — app.services.inference_client dispatches chat/embedding/model-
-management calls to right now (see Settings > External servers' "Active engine" picker, app/routers/engine_admin.py).
+"""Which engine, Ollama or Matricxon, inference_client dispatches chat/embedding/model-management calls to
+(Settings > External servers' "Active engine" picker, routers/engine_admin.py).
 
-Both engines are configured, started, and stopped fully independently (see app.services.ollama_admin/
-matricxon_admin routers and the ollama_pool/matricxon_pool each one's own config feeds) — this module owns only
-the one extra bit of state that decides which of the two actually serves live traffic. Cached in-process (not
-re-read from the DB on every call — this sits on the hot chat-generation path, same reasoning as
-app.services.ollama_pool's own cached host list) via a write-through pattern: load_cache_from_db() once at
-startup (see app.services.startup_service), then current_engine() for every subsequent hot-path read; set_active_engine
-keeps the cache and the DB in lockstep on every admin save.
+Both are configured, started and stopped independently (ollama_admin/matricxon_admin, their pools); this
+module owns only the state choosing which serves traffic. Cached in-process (hot chat path, like
+ollama_pool's host list) write-through: load_cache_from_db at startup (startup_service), then
+current_engine; set_active_engine keeps cache and DB in step.
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import SYSTEM_OWNER_ID, AppSetting
 
-# DEFAULT_ENGINE re-exported here (not redefined) so every existing `engine_service.DEFAULT_ENGINE` call site
-# (this module's own get_active_engine below, and the many tests that reset _cached_engine to it) keeps working
-# unchanged — see app.schemas.common.DEFAULT_ENGINE's own docstring for why this used to be its own separate,
-# disagreeing copy here.
+# DEFAULT_ENGINE is re-exported (not redefined) so existing `engine_service.DEFAULT_ENGINE` uses and tests
+# that reset _cached_engine keep working (see schemas.common.DEFAULT_ENGINE for why).
 from app.schemas import DEFAULT_ENGINE, EngineName
 
 ACTIVE_ENGINE_KEY = "active_llm_engine"
@@ -44,15 +38,14 @@ async def set_active_engine(db: AsyncSession, engine: EngineName) -> None:
 
 
 async def load_cache_from_db(db: AsyncSession) -> None:
-    """Populates the in-process cache from the DB — call once at startup (see
-    app.services.startup_service.run_startup_tasks) and from every other local instance's own
-    internal-refresh handler (see app/routers/engine_admin.py), the same "each process re-reads the shared DB
-    for itself" pattern app.services.ollama_pool's own broadcast refresh already uses."""
+    """Loads the cache from the DB; call at startup (startup_service.run_startup_tasks) and from each instance's
+    internal-refresh handler (routers/engine_admin.py), as in ollama_pool's broadcast refresh.
+    """
     global _cached_engine
     _cached_engine = await get_active_engine(db)
 
 
 def current_engine() -> EngineName:
-    """Synchronous, hot-path read of the cached active engine — see app.services.inference_client, the only
-    caller that needs this on every chat/embedding/model-management call."""
+    """Synchronous hot-path read of the cached active engine (inference_client calls it on every
+    chat/embedding/model-management call)."""
     return _cached_engine

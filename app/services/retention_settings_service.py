@@ -1,8 +1,5 @@
-"""Admin-configured retention windows for the poller-written tables
-app.services.retention_poller sweeps — split out into its own file for
-the same file-size reason as app.services.chat_settings_service (see
-that module's own docstring): app.services.settings_service is already
-at CLAUDE.md's line cap.
+"""Admin retention windows for the tables retention_poller sweeps. Own file for the same file-size reason as
+chat_settings_service (settings_service is at the line cap).
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,18 +9,16 @@ from app.schemas import RetentionSettings
 
 RETENTION_SETTINGS_KEY = "data_retention_days"
 
-# Same defaults app.services.retention_poller shipped with before this became admin-configurable.
+# The defaults retention_poller shipped with before this was configurable.
 DEFAULT_TELEMETRY_RETENTION_DAYS = 30
 DEFAULT_SYSTEM_METRICS_RETENTION_DAYS = 3
 
 
 async def get_retention_settings(db: AsyncSession) -> RetentionSettings:
-    """Read fresh on every call (not cached) — app.services.retention_poller.prune_once calls this at the start
-    of every sweep, the same "an admin's change takes effect on the next run, not just after a restart"
-    reasoning as chat_settings_service.get_reply_timeout_seconds. A stored value outside RetentionSettings' own
-    [1, 365] bounds (only possible via a hand-edited row, since set_retention_settings below and the API layer's
-    own schema validation both enforce this range) falls back to the defaults rather than applying a nonsense
-    window."""
+    """Read fresh on every call: retention_poller.prune_once calls it each sweep, so changes apply at the next run
+    (as chat_settings_service.get_reply_timeout_seconds). A stored value outside RetentionSettings' [1, 365]
+    (only via a hand-edited row; set_retention_settings and the API schema enforce it) falls back to the defaults.
+    """
     row = await db.get(AppSetting, (SYSTEM_OWNER_ID, RETENTION_SETTINGS_KEY))
     if row:
         try:

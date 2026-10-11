@@ -1,6 +1,5 @@
-"""Response shapes for GET /api/system-metrics/summary — the Stats
-page's "System" view (see app/services/system_metrics_service.py for
-the query and app/static/js/system_metrics.js for how these render)."""
+"""Shapes for GET /api/system-metrics/summary, the Stats "System" view (system_metrics_service.py,
+system_metrics.js)."""
 
 from datetime import datetime
 
@@ -14,9 +13,8 @@ class SystemMetricPoint(BaseModel):
 
 
 class GpuStat(BaseModel):
-    """One GPU's current usage — see app.services.system_metrics_poller's
-    best-effort `nvidia-smi` sampling. gpus is simply empty on any
-    machine without an NVIDIA GPU/driver, not an error."""
+    """One GPU's current usage (best-effort `nvidia-smi` in system_metrics_poller); gpus is empty without an NVIDIA
+    GPU."""
 
     gpu_index: int
     name: str
@@ -28,8 +26,7 @@ class GpuStat(BaseModel):
 
 
 class GpuHistoryPoint(BaseModel):
-    """Flat (not grouped by GPU) so a multi-GPU history stays one simple list — the frontend groups by
-    gpu_index itself when drawing one line per GPU (see app/static/js/system_charts.js)."""
+    """Flat so multi-GPU history stays one list; the frontend groups by gpu_index (system_charts.js)."""
 
     polled_at: datetime
     gpu_index: int

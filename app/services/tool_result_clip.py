@@ -1,7 +1,8 @@
 """Fits a tool result into the admin's character limit without breaking it.
 
-A JSON result is shortened structurally (long strings clipped, long lists cut, still valid JSON), because a
-model that reads half a JSON document often gives up. Anything else is cut at a line or word boundary."""
+JSON is shortened structurally (long strings clipped, long lists cut, still valid JSON), since a model that
+reads half a JSON document often gives up. Anything else is cut at a line or word boundary.
+"""
 
 import json
 from typing import Any

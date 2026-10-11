@@ -1,30 +1,14 @@
-"""
-Thin async wrapper around ComfyUI's local HTTP API — mirrors
-app/services/ollama_client.py's own shape/boundary (no FastAPI/DB
-knowledge here, just "how to talk to ComfyUI").
+"""Thin async wrapper around ComfyUI's local HTTP API; like ollama_client.py, no FastAPI/DB knowledge.
 
-ComfyUI's API is node-graph based, not a plain "one request in, one
-response out" endpoint like Ollama's /api/chat: a generation is
-submitted as a full "workflow" — a JSON graph of nodes wired together
-(checkpoint loader -> positive/negative text encode -> empty latent ->
-sampler -> VAE decode -> save image) — via POST /prompt, which returns
-immediately with a prompt_id; the actual result is fetched later via
-GET /history/{prompt_id} once ComfyUI finishes it. _WORKFLOW_TEMPLATE
-below is a standard SD1.5-style txt2img graph — a reasonable default,
-not a universal one (see this feature's own plan notes: a different
-checkpoint/install may need a different graph shape).
+ComfyUI is node-graph based: a generation is a "workflow" JSON graph (checkpoint loader -> text encodes ->
+empty latent -> sampler -> VAE decode -> save image) POSTed to /prompt, which returns a prompt_id at once;
+the result comes later from GET /history/{prompt_id}. _WORKFLOW_TEMPLATE is a standard SD1.5-style
+txt2img graph: a default, not universal (other checkpoints may need another shape).
 
-Unlike Ollama's chat_stream, a ComfyUI job is *stateful per host*: a
-prompt_id returned by submit_job only ever exists on whichever host
-actually received it — get_history/fetch_image_bytes for that job must
-keep using that exact same host, never re-pick from the pool the way
-Ollama's per-request routing can. submit_job (host not yet chosen) and
-list_checkpoints (host-agnostic, any configured host's own catalog) are
-the only two calls that go through app.services.comfyui_pool's
-failover; everything else takes `host` as an explicit, already-decided
-parameter (see app.services.image_generation_service, the only caller,
-which threads the one host a job was submitted to through its own
-lifetime).
+A job is stateful per host: its prompt_id exists only on the host that received it, so get_history /
+fetch_image_bytes must reuse that host, unlike Ollama's per-request routing. Only submit_job and
+list_checkpoints (host-agnostic) use comfyui_pool's failover; the rest take an explicit `host`
+(image_generation_service, the only caller, threads it through).
 """
 
 import copy
@@ -37,10 +21,8 @@ from app.services import comfyui_pool
 
 _REQUEST_TIMEOUT = httpx.Timeout(30.0, connect=5.0)
 
-# Node ids are plain, human-picked labels (matching ComfyUI's own
-# exported-workflow numbering conventions) — not meaningful beyond
-# wiring the graph together and letting _run_job below know which node's
-# output ("9") is the final image.
+# Node ids are plain labels (ComfyUI export numbering), only used to wire the graph and to tell _run_job
+# which node ("9") holds the final image.
 _WORKFLOW_TEMPLATE = {
     "3": {
         "class_type": "KSampler",
@@ -64,23 +46,20 @@ _WORKFLOW_TEMPLATE = {
     "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
     "9": {"class_type": "SaveImage", "inputs": {"filename_prefix": APP_NAME, "images": ["8", 0]}},
 }
-# The node whose output is the finished image — image_generation_service
-# reads history["outputs"][SAVE_IMAGE_NODE_ID]["images"] once complete.
+# The node whose output is the finished image (image_generation_service reads
+# history["outputs"][SAVE_IMAGE_NODE_ID]["images"]).
 SAVE_IMAGE_NODE_ID = "9"
 
 
 class ComfyUIError(Exception):
-    """Raised when ComfyUI is unreachable or returns an error, so callers
-    can turn it into a clean HTTP error (or a job's own error_message)
-    instead of a raw stack trace — mirrors ollama_client.OllamaError."""
+    """Raised when ComfyUI is unreachable or errors, for a clean HTTP error or job error_message (like
+    ollama_client.OllamaError)."""
 
 
 def _build_workflow(params: dict) -> dict:
-    """Returns a fresh copy of _WORKFLOW_TEMPLATE with `params` (prompt,
-    negative_prompt, checkpoint, width, height, steps, cfg, seed)
-    substituted in — never mutates the shared module-level template in
-    place, since concurrent jobs building off the same dict object would
-    otherwise corrupt each other."""
+    """A fresh copy of _WORKFLOW_TEMPLATE with `params` (prompt, negative_prompt, checkpoint, width, height,
+    steps, cfg, seed) filled in; never mutates the shared template (concurrent jobs would corrupt it).
+    """
     workflow = copy.deepcopy(_WORKFLOW_TEMPLATE)
     workflow["4"]["inputs"]["ckpt_name"] = params["checkpoint"]
     workflow["5"]["inputs"]["width"] = params["width"]
@@ -94,11 +73,9 @@ def _build_workflow(params: dict) -> dict:
 
 
 async def submit_job(params: dict) -> tuple[str, str]:
-    """Submits a txt2img workflow built from `params`, routed across the
-    pool with failover (safe here — nothing has been created yet, so a
-    retry on a different host duplicates no state). Returns (host,
-    prompt_id) — the caller must keep using this exact `host` for every
-    later call about this same job (see this module's own docstring)."""
+    """Submits a txt2img workflow from `params`, with pool failover (safe: nothing exists yet). Returns
+    (host, prompt_id); reuse this `host` for the job (see module docstring).
+    """
     payload = {"prompt": _build_workflow(params), "client_id": uuid.uuid4().hex}
 
     async def _call(host: str) -> tuple[str, str]:
@@ -114,7 +91,7 @@ async def submit_job(params: dict) -> tuple[str, str]:
 
 
 async def cancel_job(host: str, prompt_id: str) -> None:
-    """Best-effort: drops a still-queued prompt and interrupts whatever is executing on `host`."""
+    """Best-effort: drops a queued prompt and interrupts what is executing on `host`."""
     try:
         async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
             await client.post(f"{host}/queue", json={"delete": [prompt_id]})
@@ -124,11 +101,9 @@ async def cancel_job(host: str, prompt_id: str) -> None:
 
 
 async def get_history(host: str, prompt_id: str) -> dict | None:
-    """Returns {"outputs": {...}} once `prompt_id` has finished, or None
-    while it's still queued/running (an absent or empty entry — ComfyUI
-    only adds a prompt_id to /history once it's done). Always the exact
-    `host` this job was submitted to — see this module's own docstring
-    for why this never fails over to a different host."""
+    """{"outputs": {...}} once `prompt_id` finished, else None (ComfyUI adds it to /history only when done).
+    Always the submitting `host`, never failed over.
+    """
     async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
         try:
             resp = await client.get(f"{host}/history/{prompt_id}")
@@ -140,9 +115,7 @@ async def get_history(host: str, prompt_id: str) -> dict | None:
 
 
 async def fetch_image_bytes(host: str, filename: str, subfolder: str, image_type: str) -> bytes:
-    """Downloads one output image's raw bytes, as referenced by a
-    get_history() result's outputs[...]["images"][i] entry — same exact
-    `host` that job was submitted to, for the same reason get_history is."""
+    """Downloads one output image's bytes, from a get_history outputs[...]["images"][i] entry, on the job's host."""
     params = {"filename": filename, "subfolder": subfolder, "type": image_type}
     async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
         try:
@@ -154,12 +127,9 @@ async def fetch_image_bytes(host: str, filename: str, subfolder: str, image_type
 
 
 async def list_checkpoints() -> list[str]:
-    """Returns every checkpoint ComfyUI currently has installed, for the
-    generation page's model picker. Host-agnostic (any configured host's
-    own catalog) — pool-routed with failover, same "not guaranteed
-    uniform across hosts" caveat app.services.ollama_admin's own model
-    pull/delete already documents for the identical multi-host
-    situation."""
+    """Every checkpoint ComfyUI has, for the generation page's picker. Host-agnostic and pool-routed with
+    failover; hosts may differ (as in ollama_admin's multi-host pull/delete).
+    """
 
     async def _call(host: str) -> dict:
         async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:

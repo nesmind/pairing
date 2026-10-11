@@ -1,4 +1,4 @@
-"""What MCP tools the chat page can offer: any signed-in user may ask (it shows or hides the Tools toggle)."""
+"""MCP tools the chat page can offer; any signed-in user may ask (shows or hides the Tools toggle)."""
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,7 +42,7 @@ async def _chat_tools(db: AsyncSession, conversation) -> McpChatTools:
 
 @router.get("/conversations/{conversation_id}/tools", response_model=McpChatTools)
 async def chat_tools(conversation_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    """The tools this chat offers, those an admin removed since (still listed, marked unavailable), and new ones."""
+    """The chat's tools, plus ones an admin removed since (listed as unavailable) and new ones."""
     conversation = await conversation_service.get_accessible_conversation_or_404(db, conversation_id, user)
     return await _chat_tools(db, conversation)
 
@@ -51,7 +51,7 @@ async def chat_tools(conversation_id: str, db: AsyncSession = Depends(get_db), u
 async def refresh_chat_tools(
     conversation_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
 ):
-    """Replaces the chat's saved tools with the current ones - its next reply re-reads the whole chat once."""
+    """Replaces the chat's saved tools with the current ones; the next reply re-reads the whole chat once."""
     conversation = await conversation_service.get_accessible_conversation_or_404(db, conversation_id, user)
     if conversation.channel_id is not None and not channel_service.can_manage_channel_conversation(conversation, user):
         raise HTTPException(status_code=403, detail="Only admins and this channel's managers can change its tools.")

@@ -1,6 +1,6 @@
-"""Unit tests for app/services/ollama_snapshot_service.py — dedupes poll history down to the newest row per
-(host, model_name), one engine at a time (see that module's own docstring for why every query filters on
-engine), rather than a version-fragile SQL window-function query."""
+"""Tests for services/ollama_snapshot_service.py: dedupes poll history to the newest row per (host, model_name),
+one engine at a time (see the module on why queries filter on engine), instead of a version-fragile SQL window query.
+"""
 
 from datetime import timedelta
 
@@ -70,9 +70,9 @@ async def test_empty_when_nothing_polled_yet(db):
 
 @pytest.mark.asyncio
 async def test_a_matricxon_snapshot_never_leaks_into_ollamas_results(db):
-    """The real feature this covers: both engines write to the same ModelSnapshot table (see that model's
-    own docstring) — a Matricxon poll for the same host/model an Ollama poll also reported must not get mixed
-    into Ollama's own "currently loaded" dashboard, and vice versa."""
+    """Both engines write to the same ModelSnapshot table (see the model): a Matricxon poll for the same host/model as
+    an Ollama poll must not leak into Ollama's "currently loaded" dashboard, nor the reverse.
+    """
     now = utcnow()
     db.add_all(
         [

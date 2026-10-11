@@ -1,10 +1,7 @@
-"""Unit tests for app/routers/account.py — called directly, not through a
-TestClient/ASGI app (see tests/test_instance_proxy_http.py's own
-docstring on why this project doesn't use that pattern). The underlying
-save/delete logic is already covered by tests/test_avatar_service.py;
-this file only covers the router's own job — self-service profile
-get/patch, avatar upload/delete, the public avatar-serving endpoint, and
-the public "basic profile" lookup chat.js's avatar-click modal uses."""
+"""Tests for routers/account.py, called directly, not via TestClient/ASGI (see tests/test_instance_proxy_http.py
+for why). Save/delete logic is covered by tests/test_avatar_service.py; this covers the router: profile
+get/patch, avatar upload/delete, public avatar serving and the public profile lookup for chat.js's avatar modal.
+"""
 
 import io
 
@@ -22,11 +19,8 @@ def _upload(filename: str, data: bytes) -> UploadFile:
 
 @pytest.fixture(autouse=True)
 def _isolated_avatars_dir(tmp_path, monkeypatch):
-    # AVATARS_DIR is imported by name into both modules — each gets its
-    # own independent binding (the module-split import-binding gotcha
-    # this codebase's memory notes elsewhere), so both need patching for
-    # a save (through avatar_service) and a serve (through account's own
-    # get_avatar) to agree on where the file actually is.
+    # AVATARS_DIR is imported by name into both modules (independent bindings, the module-split gotcha), so patch
+    # both for a save (avatar_service) and a serve (account's get_avatar) to agree on the file.
     monkeypatch.setattr(avatar_service, "AVATARS_DIR", tmp_path)
     monkeypatch.setattr(account, "AVATARS_DIR", tmp_path)
 

@@ -1,14 +1,8 @@
-"""
-Channel administration (create/edit/delete, admin-only — see
-app/services/channel_service.py) plus the one member-facing endpoint
-that lists the channels the current user belongs to, for the sidebar.
-This file only handles HTTP routing, status codes, and Depends()
-injection; see channel_service for the actual business logic.
+"""Channel administration (admin-only, app/services/channel_service.py) plus the member endpoint listing the user's
+channels.
 
-Two routers live here since the two concerns have different audiences
-and prefixes: `router` (admin-only, under /api/settings/channels,
-mirrors app/routers/users.py) and `member_router` (any logged-in user,
-under /api/channels).
+Two routers: `router` (admin, /api/settings/channels, like app/routers/users.py) and `member_router`
+(any user, /api/channels).
 """
 
 from fastapi import APIRouter, Depends
@@ -70,8 +64,7 @@ async def reset_channel(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
-    """Clears the channel's chat history and re-sets its notes from the admin's defaults; the channel and
-    its members stay."""
+    """Clears the channel's history and re-sets its notes from the admin's defaults; channel and members stay."""
     channel = await channel_service.get_channel_or_404(db, channel_id)
     await ChannelResetService.reset(db, channel, admin)
     return OkResponse()
@@ -79,9 +72,7 @@ async def reset_channel(
 
 @member_router.get("", response_model=list[ChannelSummary])
 async def list_my_channels(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    """The channels `user` is currently a member of — powers the
-    sidebar's Channels section. Membership-only, no admin override (see
-    channel_service.list_channels_for_user's docstring)."""
+    """The channels `user` belongs to (sidebar). Membership only, no admin override."""
     channels = await channel_service.list_channels_for_user(db, user)
     return [
         ChannelSummary(

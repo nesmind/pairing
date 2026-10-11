@@ -1,14 +1,10 @@
-"""Fetches a GitHub repo's real tag list for Settings > External servers' version picker (see
-app.routers.ollama_admin/comfyui_admin/matricxon_admin's shared available-versions endpoint, and
-app.services.ollama_installer/comfyui_installer/matricxon_installer, whose own install_repo/install_version
-override this is meant to make easier to fill in correctly — a tag typo today only surfaces as a failed install
-several steps in, not a validation error up front).
+"""A GitHub repo's tag list for Settings > External servers' version picker (shared available-versions
+endpoint in routers/ollama_admin, comfyui_admin, matricxon_admin). Helps fill the installers' install_repo/
+install_version overrides correctly (a typo'd tag otherwise fails several steps into an install).
 
-GitHub's REST API is unauthenticated here (no token configured anywhere in this app) and rate-limited to 60
-requests/hour per source IP — trivial to exhaust with more than a couple of admins loading Settings, so results
-are cached in-process per repo for _CACHE_TTL_SECONDS. Any failure (network, 404 for a typo'd repo, rate limit)
-degrades to an empty list rather than raising — this is a convenience on top of the free-text override field,
-never something that should block Settings from loading or an admin from typing a tag by hand.
+GitHub's unauthenticated REST API allows 60 requests/hour per IP, easily exhausted, so results are cached
+per repo for _CACHE_TTL_SECONDS. Any failure (network, 404 typo'd repo, rate limit) gives an empty list
+rather than raising: a convenience over free-text entry that must never block Settings.
 """
 
 import logging
@@ -22,15 +18,15 @@ _REQUEST_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 _PER_PAGE = 30
 _CACHE_TTL_SECONDS = 600.0
 
-# repo -> (fetched_at, tag names newest-first) — a plain module-level dict is enough here, same "no real
-# eviction, just a TTL check on read" idiom as app.services.matricxon_pool's own cached host list; the number of
-# distinct repos an admin could plausibly point this at in one process's lifetime is tiny.
+# repo -> (fetched_at, tag names newest-first). A module-level dict with a TTL check suffices (like
+# matricxon_pool's cached host list); few distinct repos are ever used.
 _cache: dict[str, tuple[float, list[str]]] = {}
 
 
 async def list_tags(repo: str) -> list[str]:
-    """Up to the most recent `_PER_PAGE` tag names for `repo` (e.g. "ollama/ollama"), newest first — GitHub's
-    own /tags endpoint already returns them in that order. Empty list for an empty/blank repo, or any failure."""
+    """Up to the most recent `_PER_PAGE` tag names for `repo` (e.g. "ollama/ollama"), newest first (GitHub's
+    /tags order). Empty for a blank repo or any failure.
+    """
     if not repo:
         return []
     cached = _cache.get(repo)

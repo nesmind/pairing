@@ -1,11 +1,6 @@
-"""
-Builds one reply's system prompt (persona/rule notes, then RAG context,
-then a message's own ad-hoc attachments, in that layering order) and the RAG
-source-filename list shown under a reply. Split out of
-app.services.chat_service.build_reply_stream to keep that file under
-CLAUDE.md's file-size rule — this is exactly the "what goes into the
-prompt" half of that function, with the history-trimming/generation-
-dispatch half left behind there.
+"""Builds a reply's system prompt (persona/rule notes, RAG context, then ad-hoc attachments) and the RAG
+source-filename list. Split from chat_service.build_reply_stream for the file-size rule: the "what goes
+into the prompt" half.
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,28 +21,19 @@ async def build_system_prompt(
     params: dict,
     attachments: list[AttachmentInfo],
 ) -> tuple[str, str, list[str]]:
-    """Returns (system_prompt, turn_context, source_filenames) for this one turn.
+    """Returns (system_prompt, turn_context, source_filenames) for this turn.
 
-    `system_prompt` holds only the notes, which stay identical turn after turn, so the engine's prompt
-    cache keeps matching the whole conversation. `turn_context` (RAG excerpts + text attachments) changes
-    every message, so the caller puts it in front of the newest user message instead (see
-    prepend_turn_context): in the system prompt it would sit before all the history and force a full
-    re-read of the chat on every turn.
+    `system_prompt` holds only the notes, identical every turn, so the engine's prompt cache keeps matching.
+    `turn_context` (RAG excerpts + text attachments) changes per message, so the caller puts it before the
+    newest user message (prepend_turn_context); in the system prompt it would force a full re-read each turn.
 
-    The system prompt is the explicit persona/rules/skill note pins (Notes
-    page or the chat page's icons), falling back to the user's default
-    note per slot (see app/services/note_service.py). The turn context is
-    RAG context (every chat automatically searches the shared knowledge base — no
-    per-conversation on/off switch, only the rag_top_k "how many chunks"
-    setting; degrades silently if the knowledge base is empty or the
-    embedding model is unreachable, rather than failing the whole
-    request), then any of a message's own ad-hoc attachments that
-    are `type="text"` (an image attachment is handled separately — see
-    chat_attachment_service.apply_image_attachment, called by
-    chat_service after `history` is built from this function's result).
-    A channel conversation passes user_id=None to retrieve_context so RAG
-    only searches the global knowledge base, never any one member's
-    private uploads (see that function's own docstring)."""
+    The system prompt is the explicit persona/rules/skill pins (Notes page or chat icons), falling back to
+    the user's default note per slot (note_service.py). The turn context is RAG context (every chat searches
+    the shared knowledge base; only rag_top_k is adjustable; degrades silently if the base is empty or the
+    embedding model is unreachable), then `type="text"` attachments (images:
+    chat_attachment_service.apply_image_attachment).
+    Channels pass user_id=None to retrieve_context so only the global knowledge base is searched.
+    """
     system_prompt = ""
     notes_by_type = await resolve_conversation_notes(db, conversation, user.id)
     if any(notes_by_type.values()):
@@ -62,9 +48,8 @@ async def build_system_prompt(
         retrieved = []
     if retrieved:
         turn_context = build_augmented_system_prompt("", retrieved).strip()
-        # De-duplicated, in first-seen (best-match-first) order — a
-        # document can contribute more than one chunk, but it should
-        # only be listed once in the "Sources" note.
+        # De-duplicated in first-seen (best-match-first) order: a document may give several chunks but is listed once
+        # under "Sources".
         seen = set()
         for chunk in retrieved:
             if chunk["filename"] not in seen:

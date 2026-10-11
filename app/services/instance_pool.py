@@ -1,20 +1,9 @@
-"""
-Routes an incoming HTTP request across this machine's local pAIring
-instances (see app/services/instance_service.py for how those get
-spawned) when "proxy mode" (Settings > System) is set to "local" — the
-"fewest in-flight requests, health-aware" pool selector, a direct port
-of app/services/ollama_pool.py's design to instance indices instead of
-Ollama host URLs. See app/services/instance_proxy.py for the ASGI
-middleware that actually forwards a request using pick_instance's
-choice.
+"""Routes an incoming HTTP request across this machine's local pAIring instances (instance_service.py) when
+"proxy mode" (Settings > System) is "local": a "fewest in-flight, health-aware" selector, a port of
+ollama_pool.py to instance indices. instance_proxy.py forwards using pick_instance.
 
-Primary-process-only: a sibling never imports this for routing
-decisions (it may still end up as a *target* another instance forwards
-to, but it never chooses). Unlike Ollama's own remote host list, the
-candidate set isn't fixed for the process's lifetime — instance count
-can change live from
-Settings — so candidates are recomputed on every call rather than built
-once at import time.
+Primary-only: a sibling may be a *target* but never chooses. The candidate set changes live with the
+instance count, so candidates are recomputed per call.
 """
 
 import random
@@ -25,10 +14,8 @@ from contextlib import asynccontextmanager
 from app.services import instance_process
 from app.services.settings_service import DEFAULT_PROXY_MODE
 
-# Same cooldown window as ollama_pool.py, same reasoning: long enough
-# that one failed request doesn't get immediately retried against the
-# same still-broken instance, short enough that a recovered instance
-# doesn't sit unused for minutes.
+# Same cooldown as ollama_pool.py: long enough not to retry a still-broken instance at once, short enough
+# that a recovered one isn't idle for minutes.
 _COOLDOWN_SECONDS = 30.0
 
 
@@ -40,10 +27,8 @@ class _InstanceState:
         self.cooldown_until = 0.0
 
 
-# Lazily grown via setdefault — never shrunk while a track_request could
-# still hold a reference to an entry, which would corrupt its in_flight
-# count. A stale entry for an index that's since scaled down just sits
-# unused; harmless.
+# Grown lazily via setdefault, never shrunk while a track_request may hold an entry (it would corrupt
+# in_flight). A stale entry for a scaled-down index is harmless.
 _pool: dict[int, _InstanceState] = {}
 
 
@@ -52,32 +37,21 @@ def _state(index: int) -> _InstanceState:
 
 
 def _candidate_indices() -> set[int]:
-    """Index 0 (the primary itself, answering this very call) is always
-    a candidate; the rest come from whichever siblings are currently
-    tracked and confirmed alive — see instance_process.read_tracking/
-    is_alive, the same cheap synchronous (no network) checks
-    instance_service's own reconcile loop uses."""
+    """Index 0 (the primary, answering now) is always a candidate; the rest are tracked siblings confirmed alive
+    (instance_process.read_tracking/is_alive: cheap, no network, as instance_service's reconcile).
+    """
     tracked = instance_process.read_tracking()
     alive = {index for index, info in tracked.items() if instance_process.is_alive(info["pid"])}
     return {0} | alive
 
 
 def pick_instance(exclude: frozenset[int] = frozenset()) -> int:
-    """The healthy candidate with the fewest in-flight requests right
-    now — mirrors ollama_pool.pick_host's shape (falls back to the
-    least-recently-failed candidate rather than raising if every
-    candidate is excluded or cooling down at once), with one deliberate
-    difference: ties are broken *randomly*, not by always favoring
-    whichever candidate happens to sort first. app-instance traffic is
-    dominated by fast, mostly-sequential requests (page loads, small API
-    calls) where every candidate's in-flight count is 0 far more often
-    than not — with Python's plain min() (what ollama_pool uses), a tie
-    always resolves to the same candidate (index 0, confirmed live:
-    100% of a real 20-request sequential/concurrent test all landed on
-    the primary), which never actually balances anything under normal
-    light load. Ollama's own traffic doesn't have this problem in
-    practice (requests are long and vary enough that real in-flight
-    differences dominate), so ollama_pool is left as-is."""
+    """The healthy candidate with the fewest in-flight requests (like ollama_pool.pick_host; if all are excluded
+    or cooling down, the least-recently-failed). Difference: ties break *randomly*. App traffic is mostly fast
+    sequential requests with 0 in flight everywhere, and plain min (ollama_pool) always picked index 0
+    (100% of 20 live requests hit the primary), so nothing balanced under light load. Ollama's long, varied
+    requests don't have this problem, so ollama_pool is unchanged.
+    """
     now = time.monotonic()
     candidates = _candidate_indices()
     healthy = [i for i in candidates if i not in exclude and _state(i).cooldown_until <= now]
@@ -99,10 +73,9 @@ def mark_recovered(index: int) -> None:
 
 @asynccontextmanager
 async def track_request(index: int) -> AsyncGenerator[None, None]:
-    """Brackets one request's lifetime against `index`'s in-flight count
-    — held for the caller's entire block, which for a proxied chat SSE
-    stream is its whole duration, not just until headers are sent. Same
-    contract as ollama_pool.track_request."""
+    """Brackets one request's lifetime against `index`'s in-flight count, held for the caller's whole block (a
+    proxied chat SSE stream's full duration). Same contract as ollama_pool.track_request.
+    """
     state = _state(index)
     state.in_flight += 1
     try:
@@ -111,12 +84,9 @@ async def track_request(index: int) -> AsyncGenerator[None, None]:
         state.in_flight -= 1
 
 
-# --- Proxy-mode write-through cache -------------------------------------
-# Populated once at primary startup (app/main.py's on_startup) and
-# updated immediately whenever the admin saves a change (see
-# app/routers/proxy_admin.py) — avoids a DB round trip on every single
-# incoming request. A sibling process never reads or writes this; only
-# the primary ever makes routing decisions.
+# Proxy-mode write-through cache
+# Populated at primary startup (app/main.py on_startup) and updated on admin save (routers/proxy_admin.py),
+# avoiding a DB read per request. Siblings never use it; only the primary routes.
 _proxy_mode = DEFAULT_PROXY_MODE
 
 

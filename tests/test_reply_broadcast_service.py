@@ -1,6 +1,6 @@
-"""Unit tests for app/services/reply_broadcast_service.py — the
-in-process pub/sub hub app.services.reply_generation_service's relay and
-app/routers/chat.py's `/subscribe` endpoint both read from."""
+"""Tests for services/reply_broadcast_service.py, the in-process pub/sub hub read by
+reply_generation_service's relay and routers/chat.py's `/subscribe`.
+"""
 
 import asyncio
 
@@ -50,17 +50,12 @@ async def test_publish_error_is_delivered_and_marks_the_topic_errored():
 
 @pytest.mark.asyncio
 async def test_publish_chunk_done_and_error_all_carry_message_id_for_subscribe_watchers():
-    """Regression test for a real, shipped bug: app/routers/chat.py's
-    /subscribe endpoint relays this hub's raw events completely
-    unmodified (unlike reply_generation_service.stream_reply's own relay
-    for the sender's tab, which additionally stamps "message_id" onto
-    whatever it yields) — so any channel member other than the sender,
-    watching live in "real" delivery mode, saw every chunk/done/error
-    event with no message_id at all, and chat.js's handleReplyLiveEvent
-    requires one to do anything with an event. In practice, that member
-    never saw a live reply appear (or finish, or fail) at all until they
-    left the channel and came back — only the fix (this dict carrying its
-    own "message_id", not relying on a relay to add it) closes that."""
+    """Regression for a shipped bug: routers/chat.py's /subscribe relays this hub's raw events unmodified (unlike
+    stream_reply's relay for the sender's tab, which stamps "message_id"), so a channel member other than the sender,
+    watching live in "real" delivery mode, got every chunk/done/error without a message_id, and chat.js's
+    handleReplyLiveEvent needs one: they never saw a live reply appear, finish or fail until re-entering the
+    channel. Only this dict carrying its own "message_id" fixes it.
+    """
     reply_broadcast_service.start_topic("conv-10", "msg-10")
     _state, queue = reply_broadcast_service.subscribe("conv-10")
 
@@ -79,10 +74,8 @@ async def test_late_subscriber_syncs_against_the_current_snapshot_not_a_replay()
     reply_broadcast_service.publish_chunk("conv-4", "Hel")
     reply_broadcast_service.publish_chunk("conv-4", "lo")
 
-    # Subscribing *after* both chunks were published: a late joiner must
-    # see the accumulated content via the snapshot, not the individual
-    # chunk events it missed (those were only delivered to subscribers
-    # that existed at publish time).
+    # Subscribing *after* both chunks: a late joiner sees the accumulated content via the snapshot, not the chunk
+    # events it missed (delivered only to subscribers present at publish time).
     state, queue = reply_broadcast_service.subscribe("conv-4")
     assert state.message_id == "msg-4"
     assert state.content == "Hello"
@@ -118,14 +111,12 @@ async def test_multiple_subscribers_all_receive_the_same_events():
 
 @pytest.mark.asyncio
 async def test_subscriber_connecting_before_any_generation_still_receives_the_next_one():
-    """Regression test for a real, shipped bug: a channel member who
-    opens the chat before anyone has ever sent a message there (no topic
-    exists yet — see test_subscribe_before_any_topic_returns_no_snapshot)
-    must still receive the *next* message's events once generation
-    starts, not be silently dropped because their queue predates the
-    topic that carries it."""
+    """Regression for a shipped bug: a member opening the chat before anyone has sent a message (no topic yet; see
+    test_subscribe_before_any_topic_returns_no_snapshot) must still receive the *next* message's events, not be dropped
+    because their queue predates the topic.
+    """
     state, queue = reply_broadcast_service.subscribe("conv-7")
-    assert state is None  # nothing to sync against yet — correct
+    assert state is None
 
     reply_broadcast_service.start_topic("conv-7", "msg-7")
     reply_broadcast_service.publish_chunk("conv-7", "hello")
@@ -136,14 +127,11 @@ async def test_subscriber_connecting_before_any_generation_still_receives_the_ne
 
 @pytest.mark.asyncio
 async def test_subscriber_survives_across_multiple_messages_in_the_same_conversation():
-    """Regression test for the same bug, the other way it showed up: a
-    member's /subscribe connection is opened once per chat visit (see
-    chat.js's startReplyWatch), not once per message — it must keep
-    receiving events for every message sent while they're still there,
-    not just the one that happened to be in flight when they connected.
-    An earlier version of start_topic() replaced the whole _Topic object
-    (subscribers included) on every new message, silently orphaning
-    every already-connected subscriber after the first message."""
+    """Same bug, the other way it appeared: a /subscribe connection is opened once per chat visit (chat.js
+    startReplyWatch), not per message, so it must keep receiving events for every message sent while they stay. An
+    earlier start_topic replaced the whole _Topic (subscribers included) per message, orphaning connected subscribers
+    after the first.
+    """
     reply_broadcast_service.start_topic("conv-8", "msg-8a")
     _state, queue = reply_broadcast_service.subscribe("conv-8")
 
@@ -151,9 +139,8 @@ async def test_subscriber_survives_across_multiple_messages_in_the_same_conversa
     first = await asyncio.wait_for(queue.get(), timeout=1)
     assert first == {"done": True, "sources": None, "message_id": "msg-8a"}
 
-    # A second message in the same conversation, same subscriber still
-    # connected throughout (chat.js never re-opens the connection
-    # between messages) — it must see this one too.
+    # A second message in the same conversation, the same subscriber still connected (chat.js never reopens the
+    # connection): it must see this one too.
     reply_broadcast_service.start_topic("conv-8", "msg-8b")
     reply_broadcast_service.publish_chunk("conv-8", "second message")
 
@@ -170,8 +157,7 @@ async def test_start_topic_resets_state_without_dropping_subscribers():
 
     reply_broadcast_service.start_topic("conv-9", "msg-9b")
     state, _queue = reply_broadcast_service.subscribe("conv-9")
-    # The snapshot reset to the new message, empty content again — not
-    # still carrying "first" over from the previous one.
+    # The snapshot reset to the new message with empty content, not still carrying "first".
     assert state.message_id == "msg-9b"
     assert state.content == ""
     assert state.status == "streaming"

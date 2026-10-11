@@ -1,5 +1,6 @@
-"""Unit tests for app/routers/sdcpp_admin.py and image_engine_admin.py — called directly (see
-tests/test_comfyui_admin_router.py's docstring on why); start/stop logic is covered by test_sdcpp_service.py."""
+"""Tests for routers/sdcpp_admin.py and image_engine_admin.py, called directly (see
+tests/test_comfyui_admin_router.py); start/stop logic is in test_sdcpp_service.py.
+"""
 
 import pytest
 from fastapi import HTTPException
@@ -108,7 +109,7 @@ async def test_an_install_that_saved_comfyui_falls_back_to_sdcpp(db, monkeypatch
     monkeypatch.setattr(image_engine_service, "ENABLED_IMAGE_ENGINES", ("sdcpp", "comfyui"))
     await image_engine_service.set_active_image_engine(db, "comfyui")
     assert await image_engine_service.get_active_image_engine(db) == "comfyui"
-    monkeypatch.setattr(image_engine_service, "ENABLED_IMAGE_ENGINES", ("sdcpp",))  # as in production
+    monkeypatch.setattr(image_engine_service, "ENABLED_IMAGE_ENGINES", ("sdcpp",))
     assert await image_engine_service.get_active_image_engine(db) == "sdcpp"
 
 

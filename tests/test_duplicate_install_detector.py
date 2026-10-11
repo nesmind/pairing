@@ -1,6 +1,6 @@
-"""Unit tests for app/services/duplicate_install_detector.py. list_models is monkeypatched on this module's own
-imported binding (not inference_client's origin — see the "module-split import-binding gotcha" this codebase
-already tracks), so no real Ollama/Matricxon call happens here."""
+"""Tests for services/duplicate_install_detector.py. list_models is monkeypatched on this module's binding (not
+inference_client's origin; module-split import-binding gotcha), so no real engine call.
+"""
 
 import pytest
 
@@ -35,16 +35,17 @@ async def test_find_returns_none_when_download_gb_is_unknown(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_find_matches_the_same_architecture_and_size_within_tolerance(monkeypatch):
-    """The real case this exists for: the exact same GGUF file (byte-identical size) pulled under a different
-    Hugging Face repo name — confirmed live (2026-09-21) with moondream2-gguf vs moondream-2b-2025-04-14-4bit."""
+    """The case it exists for: the same GGUF file (byte-identical size) under a different Hugging Face repo name
+    (moondream2-gguf vs moondream-2b--4bit).
+    """
     monkeypatch.setattr(svc, "list_models", lambda: _async_return(_INSTALLED))
     assert await DuplicateInstallDetector.find("new-tag", "phi2", 2.84) == "hf.co/moondream/moondream2-gguf:x"
 
 
 @pytest.mark.asyncio
 async def test_find_absorbs_a_hand_typed_catalog_figures_rounding(monkeypatch):
-    """app/model_catalog.py's own hand-typed download_gb is rounded to one decimal — a real ~2.84GB file typed
-    as "2.8" must still match, not get missed over rounding noise."""
+    """model_catalog.py's hand-typed download_gb is rounded to one decimal: a ~2.84GB file typed "2.8" must still
+    match."""
     monkeypatch.setattr(svc, "list_models", lambda: _async_return(_INSTALLED))
     assert await DuplicateInstallDetector.find("new-tag", "phi2", 2.8) == "hf.co/moondream/moondream2-gguf:x"
 
@@ -63,16 +64,16 @@ async def test_find_returns_none_when_size_matches_but_architecture_differs(monk
 
 @pytest.mark.asyncio
 async def test_find_excludes_the_tag_itself(monkeypatch):
-    """Re-pulling an already-installed tag is the same install, not a duplicate under a different name."""
+    """Re-pulling an installed tag is the same install, not a duplicate under another name."""
     monkeypatch.setattr(svc, "list_models", lambda: _async_return(_INSTALLED))
     assert await DuplicateInstallDetector.find("hf.co/moondream/moondream2-gguf:x", "phi2", 2.84) is None
 
 
 @pytest.mark.asyncio
 async def test_find_returns_none_when_the_engine_is_unreachable(monkeypatch):
-    """Best-effort: an unreachable engine must never block a pull that would otherwise succeed (or fail later
-    with its own clear error) — same "can't verify, so don't fail closed" stance
-    MatricxonSupportChecker._capabilities_or_none already takes."""
+    """Best-effort: an unreachable engine must not block a pull that would otherwise succeed (or fail later clearly),
+    as MatricxonSupportChecker._capabilities_or_none.
+    """
 
     async def fake_list_models():
         raise InferenceError("down")

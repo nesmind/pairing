@@ -1,4 +1,4 @@
-"""Unit tests for app/services/sdcpp_pool.py — thin wrapper over HostPool (see tests/test_server_pool.py)."""
+"""Tests for services/sdcpp_pool.py: a thin wrapper over HostPool (tests/test_server_pool.py)."""
 
 from app.config import SDCPP_HOST
 from app.schemas import SdCppConfig

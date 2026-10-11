@@ -1,24 +1,15 @@
-"""Assistant reply generation, detached from the initiating request via a
-background asyncio.Task, for every conversation, personal or channel
-alike. Split out of app.services.chat_service.build_reply_stream (which
-still handles conversation-specific setup) to keep that file under
-CLAUDE.md's file-size rule, and because this path's whole point is
-running independently of whatever request triggered it.
+"""Assistant reply generation, detached from the initiating request by a background asyncio.Task, for every
+conversation (personal or channel). Split from chat_service.build_reply_stream (conversation-specific setup)
+for the file-size rule and because it must run independently of its triggering request.
 
-Mechanism: stream_reply creates the placeholder assistant Message, hands
-the ML engine call off to a detached asyncio.Task (_run_generation), then
-becomes a pure relay on reply_broadcast_service's hub — it never itself
-awaits the ML engine, so a disconnecting SSE request only cancels this
-generator's `await queue.get()`, never the task directly. Whether the
-task then keeps running or is cancelled in turn differs by conversation
-type: `cancel_on_disconnect` (below) is False for a channel, True for a
-personal chat (only its owner could ever be watching). Either way, a
-failed/cancelled/timed-out attempt always leaves a clean status="error"
-record, never silently vanishing. The same hub is also what a channel's
-other `/subscribe` connections tap into for "real" delivery mode, and
-what lets an owner reconnect fast enough to catch an in-flight reply's
-tail — see reply_cross_instance_service for what happens when this hub's
-own in-process nature isn't enough."""
+Mechanism: stream_reply creates the placeholder assistant Message, hands the engine call to a detached task
+(_run_generation), then only relays reply_broadcast_service's hub. It never awaits the engine, so a
+disconnecting SSE request cancels just this generator's `await queue.get`, not the task. Whether the task
+continues depends on `cancel_on_disconnect`: False for channels, True for personal chats (only the owner could watch).
+Either way a failed, cancelled or timed-out attempt leaves a clean status="error" record. A channel's
+`/subscribe` connections tap the same hub for "real" delivery, and an owner can reconnect to catch an
+in-flight reply's tail; see reply_cross_instance_service for when the in-process hub isn't enough.
+"""
 
 import asyncio
 import logging
@@ -42,20 +33,19 @@ from app.services.inference_client import InferenceError, chat_stream, stop_mode
 
 logger = logging.getLogger("llama_chat")
 
-# Batches how often a streaming reply's content is committed to the database, rather than on every single token —
-# neither a poller nor a late /subscribe join needs finer granularity. Every raw chunk still reaches the broadcast
-# hub immediately, uncoupled from this write cadence, so a live viewer never sees the batching.
+# Batches how often streaming content is committed to the DB, not per token: pollers and late /subscribe
+# joiners don't need finer. Every chunk still reaches the hub at once, so live viewers never see the batching.
 _FLUSH_CHARS = 200
 _FLUSH_INTERVAL_SECONDS = 0.4
 
-# How often stream_reply's relay also reads the database, not just the queue (see reply_cross_instance_service).
+# How often stream_reply's relay also reads the DB, not just the queue (reply_cross_instance_service).
 _CROSS_INSTANCE_POLL_SECONDS = 3.0
 
-# Same reasoning as title_service._background_title_tasks: asyncio only holds a *weak* reference to a bare
-# asyncio.create_task() result, so without this the task could be garbage-collected mid-run.
+# As title_service._background_title_tasks: asyncio keeps only a weak reference to a bare create_task result, so it
+# could be garbage-collected mid-run.
 _background_generation_tasks: set[asyncio.Task] = set()
 
-# delete_message's way of stopping a streaming reply — split out to reply_cancellation_service, re-exported here.
+# delete_message's way of stopping a streaming reply: lives in reply_cancellation_service, re-exported here.
 cancel_generation = reply_cancellation_service.cancel_generation
 mark_message_deleted = reply_cancellation_service.mark_message_deleted
 
@@ -72,18 +62,14 @@ async def stream_reply(
     has_image: bool = False,
     params: dict | None = None,
 ) -> AsyncIterator[dict]:
-    """Yields plain structured events for app/routers/chat.py to SSE-encode
-    ({"chunk"} / {"error"} / {"done", "sources"} / {"deleted"} — see
-    reply_broadcast_service.publish_deleted), each carrying "message_id" so
-    the frontend knows which bubble it belongs to (see this module's own
-    docstring for `cancel_on_disconnect`). `reply_to_message_id` is stored
-    on the placeholder purely for delete_message's benefit
-    (Message.reply_to_message_id) — never read back here. `model`, when
-    given, overrides `conversation.model` for this call only (see
-    chat_service.build_reply_stream's image handling). `has_image` picks
-    which of chat_settings_service's two reply-timeout settings applies —
-    see get_vision_reply_timeout_seconds' own docstring for why. `params`, when given, replaces
-    `conversation.params` for this call (chat_service passes the system-wide num_ctx in)."""
+    """Yields events for routers/chat.py to SSE-encode ({"chunk"} / {"error"} / {"done", "sources"} / {"deleted"},
+    see reply_broadcast_service.publish_deleted), each with "message_id" so the frontend knows the bubble (see
+    `cancel_on_disconnect` in the module docstring). `reply_to_message_id` is stored on the placeholder for
+    delete_message only (Message.reply_to_message_id). `model`, if given, overrides `conversation.model` for
+    this call (chat_service.build_reply_stream's image handling). `has_image` picks which
+    chat_settings_service reply timeout applies (get_vision_reply_timeout_seconds). `params`, if given, replaces
+    `conversation.params` for this call (chat_service passes the system-wide num_ctx).
+    """
     message = Message(
         conversation_id=conversation.id,
         role="assistant",
@@ -113,10 +99,8 @@ async def stream_reply(
             try:
                 event = await asyncio.wait_for(queue.get(), timeout=_CROSS_INSTANCE_POLL_SECONDS)
             except TimeoutError:
-                # Cross-instance fallback (see reply_cross_instance_service) —
-                # without this, this connection (the sender's own tab)
-                # hangs forever if whatever it's waiting for happened on a
-                # different sibling instance.
+                # Cross-instance fallback (reply_cross_instance_service): otherwise the sender's tab hangs forever if
+                # what it waits for happened on a sibling.
                 fresh = await reply_cross_instance_service.refresh_or_none(db, message)
                 if fresh is None or fresh.status != "streaming":
                     yield reply_cross_instance_service.terminal_event_for(fresh, message.id)
@@ -141,11 +125,11 @@ def _schedule_generation(
     source_filenames: list[str],
     has_image: bool,
 ) -> asyncio.Task:
-    """Kicks off generation fully detached from the current request — same strong-ref-set + done-callback pattern as
-    title_service.schedule_smart_title_generation. Also registers with reply_cancellation_service so
-    stream_reply/cancel_generation can cancel it in turn, and spawns reply_cross_instance_service's own watchdog
-    alongside it (see that function's own docstring for why this is needed even with cancel_generation already in
-    place)."""
+    """Starts generation detached from the request, with the strong-ref set + done-callback pattern of
+    title_service.schedule_smart_title_generation. Registers with reply_cancellation_service so
+    stream_reply/cancel_generation can cancel it, and spawns reply_cross_instance_service's watchdog beside it
+    (needed even with cancel_generation; see that function).
+    """
     task = asyncio.create_task(_run_generation(message_id, model, ollama_messages, params, source_filenames, has_image))
     _background_generation_tasks.add(task)
     task.add_done_callback(_background_generation_tasks.discard)
@@ -165,18 +149,16 @@ async def _run_generation(
     source_filenames: list[str],
     has_image: bool,
 ) -> None:
-    """Runs against its own fresh AsyncSessionLocal() — the request's db
-    session may already be gone by the time this finishes."""
+    """Runs on its own AsyncSessionLocal: the request's session may be gone by then."""
     conversation_id = None
     full_reply = ""
     try:
         async with AsyncSessionLocal() as db:
             message = await db.get(Message, message_id)
             if message is None:
-                return  # conversation (and this placeholder) deleted out from under this generation
+                return  # conversation (and placeholder) deleted from under this generation
             conversation_id = message.conversation_id
-            # Read fresh (not cached) so a change applies next message. 0
-            # means no timeout — asyncio.timeout(None) is "no deadline".
+            # Read fresh so a change applies to the next message. 0 means no timeout (asyncio.timeout(None)).
             get_timeout = (
                 chat_settings_service.get_vision_reply_timeout_seconds
                 if has_image
@@ -192,7 +174,7 @@ async def _run_generation(
                     gen_params = {**(params or {}), "request_id": message_id, "conversation_id": conversation_id}
                     tools = await tool_loop_service.tool_stream_or_none(db, model, ollama_messages, gen_params)
                     async for chunk in tools if tools is not None else chat_stream(model, ollama_messages, gen_params):
-                        if isinstance(chunk, dict):  # a finished tool call (MCP), not text
+                        if isinstance(chunk, dict):  # a finished MCP tool call, not text
                             await tool_event_service.record(db, message, chunk["tool"], conversation_id)
                             continue
                         full_reply += chunk
@@ -205,19 +187,20 @@ async def _run_generation(
                             await db.commit()
                             unflushed = ""
                             last_flush = now
-                            # Cross-instance guard (see reply_cross_instance_service); stop_model too: a bare
-                            # `return` alone never stops the engine.
+                            # Cross-instance guard (reply_cross_instance_service); also stop_model: a bare `return`
+                            # never stops the engine.
                             fresh = await reply_cross_instance_service.refresh_or_none(db, message)
                             if fresh is None or fresh.status == "deleted":
                                 await stop_model(model, request_id=message_id)
                                 return
             except InferenceError as exc:
-                # Keeps whatever was generated before the failure (a timeout too).
+                # Keeps what was generated before the failure (a timeout too).
                 await reply_termination_service.mark_error(db, message, full_reply, conversation_id, str(exc))
                 return
             except TimeoutError:
-                # asyncio.timeout()'s own deadline, not a raw CancelledError: cancellation state is
-                # cleared, so `await` works here (unlike the CancelledError branch below).
+                # asyncio.timeout's deadline, not a raw CancelledError: cancellation state is cleared, so `await`
+                # works
+                # here (unlike the CancelledError branch below).
                 await reply_termination_service.mark_error(
                     db, message, full_reply, conversation_id, f"Reply timed out after {timeout_seconds} seconds."
                 )
@@ -225,14 +208,15 @@ async def _run_generation(
                 await stop_model(model, request_id=message_id)
                 return
             except asyncio.CancelledError:
-                # cancel_on_disconnect or cancel_generation: cancellation is pending, so an `await` here would
-                # just re-raise — write from a fresh, non-cancelled task, then re-raise so this one stays cancelled.
+                # cancel_on_disconnect or cancel_generation: cancellation is pending, so an `await` here would re-raise.
+                # Write
+                # from a fresh, non-cancelled task, then re-raise so this one stays cancelled.
                 reply_termination_service.schedule_cancelled_write(message_id, model, full_reply, conversation_id)
                 raise
 
             if reply_cancellation_service.is_message_deleted(message_id):
-                return  # rare: finished at the same instant as cancel_generation, no await left to catch it above
-            # Same check via the database: the one above only sees deletes served by this instance.
+                return  # rare: finished at the same instant as cancel_generation; no await left to catch it above
+            # Same check via the DB: the one above sees only deletes served by this instance.
             fresh = await reply_cross_instance_service.refresh_or_none(db, message)
             if fresh is None or fresh.status == "deleted":
                 return
@@ -247,8 +231,8 @@ async def _run_generation(
             await db.commit()
             reply_broadcast_service.publish_done(conversation_id, source_filenames)
     except Exception:
-        # Broad on purpose, mirroring title_service._generate_title_in_background: a detached background task with
-        # no caller left to propagate a failure to — otherwise this would vanish with no context at all.
+        # Broad on purpose, like title_service._generate_title_in_background: a detached task with no caller to
+        # propagate to; otherwise the failure would vanish without context.
         logger.exception("Reply generation failed for message %s", message_id)
         if conversation_id is not None:
             reply_broadcast_service.publish_error(conversation_id, "Reply generation failed unexpectedly.")

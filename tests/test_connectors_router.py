@@ -1,6 +1,4 @@
-"""Unit tests for app/routers/connectors.py — called directly, not through a
-TestClient (see tests/test_engine_admin_router.py's own docstring for why this
-project's router tests don't use that pattern)."""
+"""Tests for routers/connectors.py, called directly, not via TestClient (see tests/test_engine_admin_router.py)."""
 
 import pytest
 from fastapi import HTTPException
@@ -78,8 +76,9 @@ async def test_update_connector_config_never_echoes_the_saved_secret_back(db):
 
 @pytest.mark.asyncio
 async def test_update_connector_enabled_alone_is_not_enough_to_be_ready(db):
-    """Enabling a connector that's configured but never passed a "Test connection" must not make it ready — see
-    test_test_connector_config_marks_it_ready_once_passed for the full happy path."""
+    """Enabling a configured connector that never passed "Test connection" must not make it ready (the happy path:
+    test_test_connector_config_marks_it_ready_once_passed).
+    """
     await connectors.update_connector_config(
         "runpod",
         ConnectorConfigUpdate(values={"endpoint_id": "ep-1", "api_key": "k", "model": "m"}),

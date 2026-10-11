@@ -1,6 +1,7 @@
-"""Settings > Model's image-model actions (see app/services/image_model_service.py): list the local
-stable-diffusion.cpp engine's models (feeds its Model dropdown), and pull/delete one by its catalog tag — the
-image-model twins of /api/settings/pull-model and /delete-model, which only know the chat engines."""
+"""Settings > Model's image-model actions (app/services/image_model_service.py): list the local
+stable-diffusion.cpp models (feeds its dropdown) and pull/delete by catalog tag, like /api/settings/pull-model and
+/delete-model for chat engines.
+"""
 
 import json
 
@@ -27,8 +28,8 @@ router = APIRouter(prefix="/api/settings/image-models", tags=["image-models"])
 
 @router.get("/catalog", response_model=DiffusionModelCatalogResponse)
 async def get_diffusion_model_catalog(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    """The Diffusion models section — visible to every user (install state isn't secret); only pulling,
-    uninstalling and removing are admin-only."""
+    """The Diffusion models section: visible to all (install state isn't secret); pull, uninstall and remove are
+    admin-only."""
     store = await ImageModelStore.open(db)
     return DiffusionModelCatalogResponse(
         entries=await store.catalog_entries(is_admin=user.role == "admin"), local=await store.is_local()
@@ -45,8 +46,8 @@ async def list_image_models(db: AsyncSession = Depends(get_db), _admin: User = D
 async def pull_image_model(
     body: ImageModelRequest, db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)
 ):
-    """Downloads an image model from Hugging Face into the local engine's models folder, streaming progress over
-    SSE in the same wire format as /api/settings/pull-model."""
+    """Downloads an image model from Hugging Face into the engine's models folder, streaming SSE like
+    /api/settings/pull-model."""
     store = await ImageModelStore.open(db)
     try:
         repo_id, filename, dest = await store.prepare_pull(body.tag)
@@ -69,7 +70,7 @@ async def pull_image_model(
 async def pull_image_model_companions(
     body: CompanionPullRequest, db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)
 ):
-    """Downloads only the companion files (text encoder, VAE) the admin ticked — SSE like /pull."""
+    """Downloads only the ticked companion files (text encoder, VAE), as SSE."""
     store = await ImageModelStore.open(db)
     try:
         await store.prepare_pull(body.tag)

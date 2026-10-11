@@ -1,37 +1,22 @@
-"""
-Theme config — what's actually offered from Settings > Account >
-Appearance, plus the fixed syntax-highlighting theme. Split out of
-app/config.py (which was already at CLAUDE.md's 250-line cap) since
-this is "what themes exist" data, not environment/deployment
-configuration the way the rest of config.py is; moving it here also
-reclaims the lines config.py needed.
+"""Theme config: what Settings > Account > Appearance offers, plus the fixed syntax-highlighting theme. Split
+from app/config.py (at the 250-line cap): "what themes exist" data, not deployment configuration.
 
-- HLJS_THEME: the syntax-highlighting colors for code blocks in
-  replies — a single fixed choice (not a per-user setting; that picker
-  was removed once UI_THEMES below covered "customize how the app
-  looks" more broadly, and a second independent picker for just code
-  blocks stopped pulling its weight). Its id is also its filename under
-  app/static/vendor/highlightjs/styles/<id>.min.css (see "Vendored
-  frontend libraries" in README.md) — a real, unmodified highlight.js
-  11.10.0 stylesheet, picked from its built-in theme set.
-- UI_THEMES: the app-wide theme (backgrounds, text, accent colors,
-  fonts — see app/static/css/themes.css and
-  app/services/theme_service.py's get_ui_theme/set_ui_theme).
+- HLJS_THEME: code-block syntax colors, one fixed choice (the per-user picker was removed when UI_THEMES
+  covered customization). Its id is also its filename under app/static/vendor/highlightjs/styles/<id>.min.css
+  (README.md "Vendored frontend libraries"), an unmodified highlight.js 11.10.0 stylesheet.
+- UI_THEMES: the app-wide theme (backgrounds, text, accents, fonts; static/css/themes.css,
+  theme_service.get_ui_theme/set_ui_theme).
 """
 
 HLJS_THEME = "nord"
 
-# --- App-wide UI theme --------------------------------------------------
-# Each entry's id is also the value app/templates/base.html writes to <html data-theme="..."> and the selector
-# every block in app/static/css/themes.css is keyed by — see that file for the actual color/font values. `mode`
-# is display-only (groups the Settings picker into "Dark"/"Light" rows), not stored or validated against anything.
-# `swatch_bg`/`swatch_accent` are that same theme's --color-slate-800/--color-brand-500 values, hand-copied as
-# plain hex so the Settings picker can render an accurate two-tone preview dot per theme in pure CSS/HTML, with
-# no JS (and no temporarily applying a theme just to read its colors) needed just to draw the picker itself.
-# "midnight" is this app's original hardcoded-dark look, kept first in this list for that historical reason —
-# DEFAULT_UI_THEME below is a separate, independent choice (by value, not list position; see
-# theme_service.get_ui_theme) of what a brand-new install/account that's never opened Appearance actually starts
-# on, currently "nord" rather than this first entry.
+# App-wide UI theme
+# Each id is also the value base.html writes to <html data-theme="..."> and the selector for each block in
+# static/css/themes.css (which holds the colors and fonts). `mode` is display-only (groups the picker into
+# "Dark"/"Light"). `swatch_bg`/`swatch_accent` are the theme's --color-slate-800/--color-brand-500, hand-copied
+# as hex so the picker draws a two-tone dot in pure CSS/HTML, with no JS or temporary theme application.
+# "midnight" is the original dark look, kept first for history; DEFAULT_UI_THEME is an independent choice (by
+# value, see theme_service.get_ui_theme) for new installs/accounts, currently "nord".
 UI_THEMES = [
     {"id": "midnight", "label": "Midnight", "mode": "dark", "swatch_bg": "#1e293b", "swatch_accent": "#0a68ff"},
     {"id": "nord", "label": "Nord", "mode": "dark", "swatch_bg": "#292e38", "swatch_accent": "#499fb6"},

@@ -1,5 +1,5 @@
-"""Unit tests for app/services/pip_progress.py - turning `pip install --progress-bar raw` output into
-installer progress events."""
+"""Tests for services/pip_progress.py: turning `pip install --progress-bar raw` output into installer progress
+events."""
 
 from app.services.pip_progress import PipProgressTracker
 
@@ -11,8 +11,8 @@ def test_progress_lines_become_completed_total_events_without_a_log_line():
 
     assert event["completed"] == 450000000
     assert event["total"] == 899700000
-    assert event["unit"] == "bytes"  # lets the UI show MB, unlike git-clone object counts
-    assert "status" not in event  # four lines a second would flood the visible log
+    assert event["unit"] == "bytes"
+    assert "status" not in event
 
 
 def test_downloading_line_names_the_package_in_the_step_label():
@@ -47,8 +47,8 @@ def test_other_lines_are_logged_with_the_base_label():
 
 
 def test_cached_wheel_says_so_instead_of_downloading():
-    """A reinstall is served from pip's HTTP cache - no Progress lines follow, so the label must not
-    promise a download percentage that will never come."""
+    """A reinstall is served from pip's HTTP cache with no Progress lines, so the label must not promise a download
+    percentage that never comes."""
     tracker = PipProgressTracker("Installing dependencies")
     event = tracker.event_for("  Using cached torch-2.8.0-cp313-cp313-manylinux_2_28_x86_64.whl (899.7 MB)")
     assert event["step_label"] == "Installing dependencies — using cached torch (899.7 MB)"

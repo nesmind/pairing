@@ -1,11 +1,5 @@
-"""Admin-configured settings that govern how a chat reply itself
-behaves, as opposed to app/services/settings_service.py's account/
-upload-limit/instance settings — split out purely to keep that file
-under CLAUDE.md's file-size rule as this list has grown (title mode,
-channel delivery mode, and now the reply timeout below), not because
-these settings share any runtime behavior with each other beyond being
-read by the reply-generation path (app.services.chat_service /
-app.services.reply_generation_service).
+"""Admin settings governing how a chat reply behaves (title mode, channel delivery mode, reply timeouts),
+split from settings_service.py for the file-size rule; read by chat_service / reply_generation_service.
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,65 +11,35 @@ CHANNEL_DELIVERY_MODE_KEY = "channel_delivery_mode"
 REPLY_TIMEOUT_SECONDS_KEY = "reply_timeout_seconds"
 VISION_REPLY_TIMEOUT_SECONDS_KEY = "vision_reply_timeout_seconds"
 
-# "simple" (the out-of-the-box default) generates a new chat's title
-# with plain local text processing — instant, and immune to however a
-# small/"thinking" model might otherwise behave (see
-# app.services.chat_service._summarize_as_title). "smart" asks the
-# model itself to invent a title instead — can read more naturally, at
-# the cost of a second, slower generation call (kept off the critical
-# path — see chat_service.build_reply_stream) that occasionally still
-# produces nothing useful.
+# "simple" (default): plain local text processing for titles; instant and immune to small/"thinking"
+# model quirks (chat_service._summarize_as_title). "smart": the model invents the title; reads better but
+# costs a second, slower call (off the critical path, see chat_service.build_reply_stream) that sometimes yields nothing
+# useful.
 _VALID_TITLE_MODES = {"simple", "smart"}
 DEFAULT_TITLE_MODE = "simple"
 
-# How other channel members find out about an in-progress/finished reply
-# while sitting in that chat (see app/services/reply_generation_service.py
-# and app/services/reply_broadcast_service.py) — "cheap" (the
-# out-of-the-box default) has them poll periodically, no extra infra
-# needed; "real" pushes it to them live, token-by-token, over the
-# in-process broadcast hub, which only reliably reaches every member when
-# running as a single app instance (see reply_broadcast_service's own
-# docstring for that limitation).
+# How other members see an in-progress/finished reply (reply_generation_service.py, reply_broadcast_service.py):
+# "cheap" (default) polls; "real" pushes tokens live over the in-process hub, which reaches every member
+# only with a single instance (see reply_broadcast_service).
 _VALID_CHANNEL_DELIVERY_MODES = {"cheap", "real"}
 DEFAULT_CHANNEL_DELIVERY_MODE = "cheap"
 
-# How long (wall-clock, not per-chunk) app.services.reply_generation_service
-# waits for a model to finish generating a text-only reply before giving
-# up and marking it failed — a backstop against a hung or pathologically
-# slow model tying up resources indefinitely (app.services.ollama_client's
-# own httpx client has no competing timeout of its own for a chat call —
-# this is the one real deadline). 0 means no timeout — some local hardware
-# genuinely needs minutes for one reply (see this app's own README on
-# running without a GPU), so admins running on slow hardware need a real
-# way to turn this off rather than just setting it very high. 300s (5
-# minutes) out of the box: generous enough for slow CPU-only inference,
-# short enough to still catch a genuinely stuck request well before
-# someone gives up waiting and assumes the app itself is broken.
+# Wall-clock limit for a text-only reply before it is marked failed: a backstop against hung or very slow
+# models (ollama_client's httpx client has no competing timeout for chat). 0 = no timeout, for slow hardware
+# that needs minutes per reply. Default 300s: generous for CPU-only, short enough to catch a stuck request.
 DEFAULT_REPLY_TIMEOUT_SECONDS = 300
 _MAX_REPLY_TIMEOUT_SECONDS = 3600
 
-# Same backstop, but for a reply that has an image attached (see
-# app.services.chat_attachment_service.apply_image_attachment) — kept as
-# its own separate setting rather than reusing DEFAULT_REPLY_TIMEOUT_SECONDS
-# because the two aren't comparable: encoding an image (the vision
-# projector pass, before any token even starts streaming) is dramatically
-# slower than plain text generation on CPU-only hardware, confirmed live —
-# a modest attached image alone can take several minutes to just finish
-# encoding. A single shared timeout forced a choice between cutting image
-# replies short or leaving a stuck text reply tying up resources for far
-# longer than it should. Same 300s starting point as the text one out of
-# the box — the point of splitting these is letting an admin raise this
-# one independently once they see how slow vision actually is on their
-# own hardware, not assuming that need up front.
+# Same backstop for replies with an image (apply_image_attachment). Separate because encoding the image
+# (vision projector pass, before any token streams) is far slower on CPU (several minutes), and one shared
+# timeout forces a bad choice. Default 300s; admins can raise it independently.
 DEFAULT_VISION_REPLY_TIMEOUT_SECONDS = 300
 
 
 async def get_title_mode(db: AsyncSession) -> str:
-    """Whether a new chat's title comes from "simple" local text
-    processing or by asking the model itself ("smart") — see
-    app.services.chat_service.build_reply_stream, the only reader of
-    this. System-wide, admin-configured from Settings > System — not a
-    per-user preference."""
+    """ "simple" local text processing or "smart" (ask the model); read by chat_service.build_reply_stream.
+    System-wide, admin-configured.
+    """
     row = await db.get(AppSetting, (SYSTEM_OWNER_ID, TITLE_MODE_KEY))
     if row and row.value.get("mode") in _VALID_TITLE_MODES:
         return row.value["mode"]
@@ -93,11 +57,9 @@ async def set_title_mode(db: AsyncSession, mode: str) -> None:
 
 
 async def get_channel_delivery_mode(db: AsyncSession) -> str:
-    """See _VALID_CHANNEL_DELIVERY_MODES above. System-wide, admin-
-    configured from Settings > System — read fresh on every call (unlike
-    app.services.settings_service.get_proxy_mode), since app/routers/chat.py's
-    `/subscribe` endpoint and chat.js both need this to reflect a change
-    immediately, not just after a restart."""
+    """See _VALID_CHANNEL_DELIVERY_MODES. Read fresh on every call (unlike settings_service.get_proxy_mode):
+    routers/chat.py `/subscribe` and chat.js need changes at once.
+    """
     row = await db.get(AppSetting, (SYSTEM_OWNER_ID, CHANNEL_DELIVERY_MODE_KEY))
     if row and row.value.get("mode") in _VALID_CHANNEL_DELIVERY_MODES:
         return row.value["mode"]
@@ -115,15 +77,10 @@ async def set_channel_delivery_mode(db: AsyncSession, mode: str) -> None:
 
 
 async def get_reply_timeout_seconds(db: AsyncSession) -> int:
-    """See DEFAULT_REPLY_TIMEOUT_SECONDS above — the only reader of this
-    is app.services.reply_generation_service, which reads it fresh at
-    the start of every single generation (not cached), so a change here
-    takes effect on the very next message, not just after a restart.
-    A stored value outside [0, _MAX_REPLY_TIMEOUT_SECONDS] (only
-    possible via a hand-edited row, since set_reply_timeout_seconds
-    below and the API layer's own schema validation both enforce this
-    range) falls back to the default rather than applying a nonsense
-    timeout."""
+    """See DEFAULT_REPLY_TIMEOUT_SECONDS. Read fresh by reply_generation_service at each generation, so changes
+    apply to the next message. A stored value outside [0, _MAX_REPLY_TIMEOUT_SECONDS] (only via a hand-edited
+    row) falls back to the default.
+    """
     row = await db.get(AppSetting, (SYSTEM_OWNER_ID, REPLY_TIMEOUT_SECONDS_KEY))
     if row:
         value = row.value.get("timeout_seconds")
@@ -143,9 +100,9 @@ async def set_reply_timeout_seconds(db: AsyncSession, timeout_seconds: int) -> N
 
 
 async def get_vision_reply_timeout_seconds(db: AsyncSession) -> int:
-    """See DEFAULT_VISION_REPLY_TIMEOUT_SECONDS above — used instead of get_reply_timeout_seconds only for a reply
-    with an image attached (app.services.reply_generation_service.stream_reply's own has_image), read fresh the
-    same way."""
+    """See DEFAULT_VISION_REPLY_TIMEOUT_SECONDS. Used instead of get_reply_timeout_seconds only for replies with
+    an image (reply_generation_service.stream_reply's has_image); read fresh.
+    """
     row = await db.get(AppSetting, (SYSTEM_OWNER_ID, VISION_REPLY_TIMEOUT_SECONDS_KEY))
     if row:
         value = row.value.get("timeout_seconds")

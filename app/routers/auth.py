@@ -1,9 +1,5 @@
-"""
-Login/logout. Deliberately plain HTML-form endpoints (not JSON API)
-since a login page needs to work before any JavaScript-driven API calls
-make sense — the browser posts the form directly and gets a redirect
-back, the same way login has worked since before SPAs existed.
-"""
+"""Login/logout as plain HTML-form endpoints: the login page must work before any JS API calls; the browser posts and is
+redirected."""
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse

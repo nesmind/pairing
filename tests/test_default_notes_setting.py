@@ -1,6 +1,6 @@
-"""Unit tests for app/services/default_notes_setting.py's per-user getter/setter — see
-tests/test_note_service.py's seed_initial_disabled_notes tests for how this value actually turns
-into a new conversation's own disabled_default_notes."""
+"""Tests for services/default_notes_setting.py's per-user getter/setter; tests/test_note_service.py's
+seed_initial_disabled_notes tests show how it becomes a new conversation's disabled_default_notes.
+"""
 
 import pytest
 

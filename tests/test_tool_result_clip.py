@@ -1,4 +1,4 @@
-"""app/services/tool_result_clip.py: long tool results are cut without breaking JSON."""
+"""services/tool_result_clip.py: long tool results are cut without breaking JSON."""
 
 import json
 

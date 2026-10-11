@@ -1,4 +1,4 @@
-"""GET/PUT for Settings > Image's "Active image engine" picker — which engine the Images page uses."""
+"""GET/PUT for Settings > Image's "Active image engine" picker (which engine the Images page uses)."""
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession

@@ -108,7 +108,7 @@ def test_long_descriptions_are_clipped_in_the_definition_sent_to_the_model() -> 
 
     assert len(function["description"]) <= 400
     assert len(function["parameters"]["properties"]["q"]["description"]) <= 160
-    assert len(schema["properties"]["q"]["description"]) == 1000  # the original is untouched
+    assert len(schema["properties"]["q"]["description"]) == 1000
 
 
 async def test_the_test_connection_result_describes_the_server_and_its_tools(server) -> None:

@@ -1,9 +1,4 @@
-/**
- * Admin settings > MCP servers (app/templates/_mcp_servers.html): a list of the MCP tool servers,
- * with a form (opened by "Add server" or a row's Edit) to add or change one and test its connection, via
- * /api/settings/mcp-servers. Also the global on/off switch in Admin settings > System
- * (app/templates/_mcp_global_switch.html, /api/settings/mcp-enabled). Uses api() from app.js.
- */
+/* Admin settings > MCP servers (app/templates/_mcp_servers.html): lists MCP tool servers, with a form ("Add server" or a row's Edit) to add or change one and test its connection, via /api/settings/mcp-servers. Also the global on/off switch in Admin settings > System (_mcp_global_switch.html, /api/settings/mcp-enabled). Uses api from app.js. */
 class McpServersPanel {
   static URL = "/api/settings/mcp-servers";
 
@@ -49,7 +44,7 @@ class McpServersPanel {
     this.setListShown(true);
   }
 
-  /** The list (and Add button) are hidden while the add/edit form is open. */
+  /* The list (and Add button) are hidden while the add/edit form is open. */
   setListShown(shown) {
     this.list.classList.toggle("hidden", !shown);
     this.addButton.classList.toggle("hidden", !shown);
@@ -58,14 +53,14 @@ class McpServersPanel {
     else this.empty.classList.add("hidden");
   }
 
-  /** Tries the form's current values (before saving) and says what it found. */
+  /* Tries the form's current values (before saving) and reports what it found. */
   async testForm() {
     this.testResult.textContent = "Connecting…";
     this.testButton.disabled = true;
     try {
       const body = { name: this.name.value || "server", url: this.url.value, enabled: true };
       const headers = this.parseHeaders();
-      // Editing with the headers box empty: the server uses the saved headers.
+      // Editing with an empty headers box: the server uses the saved headers.
       if (!this.editingId || Object.keys(headers).length) body.headers = headers;
       const query = this.editingId ? `?server_id=${this.editingId}` : "";
       const result = await api(`${McpServersPanel.URL}/test${query}`, { method: "POST", body: JSON.stringify(body) });
@@ -77,8 +72,7 @@ class McpServersPanel {
     }
   }
 
-  /** The test result as readable lines: what the server says about itself, how heavy its tools are for a
-   * model (their definitions are re-read every round), and each tool with its parameters (* = required). */
+  /* The test result as readable lines: what the server says about itself, how heavy its tools are for a model (definitions are re-read every round), and each tool with its parameters (* = required). */
   static describe(result) {
     if (!result.ok) return `Failed: ${result.error}`;
     const clip = (text, max) => (text.length > max ? `${text.slice(0, max).trimEnd()}…` : text);
@@ -216,7 +210,7 @@ class McpServersPanel {
         name: this.name.value,
         url: this.url.value,
         enabled: this.enabled.checked,
-        call_timeout_seconds: Number(this.timeout.value) || 20, // empty = the 20 s default shown as the placeholder
+        call_timeout_seconds: Number(this.timeout.value) || 20,
       };
       const headers = this.parseHeaders();
       // On an edit, an empty box keeps the saved headers (the server never sends their values back).
@@ -281,7 +275,7 @@ class McpLimits {
   }
 
   async load() {
-    this.show(await api(McpLimits.URL)); // on failure the form keeps its defaults (5 and 4000)
+    this.show(await api(McpLimits.URL));
   }
 
   async save() {

@@ -1,8 +1,8 @@
-"""Unit tests for app/routers/matricxon_admin.py — mirrors tests/test_ollama_admin_router.py's own coverage and
-calling convention (see that file's docstring for why these call the router functions directly rather than
-through a TestClient). The one real difference from Ollama's version: _save_and_broadcast only refreshes/
-broadcasts the live pool when Matricxon is the *active* engine (see app.services.engine_service) — Ollama's
-router has no sibling engine to defer to, so it always refreshes unconditionally."""
+"""Tests for routers/matricxon_admin.py: the coverage and calling convention of tests/test_ollama_admin_router.py
+(router functions called directly, not via TestClient). One difference: _save_and_broadcast refreshes/broadcasts
+the live pool only when Matricxon is the *active* engine (engine_service); Ollama's router has no sibling engine to
+defer to.
+"""
 
 import pytest
 from fastapi import HTTPException
@@ -24,10 +24,10 @@ class _FakeRequest:
 
 @pytest.fixture(autouse=True)
 def reset_cache():
-    """Some tests below flip the active engine to "matricxon" (see
-    test_update_config_refreshes_the_pool_when_matricxon_is_the_active_engine) — engine_service._cached_engine is
-    module-level global state that would otherwise leak into every other test in the suite, same reasoning as
-    tests/test_engine_service.py's own identical fixture."""
+    """Some tests flip the active engine to "matricxon"
+    (test_update_config_refreshes_the_pool_when_matricxon_is_the_active_engine);
+    engine_service._cached_engine is module-level state that would leak, as in tests/test_engine_service.py.
+    """
     engine_service._cached_engine = engine_service.DEFAULT_ENGINE
     yield
     engine_service._cached_engine = engine_service.DEFAULT_ENGINE
@@ -64,9 +64,8 @@ async def test_update_config_persists_without_touching_the_process(db, monkeypat
 
 @pytest.mark.asyncio
 async def test_update_config_does_not_refresh_the_pool_when_matricxon_is_not_the_active_engine(db, monkeypatch):
-    # Matricxon is the default active engine (see app.services.engine_service.DEFAULT_ENGINE) — switch to Ollama
-    # first so this actually exercises "saving Matricxon's own config while it isn't the live engine must not
-    # touch matricxon_pool or broadcast to siblings."
+    # Matricxon is the default engine (engine_service.DEFAULT_ENGINE): switch to Ollama first so this exercises "saving
+    # Matricxon's config while it isn't live must not touch matricxon_pool or broadcast".
     await engine_service.set_active_engine(db, "ollama")
     monkeypatch.setattr(matricxon_pool, "refresh_from_config", lambda _c: pytest.fail("must not refresh"))
     monkeypatch.setattr(server_pool_broadcast, "broadcast_refresh", lambda _p: pytest.fail("must not broadcast"))
@@ -242,7 +241,7 @@ async def test_update_config_clears_browse_more_models_only_when_the_mode_change
         return []
 
     monkeypatch.setattr(server_pool_broadcast, "broadcast_refresh", fake_broadcast)
-    monkeypatch.setattr(matricxon_pool, "refresh_from_config", lambda _config: None)  # keep the shared pool intact
+    monkeypatch.setattr(matricxon_pool, "refresh_from_config", lambda _config: None)
     catalog = ExtendedModelCatalog(db)
     await catalog._save([{"tag": "hf.co/a/b:c"}])
 
@@ -252,4 +251,4 @@ async def test_update_config_clears_browse_more_models_only_when_the_mode_change
     remote = MatricxonServerConfig(mode="remote", remote_hosts=["http://h:8420"], models_path="/data/m")
     result = await matricxon_admin.update_config(remote, db=db, _admin=None)
     assert await catalog.list() == []
-    assert result.models_path == "/data/m"  # storage path survives the switch
+    assert result.models_path == "/data/m"

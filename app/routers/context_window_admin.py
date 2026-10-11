@@ -1,4 +1,4 @@
-"""Settings > System > Context window: the single `num_ctx` every chat uses (admin-only, system-wide)."""
+"""Settings > System > Context window: the system-wide `num_ctx` every chat uses (admin-only)."""
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession

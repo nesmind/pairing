@@ -1,10 +1,7 @@
-"""Unit tests for app/services/ollama_pool.py — the thin Ollama-flavored
-wrapper around app/services/server_pool.py's generic HostPool (see
-tests/test_server_pool.py for the shared selection/cooldown/failover
-logic itself, tested once there rather than duplicated here). This file
-only covers what's actually Ollama-specific: local/remote resolution via
-refresh_from_config, and that every wrapper function delegates to the
-live pool instance."""
+"""Tests for services/ollama_pool.py, the thin wrapper around server_pool.HostPool (shared selection/cooldown/failover
+logic: tests/test_server_pool.py, tested once there). Covers only the Ollama specifics: local/remote
+resolution via refresh_from_config and that each wrapper function delegates to the live pool.
+"""
 
 import pytest
 
@@ -14,9 +11,8 @@ from app.services import ollama_pool
 
 @pytest.fixture(autouse=True)
 def isolated_pool(monkeypatch):
-    """Every test gets its own fresh pool state, isolated from
-    ollama_pool.LOCAL_OLLAMA_HOST's real value and from any other
-    test's leftover host list/cooldowns."""
+    """Each test gets fresh pool state, isolated from ollama_pool.LOCAL_OLLAMA_HOST's real value and others' leftover
+    host lists/cooldowns."""
     monkeypatch.setattr(ollama_pool, "LOCAL_OLLAMA_HOST", "http://local-ollama:11434")
     ollama_pool._pool.set_hosts(["http://local-ollama:11434"])
     yield
@@ -34,10 +30,8 @@ def test_refresh_from_config_remote_mode_resolves_to_the_configured_hosts():
 
 
 def test_refresh_from_config_remote_mode_with_no_hosts_falls_back_to_local():
-    # OllamaServerConfig's own validator normalizes "remote" with an
-    # empty host list back to "local" (see app.schemas.ollama_server_config
-    # — a real state the settings UI could otherwise leave an admin
-    # stuck in), so this never reaches the pool as remote-with-no-hosts.
+    # OllamaServerConfig's validator turns "remote" with no hosts back into "local" (schemas/ollama_server_config; the
+    # settings UI could leave an admin stuck), so remote-with-no-hosts never reaches the pool.
     ollama_pool.refresh_from_config(OllamaServerConfig(mode="remote", remote_hosts=[]))
     assert ollama_pool.get_effective_hosts() == ["http://local-ollama:11434"]
 
@@ -102,9 +96,8 @@ async def test_check_hosts_reports_reachability(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_check_host_pings_an_arbitrary_host_not_necessarily_saved(monkeypatch):
-    # Deliberately never refresh_from_config'd — a check-host call has to
-    # work for a candidate URL an admin just typed, before it's ever
-    # part of the live pool.
+    # Never refresh_from_config'd: check-host must work for a candidate URL an admin just typed, before it's in the live
+    # pool.
     class _FakeResponse:
         status_code = 200
 

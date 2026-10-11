@@ -1,12 +1,4 @@
-/**
- * Notes page controller: list/create/edit/delete the current user's
- * notes, and — on the same Create/Save action, not a separate step —
- * choose every conversation the note should be pinned to and under
- * which role (see app/notes.py + app/routers/chat.py for how a pin
- * actually reaches the model). Follows the same inline view-state/
- * edit-state row pattern as the Users tab in settings.js — there's no
- * modal machinery anywhere else in this app.
- */
+/* Notes page controller: list/create/edit/delete the user's notes and, in the same Create/Save action, choose which conversations the note is pinned to and under which role (see app/notes.py + app/routers/chat.py for how a pin reaches the model). Uses the inline view/edit row pattern of settings.js's Users tab; the app has no modals. */
 
 const PIN_TYPE_LABELS = { persona: "🎭 Persona", rules: "📏 Rules", skill: "🛠️ Skill" };
 
@@ -17,15 +9,13 @@ const addNoteBtn = document.getElementById("add-note-btn");
 const newNoteFormEl = document.getElementById("new-note-form");
 const addNoteStatusEl = document.getElementById("add-note-status");
 
-// Same "fetch the whole list once, page/filter it client-side" pattern as
-// settings.js's USER_PAGE_SIZE/MY_DOCS_PAGE_SIZE — this app's scale
-// doesn't need a server-side ?page=/?q= endpoint, and there's no
-// precedent for one anywhere else in the codebase.
+// Fetch the whole list once, then page/filter client-side (as settings.js's USER_PAGE_SIZE/MY_DOCS_PAGE_SIZE); at this
+// scale no server-side ?page=/?q= is needed.
 const NOTES_PAGE_SIZE = 20;
 let notesCache = [];
 let notesPage = 1;
 let notesSearchQuery = "";
-let conversationsCache = null; // lazily loaded — only needed once a note editor is open
+let conversationsCache = null;
 
 async function loadConversations() {
   if (!conversationsCache) {
@@ -38,8 +28,7 @@ function formatUpdatedAt(isoString) {
   return new Date(isoString).toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-/** Read-only pin chips shown in a note's view state — "what's this note
- * currently affecting" scannable without opening the editor. */
+/* Read-only pin chips in a note's view state: shows what the note affects without opening the editor. */
 function renderPinChips(note) {
   if (note.pins.length === 0) {
     return `<span class="text-xs text-slate-500">Not pinned to any chat</span>`;
@@ -52,14 +41,7 @@ function renderPinChips(note) {
     .join(" ");
 }
 
-/**
- * One checkbox+type-select row per conversation the user has — shared
- * by both the "+ New note" form and each note's edit form, so pinning
- * works identically (and to any number of chats at once) whether the
- * note is brand new or already exists. A checked row's type select
- * saves along with everything else on the surrounding Create/Save
- * click; nothing here calls the API by itself.
- */
+/* One checkbox + type-select row per conversation, shared by the "+ New note" form and each note's edit form, so pinning works the same for new and existing notes and any number of chats. A checked row's type saves with the surrounding Create/Save click; nothing here calls the API. */
 function renderPinPickerRows(conversations, pinsByConversationId) {
   if (conversations.length === 0) {
     return `<p class="text-xs text-slate-500">Start a chat first — there's nothing to pin to yet.</p>`;
@@ -84,8 +66,7 @@ function renderPinPickerRows(conversations, pinsByConversationId) {
     .join("");
 }
 
-/** Wires up each checkbox to enable/disable its own type select —
- * pure UI state, no API calls (see renderPinPickerRows above). */
+/* Wires each checkbox to enable/disable its type select (UI state only; see renderPinPickerRows). */
 function attachPinPickerHandlers(containerEl) {
   containerEl.querySelectorAll(".pin-picker-checkbox").forEach((checkbox) => {
     checkbox.addEventListener("change", () => {
@@ -95,8 +76,7 @@ function attachPinPickerHandlers(containerEl) {
   });
 }
 
-/** Reads the picker back into the `pins` shape NoteCreate/NoteUpdate
- * expect — every checked conversation, with its selected type. */
+/* Reads the picker into the `pins` shape NoteCreate/NoteUpdate expect: every checked conversation with its type. */
 function collectPins(containerEl) {
   const pins = [];
   containerEl.querySelectorAll(".pin-picker-checkbox").forEach((checkbox) => {
@@ -107,8 +87,7 @@ function collectPins(containerEl) {
   return pins;
 }
 
-/** While one note is being edited (or the new-note form is open), shows only it: hides the other rows, the
- * search box, pagination, empty-state text and "+ New note". `row` null restores everything. */
+/* While a note is being edited (or the new-note form is open), shows only it: hides the other rows, search box, pagination, empty-state text and "+ New note". `row` null restores everything. */
 function focusNoteRow(row) {
   for (const child of notesListEl.children) child.style.display = row && child !== row ? "none" : "";
   const chrome = [addNoteBtn, notesSearchEl, notesEmptyEl, document.getElementById("notes-pagination")];
@@ -215,12 +194,7 @@ function renderNoteRow(note) {
   return row;
 }
 
-/** notesCache filtered by the current search box, title or content,
- * case-insensitive substring match — same plain `.filter()` approach as
- * settings.js's channel member-search box, the only other search
- * anywhere in this app (no debounce there either: it's an in-memory
- * array, not a network call per keystroke). Defaults-first ordering
- * (see loadNotes) is preserved since this only filters, never re-sorts. */
+/* notesCache filtered by the search box (title or content, case-insensitive substring), a plain `.filter` as settings.js's channel member search (no debounce: it is an in-memory array). Defaults-first order (loadNotes) is kept since this never re-sorts. */
 function filteredNotes() {
   const query = notesSearchQuery.trim().toLowerCase();
   if (!query) return notesCache;
@@ -229,10 +203,7 @@ function filteredNotes() {
   );
 }
 
-/** Renders one page of (possibly search-filtered) notes — mirrors
- * settings.js's renderUserPage/renderMyDocsPage exactly: clamp the page
- * number (a delete, or a new search, can shrink the list out from under
- * it), slice, render, then show/hide the Prev/Next controls. */
+/* Renders one page of the (filtered) notes, as settings.js's renderUserPage/renderMyDocsPage: clamp the page (a delete or new search can shrink the list), slice, render, then show/hide Prev/Next. */
 function renderNotesPage() {
   const notes = filteredNotes();
   const paginationEl = document.getElementById("notes-pagination");
@@ -247,10 +218,8 @@ function renderNotesPage() {
     notesListEl.appendChild(renderNoteRow(note));
   }
 
-  // Two different reasons the list could be empty — "you have no notes
-  // at all" (create one above) vs "none of your notes match this
-  // search" — need different copy so the first one doesn't wrongly
-  // suggest there's nothing here when there's just nothing *matching*.
+  // The list can be empty for two reasons, "no notes at all" (create one above) vs "none match this search", which need
+  // different copy.
   notesEmptyEl.classList.toggle("hidden", notes.length > 0);
   notesEmptyEl.textContent =
     notesCache.length === 0 ? "No notes yet — create one above." : "No notes match your search.";
@@ -271,13 +240,13 @@ document.getElementById("notes-next-btn").addEventListener("click", () => {
 });
 notesSearchEl.addEventListener("input", () => {
   notesSearchQuery = notesSearchEl.value;
-  notesPage = 1; // a new search is a new result set — always start from its own page 1
+  notesPage = 1;
   renderNotesPage();
 });
 
 async function loadNotes() {
   notesCache = await api("/api/notes");
-  // Defaults first (stable sort keeps each group's own updated-at-desc order).
+  // Defaults first (stable sort keeps each group's updated-at-desc order).
   notesCache.sort((a, b) => Number(b.is_default) - Number(a.is_default));
   renderNotesPage();
 }

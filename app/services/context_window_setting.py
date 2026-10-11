@@ -1,6 +1,7 @@
-"""Settings > System > Context window: the one `num_ctx` every chat and channel uses. It was a per-chat Behavior slider,
-which let two chats of the same model disagree and made the prompt cache's job harder. Read at the start of each
-reply, so a change applies from the next message with no restart."""
+"""Settings > System > Context window: the one `num_ctx` for every chat and channel. It was a per-chat
+slider, which let chats of one model disagree and hurt the prompt cache. Read per reply, so changes apply
+from the next message.
+"""
 
 from sqlalchemy.ext.asyncio import AsyncSession
 

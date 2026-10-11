@@ -1,19 +1,9 @@
-/**
- * Shared D3 scale/axis helpers + the latency-over-time line chart for
- * the Stats page's "Telemetry" view — this app's first D3 chart with
- * real axes/scales (workflow_diagram.js's DAG has none, everything
- * there is hand-laid-out fixed positions). app/static/js/telemetry_bar_chart.js
- * is the sibling file for the by-host bar chart, split out to stay
- * under CLAUDE.md's 250-line cap rather than one big chart-drawing file.
- */
+/* Shared D3 scale/axis helpers and the latency-over-time line chart for the Stats "Telemetry" view: the app's first D3 chart with real axes/scales (workflow_diagram.js's DAG uses fixed positions). The by-host bar chart is in telemetry_bar_chart.js, split out for CLAUDE.md's 250-line cap. */
 
 const TELEMETRY_CHART_MARGIN = { top: 12, right: 20, bottom: 28, left: 48 };
 const TELEMETRY_CHART_HEIGHT = 220;
 
-/** Sizes an <svg> to its own container's current width (recomputed on
- * every render rather than cached, since the container can resize) and
- * returns the {svg, innerWidth, innerHeight, g} an axis-based chart
- * needs — one helper shared by every chart type on this page. */
+/* Sizes an <svg> to its container's current width (recomputed each render, as the container can resize) and returns the {svg, innerWidth, innerHeight, g} an axis-based chart needs; shared by every chart type on this page. */
 function telemetryChartSetup(svgId) {
   const svgEl = document.getElementById(svgId);
   const width = Math.max(svgEl.parentElement.clientWidth, 320);
@@ -36,10 +26,7 @@ function telemetryDrawAxes(g, xScale, yScale, innerHeight, xTickFormat) {
   g.append("g").call(d3.axisLeft(yScale).ticks(5)).attr("color", ThemeColors.get("--color-slate-500")).attr("font-size", "10px");
 }
 
-/** Renders the "avg latency per hour bucket" line chart from
- * OllamaTelemetrySummary.latency_time_series — bucket_start is a plain
- * "YYYY-MM-DDTHH:00:00" string (see telemetry_service.py's own
- * docstring on why this is computed in Python, not SQL). */
+/* Renders the "avg latency per hour bucket" line chart from OllamaTelemetrySummary.latency_time_series; bucket_start is a plain "YYYY-MM-DDTHH:00:00" string (computed in Python, not SQL: see telemetry_service.py). */
 function renderLatencyLineChart(buckets) {
   const emptyEl = document.getElementById("telemetry-latency-empty");
   const svgEl = document.getElementById("telemetry-latency-chart");

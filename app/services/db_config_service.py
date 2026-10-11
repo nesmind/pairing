@@ -1,14 +1,11 @@
-"""
-Admin-configurable database backend (Settings > System > Database): test a candidate connection, build its
-schema (plus the starter data a fresh install seeds itself with), and save — which switches the live app over
-immediately, no restart needed. URL parsing/.env live in app/services/db_config_url.py, schema compatibility in
-app/services/db_schema_check.py — split out to stay under CLAUDE.md's file-size rule; this file is the three
-actions built on them.
+"""Admin-configurable database backend (Settings > System > Database): test a candidate connection, build its
+schema (plus starter data), and save, switching the live app without a restart. URL parsing/.env:
+db_config_url.py; schema compatibility: db_schema_check.py (split for the file-size rule); this file holds
+the three actions.
 
-Test/build-schema use a throwaway *sync* engine, same as app/database.py's own `_run_migrations` — one-off
-actions against a *candidate* database. Saving ends with the live engine actually pointed at the new one (see
-app.database.switch_database), so it runs schema/seed on a throwaway *async* session first, then hands that same
-URL to switch_database.
+Test/build-schema use a throwaway *sync* engine like app/database.py's `_run_migrations`. Saving ends with
+the live engine on the new database (app.database.switch_database): schema/seed runs first on a throwaway
+*async* session, then the same URL goes to switch_database.
 """
 
 import asyncio
@@ -33,27 +30,17 @@ from app.services.db_schema_check import IncompatibleSchemaError, classify_schem
 from app.services.instance_db_broadcast import broadcast_database_switch
 from app.services.note_service import seed_default_notes
 
-# Reused across every "a driver is missing" message below.
+# Reused by every "a driver is missing" message.
 _PIP_INSTALL_HINT = ".venv/bin/pip install -r requirements.txt"
 
 
 async def _seed_defaults(url: str) -> None:
-    """Brings a database up to the exact same starting point a brand-new
-    install reaches on its very first boot: the seed accounts
-    (app.services.auth_service.seed_default_users — admin/admin plus
-    whatever else that function seeds) and each account's default
-    persona/rules/skill notes (app.services.note_service.seed_default_notes).
+    """Brings a database to a fresh install's starting point: seed accounts (auth_service.seed_default_users)
+    and each account's default persona/rules/skill notes (note_service.seed_default_notes).
 
-    Deliberately reuses those functions instead of a hand-written SQL
-    fixture: the note *content* especially is expected to keep growing,
-    and a duplicated SQL copy of it would silently drift from the real
-    defaults the moment either changes without the other being updated
-    to match. Reusing the actual functions means there's only ever one
-    place that defines what "fresh" means, for every database backend
-    alike — no SQLite/MySQL split needed, since this runs through the
-    ORM either way. Runs against a throwaway async engine, independent
-    of both the live app engine and the sync one Alembic just used for
-    the DDL half in build_schema/save_and_apply below.
+    Reuses those functions rather than a SQL fixture so the note content has one definition and cannot drift.
+    Runs through the ORM on a throwaway async engine, independent of the live engine and the sync one Alembic
+    used for DDL in build_schema/save_and_apply.
     """
     seed_engine = create_async_engine(_async_url(url))
     try:
@@ -67,15 +54,11 @@ async def _seed_defaults(url: str) -> None:
 
 
 async def _ensure_schema_and_seed(url: str, update: DbConfigUpdate) -> None:
-    """The shared checks-then-DDL-then-seed sequence behind both
-    build_schema and save_and_apply: confirm the target's existing
-    tables (if any) actually look like pAIring's own schema — raises
-    IncompatibleSchemaError otherwise, before touching anything (see
-    app.services.db_schema_check.classify_schema) — then create/upgrade
-    the schema (a no-op if it's already current), then seed the same
-    starter data a fresh install gets on its first boot (also a no-op
-    past the first time, since both seed functions are idempotent — see
-    _seed_defaults)."""
+    """The shared check, DDL and seed sequence of build_schema and save_and_apply: confirm existing tables look
+    like pAIring's schema (IncompatibleSchemaError otherwise, before touching anything;
+    db_schema_check.classify_schema),
+    create/upgrade the schema (no-op if current), then seed the starter data (idempotent, see _seed_defaults).
+    """
     if update.db_type == "sqlite":
         _resolve_sqlite_path(update.sqlite).parent.mkdir(parents=True, exist_ok=True)
     await asyncio.to_thread(classify_schema, url)
@@ -84,19 +67,13 @@ async def _ensure_schema_and_seed(url: str, update: DbConfigUpdate) -> None:
 
 
 async def save_and_apply(update: DbConfigUpdate) -> DbActionResult:
-    """Saves and immediately switches the live app over — no restart.
-    Order matters: the schema/seed step and the live switch both have to
-    succeed *before* anything touches .env, so a failure here always
-    leaves both the running app and .env exactly as they were, never a
-    half-applied state where .env claims a database the app isn't
-    actually using.
+    """Saves and switches the live app over, no restart. The schema/seed step and live switch must both succeed
+    before .env is touched, so a failure leaves the app and .env as they were.
 
-    One unavoidable side effect: every currently logged-in session (including whichever admin just clicked
-    Save) stops working the moment this succeeds. A session cookie only holds a user id — see app/routers/auth.py's
-    `request.session["user_id"] = user.id` — and that id belongs to a row in the *old* database; the new one has
-    its own freshly seeded admin with a different id, so the very next request 401s and the frontend's `api()`
-    helper (app.js) bounces it to /login automatically. Not a bug to work around, just something the caller needs
-    to know to log back in right after — see the message below.
+    Side effect: every logged-in session, including the admin's, stops working. The cookie holds only a user id
+    (routers/auth.py `request.session["user_id"]`) from the *old* database; the new one has its own seeded
+    admin with a different id, so the next request 401s and app.js's `api` redirects to /login. Not a bug:
+    the caller must log in again (see the message below).
     """
     try:
         url = _resolve_effective_url(update)
@@ -116,21 +93,14 @@ async def save_and_apply(update: DbConfigUpdate) -> DbActionResult:
     except SQLAlchemyError as exc:
         return DbActionResult(ok=False, message=f"Couldn't switch databases: {_short_error(exc)}. Nothing changed.")
     except Exception as exc:
-        # Broad on purpose, as a last resort: this action either fully
-        # succeeds or must report *something* clean back to the admin —
-        # an unexpected failure here (an Alembic error against a
-        # not-quite-compatible schema, say) must never surface as a raw
-        # 500 when the whole point of this feature is avoiding surprises.
+        # Deliberately broad, as a last resort: this action must report something clean to the admin; an unexpected
+        # failure (e.g. an Alembic error on a not-quite-compatible schema) must not surface as a raw 500.
         return DbActionResult(ok=False, message=f"Couldn't switch databases: {exc}. Nothing changed.")
 
     _write_env_database_url(url)
-    # This process's own live engine is already switched above — every
-    # *other* local instance (see app.services.instance_db_broadcast's
-    # own docstring for why that's a real, separate process each) still
-    # needs telling, or it silently keeps serving the old database
-    # forever. Best-effort: still reports ok=True even if one didn't
-    # respond, since the switch that matters most (this process, already
-    # serving traffic) succeeded regardless.
+    # This process is already switched; every *other* local instance (separate process, see
+    # instance_db_broadcast) must be told or it keeps the old database. Best-effort: ok=True even if one didn't
+    # answer, since the switch that matters (this process) succeeded.
     failures = await broadcast_database_switch(url)
     message = f"Saved and switched — {APP_NAME} is now running on this database. You'll need to log in again."
     if failures:
@@ -154,11 +124,8 @@ def _test_sqlite(params: SqliteParams) -> DbActionResult:
     engine = create_engine(f"sqlite:///{path}")
     try:
         with engine.connect() as conn:
-            # Not "SELECT 1" — that never touches the file's actual page
-            # structure, so it happily "succeeds" against a file that
-            # isn't a SQLite database at all. Querying sqlite_master
-            # forces SQLite to read the real header/schema page, which
-            # is what actually fails on a bad file.
+            # Not "SELECT 1": it never reads the file's page structure and "succeeds" on a non-SQLite file. Querying
+            # sqlite_master forces SQLite to read the header/schema page, which fails on a bad file.
             conn.execute(text("SELECT count(*) FROM sqlite_master"))
     except SQLAlchemyError as exc:
         return DbActionResult(ok=False, message=f"File exists but isn't a valid SQLite database: {_short_error(exc)}")
@@ -168,15 +135,10 @@ def _test_sqlite(params: SqliteParams) -> DbActionResult:
 
 
 def _missing_async_driver_warning() -> str | None:
-    """Save's live switch needs `aiomysql`, not just the `pymysql` that
-    Test connection/Build schema check via their own sync engine. Both
-    are in requirements.txt by default — a normal install already gets
-    both together — but this stays as a defensive check for whatever
-    venv wasn't set up that way (an older install, one resolved by
-    hand): without it, Test connection and Build schema could both
-    report success while Save was always going to fail on the next
-    step. A plain import check — no need to open an async connection
-    just to prove the package exists."""
+    """Save's live switch needs `aiomysql`, not just the `pymysql` used by Test connection / Build schema. Both are
+    in requirements.txt, but this defensively catches venvs missing it (older or hand-resolved), where Test
+    and Build would succeed and Save fail. A plain import check.
+    """
     import importlib.util
 
     if importlib.util.find_spec("aiomysql") is None:
@@ -219,15 +181,11 @@ def test_connection(update: DbConfigUpdate) -> DbActionResult:
 
 
 async def build_schema(update: DbConfigUpdate) -> DbActionResult:
-    """Runs the same Alembic migration chain the app applies to itself
-    on every startup (see app.database.init_db) against a candidate
-    database instead, then seeds it with the same starter data a
-    brand-new install gets on its first boot (see _seed_defaults) — so a
-    fresh target is immediately usable, not just structurally correct.
-    Safe to call on an empty database or an already-current/seeded one
-    alike (both steps are no-ops the second time around). Doesn't touch
-    the live app or .env at all — see save_and_apply for the action that
-    actually switches pAIring over to this database."""
+    """Runs the startup Alembic migration chain (app.database.init_db) against a candidate database, then seeds
+    the starter data (_seed_defaults), so a fresh target is usable, not just structurally correct. Safe on an
+    empty or already-current database (no-ops the second time). Doesn't touch the live app or .env
+    (save_and_apply switches).
+    """
     try:
         url = _resolve_effective_url(update)
     except ValueError as exc:
@@ -243,7 +201,6 @@ async def build_schema(update: DbConfigUpdate) -> DbActionResult:
     except SQLAlchemyError as exc:
         return DbActionResult(ok=False, message=f"Schema build failed: {_short_error(exc)}")
     except Exception as exc:
-        # See save_and_apply's own matching except Exception for why
-        # this is deliberately broad.
+        # Deliberately broad, as in save_and_apply.
         return DbActionResult(ok=False, message=f"Schema build failed: {exc}")
     return DbActionResult(ok=True, message="Schema is up to date and seeded with default data.")

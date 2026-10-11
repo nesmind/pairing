@@ -1,6 +1,6 @@
-"""MatricxonEngine — the InferenceEngine adapter around app.services.matricxon_client/
-matricxon_admin/matricxon_pool. Same "forward by module reference, looked up again on
-every call" contract as OllamaEngine — see that module's own docstring."""
+"""MatricxonEngine: InferenceEngine adapter over matricxon_client/matricxon_admin/matricxon_pool. Forwards by
+module reference, looked up per call, like OllamaEngine.
+"""
 
 from collections.abc import AsyncGenerator
 

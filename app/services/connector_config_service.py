@@ -1,15 +1,9 @@
-"""
-Admin-configured settings for a Connector (see app.services.connectors) — one
-AppSetting row per connector, system-wide. Secret fields (see
-ConnectorConfigField.secret) are encrypted at rest via app.services.secret_crypto,
-stored under "<field>_encrypted" inside the saved JSON `value`; never re-displayed
-once saved (see get_config_for_display) — same precedent as
-app.services.http_proxy_service.
+"""Admin settings for a Connector (services.connectors): one system-wide AppSetting row per connector.
+Secret fields (ConnectorConfigField.secret) are encrypted at rest (secret_crypto) as "<field>_encrypted"
+in the JSON `value` and never re-displayed (get_config_for_display), like http_proxy_service.
 
-This module is the DB-backed source of truth; app.services.connector_config_cache
-holds the multi-instance-safe in-process copy every Connector-backed InferenceEngine
-adapter actually reads from at call time (no `db` session is ever threaded through an
-InferenceEngine method).
+This is the DB source of truth; connector_config_cache holds the in-process copy the Connector-backed
+InferenceEngine adapters read at call time.
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,16 +16,15 @@ _CONFIG_KEY_TEMPLATE = "connector_{connector_id}_config"
 
 
 def _key(connector_id: str) -> str:
-    # connector_id is always a fixed, developer-chosen slug from app.services.connectors.registry.CONNECTORS,
-    # never user input — safe to interpolate directly into an AppSetting key.
+    # connector_id is a developer-chosen slug from connectors.registry.CONNECTORS, never user input: safe in an
+    # AppSetting key.
     return _CONFIG_KEY_TEMPLATE.format(connector_id=connector_id)
 
 
 async def get_config(db: AsyncSession, connector_id: str) -> dict[str, str]:
-    """The real, unmasked field values (secrets decrypted) — for internal callers
-    (app.services.connector_config_cache) only. Never hand this straight to a
-    browser as JSON; see get_config_for_display for that. A field that was never
-    saved (or failed to decrypt — see secret_crypto.decrypt) is simply absent."""
+    """Real, unmasked values (secrets decrypted) for internal callers (connector_config_cache) only; never send
+    to a browser (see get_config_for_display). Never-saved or undecryptable fields are absent.
+    """
     connector = get_connector(connector_id)
     row = await db.get(AppSetting, (SYSTEM_OWNER_ID, _key(connector_id)))
     stored = dict(row.value.get("fields", {})) if row else {}
@@ -48,9 +41,8 @@ async def get_config(db: AsyncSession, connector_id: str) -> dict[str, str]:
 
 
 async def get_config_for_display(db: AsyncSession, connector_id: str) -> dict[str, str | bool]:
-    """Same values, with every secret field replaced by `has_<field>: bool` instead
-    of the real value — same never-re-display-a-saved-secret precedent as
-    app.services.http_proxy_service.get_http_proxy_config_for_display."""
+    """Same values with secrets replaced by `has_<field>: bool` (like
+    http_proxy_service.get_http_proxy_config_for_display)."""
     connector = get_connector(connector_id)
     values = await get_config(db, connector_id)
     display: dict[str, str | bool] = {}
@@ -63,19 +55,16 @@ async def get_config_for_display(db: AsyncSession, connector_id: str) -> dict[st
 
 
 async def is_configured(db: AsyncSession, connector_id: str) -> bool:
-    """Every required field has a saved (non-blank) value."""
+    """Every required field has a saved non-blank value."""
     connector = get_connector(connector_id)
     values = await get_config(db, connector_id)
     return all(values.get(f.name) for f in connector.config_fields if f.required)
 
 
 async def set_config(db: AsyncSession, connector_id: str, values: dict[str, str]) -> None:
-    """A blank/missing value for a `secret` field means "keep whatever is already
-    saved" — the browser never has the real secret to resubmit (see
-    get_config_for_display), so a blank field must never be treated as "clear it".
-    Non-secret fields have no such special case: their current value is always shown
-    back to the admin (get_config_for_display), so a blank submission really does
-    mean "clear this field"."""
+    """A blank/missing `secret` value keeps the saved one (the browser never has it, see get_config_for_display).
+    Non-secret fields are shown back, so blank really clears them.
+    """
     connector = get_connector(connector_id)
     existing = await get_config(db, connector_id)
     row = await db.get(AppSetting, (SYSTEM_OWNER_ID, _key(connector_id)))
@@ -92,9 +81,9 @@ async def set_config(db: AsyncSession, connector_id: str, values: dict[str, str]
             if new_value:
                 stored[field.name] = new_value
 
-    # Any config edit invalidates a previous "Test connection" result — new credentials/endpoint haven't been
-    # proven to actually work yet (see get_test_result/set_test_result), so a connector must always be re-tested
-    # before it can become ready again (app.services.connector_config_cache.is_ready).
+    # Any edit invalidates the last "Test connection" result (new credentials are unproven;
+    # get_test_result/set_test_result), so the connector must be re-tested to become ready
+    # (connector_config_cache.is_ready).
     value = {"enabled": enabled, "fields": stored, "last_test_passed": False, "last_test_message": None}
     if row is None:
         db.add(AppSetting(owner_id=SYSTEM_OWNER_ID, key=_key(connector_id), value=value))
@@ -118,9 +107,9 @@ async def set_enabled(db: AsyncSession, connector_id: str, enabled: bool) -> Non
 
 
 async def get_test_result(db: AsyncSession, connector_id: str) -> tuple[bool, str | None]:
-    """Whether the last "Test connection" action (see app/routers/connectors.py) against this connector's
-    currently-saved config actually succeeded, and its message — (False, None) if never tested, or if the config
-    has changed since the last test (see set_config, which resets this on every save)."""
+    """Whether the last "Test connection" (routers/connectors.py) on the saved config succeeded, plus its message;
+    (False, None) if never tested or the config changed since (set_config resets on save).
+    """
     row = await db.get(AppSetting, (SYSTEM_OWNER_ID, _key(connector_id)))
     if not row:
         return False, None
