@@ -18,6 +18,22 @@
     },
     {
       "family": "Gemma 4",
+      "vendor": "unsloth",
+      "tag": "hf.co/unsloth/gemma-4-E2B-it-GGUF:gemma-4-E2B-it-Q4_K_M",
+      "parameter_size": "4.6B (2.3B effective)",
+      "context_length": 128000,
+      "download_gb": 3.1,
+      "min_ram_gb": 5,
+      "locally_runnable": true,
+      "architecture": "gemma4",
+      "quantizations": ["Q4_K", "Q6_K"],
+      "vision": false,
+      "unavailable_reason": null,
+      "embedding_dim": null,
+      "note": "Unsloth's GGUF of google/gemma-4-E2B-it — confirmed live via the Hugging Face API: unsloth/gemma-4-E2B-it-GGUF, arch \"gemma4\", 4,647,450,147 total params, 131072 ctx; the Q4_K_M file is 3.11GB. Smaller download than Google's own QAT Q4_0 entry above. The repo also has mmproj projectors, but vision isn't claimed (Matricxon's vision fusion doesn't cover gemma4 yet)."
+    },
+    {
+      "family": "Gemma 4",
       "vendor": "Google",
       "tag": "hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf:gemma-4-E4B_q4_0-it",
       "parameter_size": "4.5B effective (MoE)",
