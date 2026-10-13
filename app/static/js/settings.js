@@ -2569,10 +2569,33 @@ for (const server of EXTERNAL_SERVERS) {
       const engineLabel = restartableEngines[server];
       const localStatus =
         engineLabel && body.mode === "local" ? await api(`/api/settings/${server}/status`) : null;
+      // Matricxon changes most settings live (app/services/matricxon_live_settings.py): restart only when needed.
+      let restartReason = "";
+      if (localStatus?.running && server === "matricxon") {
+        const plan = await api("/api/settings/matricxon/plan", { method: "POST", body: JSON.stringify(body) });
+        if (!plan.restart_required) {
+          try {
+            const live = await api("/api/settings/matricxon/apply-live", {
+              method: "POST",
+              body: JSON.stringify(body),
+            });
+            statusEl.textContent = live.applied_next_load.length
+              ? "Saved — applied without a restart. Kernel and weight changes apply when a model next loads."
+              : "Saved — applied without a restart.";
+            reloadIfModeChanged(section, body);
+            return;
+          } catch (err) {
+            // 409: this Matricxon can't change settings live (older version), so fall back to a restart.
+            if (err.status !== 409) throw err;
+          }
+        } else {
+          restartReason = ` (changed: ${plan.restart_labels.join(", ")})`;
+        }
+      }
       if (localStatus?.running) {
         const confirmed = confirm(
-          `Saving restarts ${engineLabel} — every ${server === "sdcpp" ? "image" : "reply"} currently being ` +
-            "generated, on every local instance, will be interrupted. Continue?",
+          `Saving restarts ${engineLabel}${restartReason} — every ${server === "sdcpp" ? "image" : "reply"} ` +
+            "currently being generated, on every local instance, will be interrupted. Continue?",
         );
         if (!confirmed) {
           statusEl.textContent = "";

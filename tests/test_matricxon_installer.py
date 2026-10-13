@@ -23,7 +23,7 @@ def _assume_a_real_pinned_default(monkeypatch):
     (test_install_stream_reports_error_when_no_repo_or_version_is_configured);
     pinned to real-looking defaults so other tests exercise clone/venv/pip without passing repo=/version=.
     """
-    monkeypatch.setattr(matricxon_installer, "MATRICXON_GITHUB_REPO", "nesmind/matricxon")
+    monkeypatch.setattr(matricxon_installer, "MATRICXON_GITHUB_REPO", "upupabit/matricxon")
     monkeypatch.setattr(matricxon_installer, "MATRICXON_DEFAULT_VERSION", "v0.1")
 
 

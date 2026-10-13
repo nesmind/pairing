@@ -20,6 +20,8 @@ from app.schemas import (
     HostHealthCheck,
     InstallDefaults,
     MatricxonAutoDetectedPath,
+    MatricxonLiveApplyResult,
+    MatricxonSavePlan,
     MatricxonServerConfig,
     MatricxonServerStatus,
     OkResponse,
@@ -37,6 +39,7 @@ from app.services import (
 from app.services.auth_service import require_admin
 from app.services.cluster_hosts import ClusterHosts
 from app.services.extended_model_catalog_service import ExtendedModelCatalog
+from app.services.matricxon_live_settings import LiveApplyUnsupportedError, MatricxonSettingsPlan, push_live
 
 logger = logging.getLogger("llama_chat")
 
@@ -108,6 +111,37 @@ async def apply_config(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post("/plan", response_model=MatricxonSavePlan)
+async def save_plan(
+    body: MatricxonServerConfig, db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)
+):
+    """Whether saving `body` needs a restart; the page asks to confirm only then."""
+    plan = MatricxonSettingsPlan(await settings_service.get_matricxon_server_config(db), body)
+    return MatricxonSavePlan(restart_required=plan.restart_required, restart_labels=plan.restart_labels)
+
+
+@router.post("/apply-live", response_model=MatricxonLiveApplyResult)
+async def apply_live(
+    body: MatricxonServerConfig, db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)
+):
+    """Saves and applies `body` to the running local Matricxon without a restart. 409 when a restart is
+    needed (the page then uses POST /apply)."""
+    plan = MatricxonSettingsPlan(await settings_service.get_matricxon_server_config(db), body)
+    if plan.restart_required:
+        raise HTTPException(status_code=409, detail="These changes need a restart.")
+    result = MatricxonLiveApplyResult()
+    payload = plan.live_payload()
+    if payload:
+        try:
+            result = MatricxonLiveApplyResult(**await push_live(payload))
+        except LiveApplyUnsupportedError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+    await _save_and_broadcast(db, body)
+    return result
 
 
 @router.post("/internal-refresh", response_model=OkResponse)

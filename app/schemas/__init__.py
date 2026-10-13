@@ -61,6 +61,8 @@ from app.schemas.matricxon_cache_persistence import (
 )
 from app.schemas.matricxon_server_config import (
     MatricxonAutoDetectedPath,
+    MatricxonLiveApplyResult,
+    MatricxonSavePlan,
     MatricxonServerConfig,
     MatricxonServerStatus,
 )
@@ -222,6 +224,8 @@ __all__ = [
     "MatricxonCachePersistenceUpdate",
     "MatricxonServerConfig",
     "MatricxonServerStatus",
+    "MatricxonLiveApplyResult",
+    "MatricxonSavePlan",
     "OllamaAutoDetectedPath",
     "OllamaServerConfig",
     "OllamaServerStatus",

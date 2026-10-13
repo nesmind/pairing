@@ -10,6 +10,12 @@ const CLUSTER_STATUS_STYLE = {
   down: { label: "Not responding", dot: "bg-red-500", text: "text-red-400" },
 };
 
+// Small spinner shown while a node's full record loads.
+const CLUSTER_SPINNER_HTML =
+  '<svg class="h-4 w-4 animate-spin text-brand-500" viewBox="0 0 24 24" fill="none">' +
+  '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
+  '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>';
+
 class ClusterNodePanel {
   constructor() {
     this.panel = document.getElementById("cluster-node-panel");
@@ -18,6 +24,7 @@ class ClusterNodePanel {
     this.hostList = null; // {nodeId, peers}: the open "Debug cluster host list", drawn again with each record
     this.message = null; // what the last action said: shown under the buttons, kept until the next action
     this.currentId = null;
+    this.loading = false; // true until the open node's full record arrives
     this.onChanged = () => {};
     document.getElementById("cluster-node-close").addEventListener("click", () => this.close());
     this.backdrop.addEventListener("click", () => this.close());
@@ -34,14 +41,16 @@ class ClusterNodePanel {
   open(node) {
     this.currentId = node.id;
     this.hostList = null;
+    this._lastNode = node;
     this._say("");
-    this.render(node);
+    this._showLoading(node);
     this.backdrop.classList.remove("hidden");
     this.panel.classList.remove("translate-x-full");
   }
 
   close() {
     this.currentId = null;
+    this.loading = false;
     this.backdrop.classList.add("hidden");
     this.panel.classList.add("translate-x-full");
   }
@@ -49,14 +58,27 @@ class ClusterNodePanel {
   /** Fresh full record of the open node (the map polls compact, so the panel asks for its own). */
   refresh(node) {
     if (this.isOpen && node.id === this.currentId) {
+      this.loading = false;
       this.render(node); // (the message under the buttons stays: it is drawn again with the record)
     }
   }
 
   /** The node's record could not be fetched (it may have left the cluster). */
   fail(message) {
+    if (this.isOpen && this.loading) {
+      this.loading = false;
+      this.render(this._lastNode); // show what the compact record has, then the reason
+    }
     // A message that says what just happened ("Removed from the cluster.") is not replaced by "gone".
     if (this.isOpen && !(this.message && !this.message.bad)) this._say(message, true);
+  }
+
+  /** Name and a spinner until the full record arrives (the compact record has no details yet). */
+  _showLoading(node) {
+    this.loading = true;
+    document.getElementById("cluster-node-title").textContent = node.name;
+    document.getElementById("cluster-node-subtitle").textContent = node.subtitle;
+    this.body.innerHTML = `<div role="status" aria-live="polite" class="flex items-center gap-2 py-6 text-xs text-slate-500">${CLUSTER_SPINNER_HTML} Loading node details…</div>`;
   }
 
   render(node) {

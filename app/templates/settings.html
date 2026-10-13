@@ -179,7 +179,7 @@
       <!-- Diffusion models: image models for the Images page, the same list for either chat engine. They install into the stable-diffusion.cpp models folder, never Ollama/Matricxon (app/services/image_model_service.py). Image repos found via "Browse more models" land here. Wired by app/static/js/settings_diffusion_models.js. -->
       <section id="diffusion-models-section" class="space-y-3 border-t border-slate-800 pt-6">
         <h2 class="text-sm font-semibold text-slate-200">Diffusion models</h2>
-        <p class="text-xs text-slate-500 -mt-2">Image generation models for the Images page (stable-diffusion.cpp) — installed into its own models folder, not Ollama/Matricxon. Search Hugging Face under Browse more models to add more.</p>
+        <p class="text-xs text-slate-500 -mt-2">Image generation models for the Images Gen page — installed into its own models folder, Search Hugging Face under Browse more models to add more.</p>
         <p id="diffusion-model-note" class="hidden text-xs text-warning-400"></p>
         <div id="diffusion-model-catalog" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
       </section>
@@ -556,7 +556,7 @@
           database/models/knowledge base — takes effect immediately, no restart needed. A single
           instance (the default) is a plain-text answer to "no scaling"; anything above that only
           does something once combined behind one URL — either your own external reverse proxy
-          (nginx/Caddy), or the built-in "Local {{ app_name }} server mode" option above. See ROADMAP.md's "Concurrency"
+          (Nginx/HAProxy), or the built-in "Local {{ app_name }} server mode" option above. See ROADMAP.md's "Concurrency"
           section.
         </p>
         <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
@@ -1236,7 +1236,7 @@
                 <div data-field="install-source-panel" class="hidden space-y-2 rounded-md bg-slate-950 border border-slate-800 px-3 py-3">
                   <div>
                     <label class="block text-xs font-medium text-slate-400 mb-1">GitHub repo</label>
-                    <input data-field="install_repo" type="text" placeholder="nesmind/matricxon" title="Which GitHub repo to install Matricxon from. Leave blank to use the default pinned repo."
+                    <input data-field="install_repo" type="text" placeholder="upupabit/matricxon" title="Which GitHub repo to install Matricxon from. Leave blank to use the default pinned repo."
                       class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
                   </div>
                   <div>

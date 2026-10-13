@@ -119,7 +119,7 @@ It is also important not to expose more models to users than the system RAM/VRAM
 **Load balancing**
 - Point at extra ML engine (Ollama or Matricxon) servers (more GPUs, more machines) and this app spreads requests across them, with automatic failover if one goes down.
 - Can also run multiple copies of itself behind one URL, no reverse proxy needed.
-- Or, if you'd rather test it for enterprise use, use a reverse proxy (nginx, Caddy, ...) to balance across a ring of pAIring servers — that works too. All configurable directly from the UI.
+- Or, if you'd rather test it for enterprise use, use a reverse proxy (Nginx, HAProxy, ...) to balance across a ring of pAIring servers — that works too. All configurable directly from the UI.
 
 **Cluster management (Matricxon, BETA)**
 - Manage a Matricxon cluster from the **Cluster** page: several nodes share models and chat caches and agree on membership through built-in Paxos consensus.

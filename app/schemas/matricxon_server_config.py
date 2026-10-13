@@ -115,3 +115,18 @@ class MatricxonServerStatus(BaseModel):
     installed: bool = False
     pid: int | None = None
     healthy: bool | None = None
+
+
+class MatricxonSavePlan(BaseModel):
+    """POST.../plan: whether saving needs a restart (services/matricxon_live_settings.py)."""
+
+    restart_required: bool
+    # Form labels of the settings that need it, for the confirm message.
+    restart_labels: list[str] = Field(default_factory=list)
+
+
+class MatricxonLiveApplyResult(BaseModel):
+    """POST.../apply-live: Matricxon settings names applied now, and from the next model load."""
+
+    applied_now: list[str] = Field(default_factory=list)
+    applied_next_load: list[str] = Field(default_factory=list)

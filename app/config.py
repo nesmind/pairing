@@ -123,7 +123,7 @@ COMFYUI_GITHUB_REPO = "comfyanonymous/ComfyUI"
 COMFYUI_PINNED_VERSION = "v0.35.1"
 SDCPP_GITHUB_REPO = "leejet/stable-diffusion.cpp"
 SDCPP_PINNED_VERSION = "master-929-3f8527a"
-MATRICXON_GITHUB_REPO = "nesmind/matricxon"
+MATRICXON_GITHUB_REPO = "upupabit/matricxon"
 # Exception: Matricxon is developed alongside this app, so installs default to its newest main branch.
 # A tag or branch can be set in Settings (MatricxonServerConfig.install_version).
 MATRICXON_DEFAULT_VERSION = "main"
