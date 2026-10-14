@@ -15,7 +15,7 @@ ServerMode = Literal["local", "remote"]
 # engine_service; this is the type and default. One engine is active; others can still be configured or
 # run, or set up via a Connector (RunPod, services.connectors). Kept in sync with engines.registry by
 # tests/test_engine_registry.py.
-EngineName = Literal["ollama", "matricxon", "runpod", "cloudflare"]
+EngineName = Literal["ollama", "matricxon", "runpod", "cloudflare", "digitalocean"]
 
 # Single source for "no engine chosen yet", used by ActiveEngineConfig and engine_service.DEFAULT_ENGINE.
 # Matricxon while it is under active development; revisit when Ollama should be the safer default.

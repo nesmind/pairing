@@ -6,6 +6,8 @@ import pytest
 
 from app.services import connector_config_cache, connector_config_service
 
+pytestmark = pytest.mark.usefixtures("runpod_listed")  # RunPod is the example connector here
+
 _ID = "runpod"
 
 

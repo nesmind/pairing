@@ -4,12 +4,12 @@ ID, API token) from connector_config_cache on every call, so the Connectors page
 """
 
 import logging
-import re
 from collections.abc import AsyncGenerator
 
 import httpx
 
 from app.services import connector_config_cache
+from app.services.model_names import ReadableModelName
 from app.services.openai_compat import OpenAIChatStream
 
 logger = logging.getLogger("llama_chat")
@@ -25,51 +25,13 @@ _TASKS = {"Text Generation": "completion", "Text Embeddings": "embedding"}
 _SKIP_MARKERS = ("-lora", "llama-guard")
 # Workers AI limits for the extra sampling fields.
 _MAX_TOP_K = 50
-# Model-id org -> how its name reads; others are title-cased.
-_VENDORS = {
-    "meta": "Meta",
-    "meta-llama": "Meta",
-    "google": "Google",
-    "qwen": "Qwen",
-    "mistral": "Mistral AI",
-    "mistralai": "Mistral AI",
-    "deepseek-ai": "DeepSeek",
-    "openai": "OpenAI",
-    "baai": "BAAI",
-    "moonshotai": "Moonshot AI",
-    "zai-org": "Z.ai",
-    "ibm-granite": "IBM",
-    "nvidia": "NVIDIA",
-    "aisingapore": "AI Singapore",
-}
-_UPPER_WORDS = {"gpt", "oss", "glm", "bge", "fp8", "it", "r1", "en", "vl", "hf"}
-_WORD_FIXES = {"deepseek": "DeepSeek"}
-_SIZE_WORD = re.compile(r"[a-z]?\d+(\.\d+)?[bm]", re.IGNORECASE)  # 8b, 0.6b, a12b
 
 
-class CloudflareModelName:
-    """Readable name and vendor from an id like "@cf/meta/llama-3.2-1b-instruct"."""
+class CloudflareModelName(ReadableModelName):
+    """Readable name and vendor from an id like "@cf/meta/llama-3.2-1b-instruct" (shared logic: model_names)."""
 
     def __init__(self, model_id: str) -> None:
-        parts = model_id.split("/")
-        self._org = parts[1] if len(parts) > 2 else ""
-        self._model = parts[-1]
-
-    @property
-    def vendor(self) -> str:
-        return _VENDORS.get(self._org, self._org.replace("-", " ").title() or "Cloudflare")
-
-    @property
-    def display_name(self) -> str:
-        words = []
-        for word in self._model.split("-"):
-            if word.lower() in _WORD_FIXES:
-                words.append(_WORD_FIXES[word.lower()])
-            elif _SIZE_WORD.fullmatch(word) or word.lower() in _UPPER_WORDS:
-                words.append(word.upper())
-            else:
-                words.append(word[:1].upper() + word[1:])
-        return " ".join(words)
+        super().__init__(model_id, fallback_vendor="Cloudflare")
 
 
 class CloudflareError(Exception):

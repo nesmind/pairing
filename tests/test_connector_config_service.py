@@ -9,6 +9,8 @@ from app.models import SYSTEM_OWNER_ID, AppSetting
 from app.services import connector_config_service
 from app.services.connectors.registry import get_connector
 
+pytestmark = pytest.mark.usefixtures("runpod_listed")  # RunPod is the example connector here
+
 _ID = "runpod"
 
 

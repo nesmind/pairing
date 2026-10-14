@@ -19,7 +19,13 @@ def reset_engine():
 
 def test_only_the_local_engines_pass_tools():
     supports = {engine.name: engine.capabilities.tools for engine in registry.all()}
-    assert supports == {"ollama": True, "matricxon": True, "runpod": False, "cloudflare": False}
+    assert supports == {
+        "ollama": True,
+        "matricxon": True,
+        "runpod": False,
+        "cloudflare": False,
+        "digitalocean": False,
+    }
 
 
 @pytest.mark.asyncio
