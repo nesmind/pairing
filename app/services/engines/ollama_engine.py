@@ -21,6 +21,7 @@ class OllamaEngine(InferenceEngine):
         local_process=True,
         host_pool=True,
         support_checking=False,
+        tools=True,
         format_introspection=False,
     )
     error_types = (OllamaError,)

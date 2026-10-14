@@ -1,0 +1,16 @@
+<!-- Settings > System > RAG: which embedding model the knowledge base was embedded with, and a way to embed it again
+     after a model switch. Filled by app/static/js/settings_reembed.js (GET /api/documents/embedding-status). -->
+<div id="rag-reembed-panel" class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-2">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="min-w-0">
+      <p class="text-sm text-slate-200">Embedded documents</p>
+      <p data-field="summary" class="text-xs text-slate-500">Loading…</p>
+    </div>
+    <button type="button" data-action="reembed"
+      class="shrink-0 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+      Re-embed all documents
+    </button>
+  </div>
+  <p data-field="note" class="hidden text-xs text-warning-400"></p>
+  <p data-field="status" class="text-xs text-slate-500"></p>
+</div>

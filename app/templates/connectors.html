@@ -37,7 +37,7 @@
       <p id="connectors-error" class="hidden text-sm text-red-400"></p>
 
       <!-- Filled by app/static/js/connectors.js: one card per connector, with a generic form from its config_fields (app.services.connectors), so a new connector needs no template change. A grid (not flex) left-aligns a partial last row instead of centering/stretching it; items-start keeps a collapsed card from stretching to a taller expanded neighbor. -->
-      <div id="connectors-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-start"></div>
+      <div id="connectors-list" class="grid grid-cols-1 md:grid-cols-2 gap-4 items-start"></div>
     </div>
   </div>
 </div>
@@ -50,16 +50,16 @@
         <svg class="connector-chevron h-4 w-4 shrink-0 text-slate-500 transition-transform" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="m6 9 6 6 6-6"/>
         </svg>
-        <span class="min-w-0">
-          <span class="flex items-center gap-2">
-            <span class="connector-name text-sm font-semibold text-slate-100"></span>
-            <span class="connector-ready-badge hidden rounded-full bg-emerald-900/60 px-2 py-0.5 text-[11px] font-medium text-emerald-300">Ready</span>
+        <span class="min-w-0 flex-1">
+          <span class="flex min-w-0 items-center gap-2">
+            <span class="connector-name truncate whitespace-nowrap text-sm font-semibold text-slate-100"></span>
+            <span class="connector-ready-badge hidden shrink-0 whitespace-nowrap rounded-full bg-emerald-900/60 px-2 py-0.5 text-[11px] font-medium text-emerald-300">Ready</span>
           </span>
           <span class="connector-description block text-xs text-slate-500 mt-0.5 truncate"></span>
         </span>
       </button>
       <div class="flex items-center gap-2 shrink-0">
-        <span class="connector-enabled-status text-xs text-slate-500"></span>
+        <span class="connector-enabled-status hidden sm:inline whitespace-nowrap text-xs text-slate-500"></span>
         <label class="relative inline-flex items-center cursor-pointer" title="Enable this connector">
           <input type="checkbox" class="connector-enabled-toggle peer sr-only">
           <div class="h-6 w-11 rounded-full bg-slate-700 transition-colors peer-checked:bg-brand-600 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-500"></div>

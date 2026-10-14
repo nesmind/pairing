@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import inference_client, mcp_settings_service
 from app.services.chat_tool_set import ChatTool, ChatToolSet
+from app.services.engines.registry import registry
 from app.services.inference_client import InferenceError
 from app.services.mcp_client import McpError
 from app.services.mcp_tool_catalog import ExposedTool, McpToolCatalog
@@ -125,7 +126,9 @@ async def tool_stream_or_none(
     """The tool-using reply stream, or None for a plain chat: the conversation didn't ask for tools, no MCP server
     offers any, or the model can't use them.
     """
-    if not params.get("use_tools") or not await mcp_settings_service.get_enabled(db):
+    if not params.get("use_tools") or not registry.active().capabilities.tools:
+        return None
+    if not await mcp_settings_service.get_enabled(db):
         return None
     live = await McpToolCatalog(db).tools()
     tools = await ChatToolSet(db).for_chat(params.get("conversation_id"), params.get("tool_snapshot") or [], live)

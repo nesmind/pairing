@@ -15,7 +15,7 @@ from app.services.document_ingest import GLOBAL_DIR, USERS_DIR, ingest_document_
 from app.services.inference_client import InferenceError
 
 
-async def sync_folder_stream(db: AsyncSession, folder: Path, owner_id: str | None):
+async def sync_folder_stream(db: AsyncSession, folder: Path, owner_id: str | None, force: bool = False):
     """Makes one owner's (a user or the shared `None`/global scope) rows match `folder`: new files are
     chunked+embedded, edited ones re-ingested, removed ones deleted. Safe to repeat (startup, after upload):
     unchanged files are skipped by content hash.
@@ -26,6 +26,9 @@ async def sync_folder_stream(db: AsyncSession, folder: Path, owner_id: str | Non
     Each file's extraction and embedding has its own try/except: a corrupt file (e.g. a password-protected or
     malformed PDF) reports one per-file error and the rest still go through (an uncaught exception once
     abandoned every later file).
+
+    A file is also re-embedded when it was embedded with another model than the current one (a model switch), or
+    always with `force` (the admin's "Re-embed all documents").
     """
     stats = {"added": 0, "updated": 0, "removed": 0, "skipped": 0, "errors": []}
 
@@ -64,7 +67,11 @@ async def sync_folder_stream(db: AsyncSession, folder: Path, owner_id: str | Non
         content_hash = hash_bytes(raw)
         existing = existing_by_relpath.get(relpath)
 
-        if existing is not None and existing.content_hash == content_hash:
+        if (
+            existing is not None
+            and existing.content_hash == content_hash
+            and not _needs_reembed(existing, embedding_model, force)
+        ):
             stats["skipped"] += 1
             yield {
                 "stage": "file_done",
@@ -170,10 +177,18 @@ async def sync_folder_stream(db: AsyncSession, folder: Path, owner_id: str | Non
     yield {"stage": "done", "stats": stats}
 
 
-async def _drain_sync_stats(folder: Path, owner_id: str | None, db: AsyncSession) -> dict:
+def _needs_reembed(document: Document, embedding_model: str | None, force: bool) -> bool:
+    """An unchanged file still needs embedding again when forced, or when its recorded model is another one.
+    Unknown (NULL, from before models were recorded) is left as is: search skips it only on a size mismatch."""
+    if embedding_model is None:
+        return False
+    return force or (document.embedding_model is not None and document.embedding_model != embedding_model)
+
+
+async def _drain_sync_stats(folder: Path, owner_id: str | None, db: AsyncSession, force: bool = False) -> dict:
     """Runs sync_folder_stream to completion and returns the final stats, for callers that don't need per-file
     progress."""
-    async for event in sync_folder_stream(db, folder, owner_id):
+    async for event in sync_folder_stream(db, folder, owner_id, force):
         if event["stage"] == "done":
             return event["stats"]
     raise AssertionError("sync_folder_stream ended without a 'done' event")
@@ -201,13 +216,18 @@ async def sync_user(db: AsyncSession, user_id: str) -> dict:
     return await _drain_sync_stats(user_folder(user_id), user_id, db)
 
 
-async def sync_all_on_startup(db: AsyncSession) -> dict:
+async def sync_all_on_startup(db: AsyncSession, force: bool = False) -> dict:
     """Syncs the global folder plus every existing user subfolder at startup (covers files dropped while the app
-    was down). Skips the user table: no folder means nothing to sync.
+    was down). Skips the user table: no folder means nothing to sync. `force` re-embeds every file (reembed_all).
     """
-    stats = await sync_global(db)
+    stats = await _drain_sync_stats(GLOBAL_DIR, None, db, force)
     if USERS_DIR.is_dir():
         for entry in sorted(USERS_DIR.iterdir()):
             if entry.is_dir():
-                stats = merge_sync_stats(stats, await _drain_sync_stats(entry, entry.name, db))
+                stats = merge_sync_stats(stats, await _drain_sync_stats(entry, entry.name, db, force))
     return stats
+
+
+async def reembed_all(db: AsyncSession) -> dict:
+    """Embeds every document again with the current embedding model (Settings > System > RAG)."""
+    return await sync_all_on_startup(db, force=True)

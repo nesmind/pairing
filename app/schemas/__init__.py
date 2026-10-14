@@ -25,6 +25,10 @@ from app.schemas.connector import (
     ConnectorEnabledUpdate,
     ConnectorOut,
     ConnectorsResponse,
+    ConnectorSummary,
+    ConnectorUsage,
+    ModelUsage,
+    SummaryRow,
 )
 from app.schemas.conversation import ConversationCreate, ConversationOut, ConversationUpdate
 from app.schemas.db_config import (
@@ -37,8 +41,10 @@ from app.schemas.db_config import (
 )
 from app.schemas.document import (
     DocumentOut,
+    EmbeddingStatus,
     KnowledgeSummary,
     RagLimits,
+    ReembedResult,
     ScopeSummary,
     UploadJobStatus,
     UploadResult,
@@ -186,6 +192,10 @@ __all__ = [
     "ConnectorConfigUpdate",
     "ConnectorEnabledUpdate",
     "ConnectorOut",
+    "ConnectorSummary",
+    "ConnectorUsage",
+    "ModelUsage",
+    "SummaryRow",
     "ConnectorsResponse",
     "ConversationCreate",
     "ConversationOut",
@@ -282,4 +292,6 @@ __all__ = [
     "UserCreate",
     "UserOut",
     "UserUpdate",
+    "EmbeddingStatus",
+    "ReembedResult",
 ]

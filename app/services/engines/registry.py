@@ -5,6 +5,7 @@ order; a third engine is one adapter file plus one line here.
 
 from app.schemas import EngineName
 from app.services.engines.base import EngineCapabilityError, InferenceEngine
+from app.services.engines.cloudflare_engine import CloudflareEngine
 from app.services.engines.matricxon_engine import MatricxonEngine
 from app.services.engines.ollama_engine import OllamaEngine
 from app.services.engines.runpod_engine import RunPodEngine
@@ -47,4 +48,4 @@ class EngineRegistry:
         return tuple(types)
 
 
-registry = EngineRegistry([OllamaEngine(), MatricxonEngine(), RunPodEngine()])
+registry = EngineRegistry([OllamaEngine(), MatricxonEngine(), RunPodEngine(), CloudflareEngine()])

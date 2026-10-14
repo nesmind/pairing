@@ -50,7 +50,14 @@ async def retrieve_context(
 
     scored = []
     for chunk in chunks:
+        # Only vectors from the current model compare: another model's (recorded, or of another size when
+        # unknown) waits for the next sync to re-embed it instead of failing or matching badly.
+        recorded = chunk.document.embedding_model
+        if recorded is not None and recorded != embedding_model:
+            continue
         vector = _bytes_to_vector(chunk.embedding)
+        if vector.shape != query_vector.shape:
+            continue
         norm = np.linalg.norm(vector) or 1.0
         # Cosine similarity: direction alignment, ignoring magnitude; the standard embedding comparison.
         similarity = float(np.dot(query_vector, vector) / (query_norm * norm))

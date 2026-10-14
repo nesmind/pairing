@@ -22,6 +22,7 @@ function renderConnectorCard(connector) {
   const card = document.getElementById("connector-card-template").content.firstElementChild.cloneNode(true);
 
   card.querySelector(".connector-name").textContent = connector.display_name;
+  card.querySelector(".connector-name").title = connector.display_name;
   card.querySelector(".connector-description").textContent = connector.description;
   card.querySelector(".connector-ready-badge").classList.toggle("hidden", !connector.ready);
 

@@ -8,13 +8,13 @@ reconfigure or enable/disable it any time on the Connectors page (routers/connec
 RunPod's OpenAI-compatible surface has no embeddings route: RunPodEngine declares embeddings=False and never calls it.
 """
 
-import json
 import logging
 from collections.abc import AsyncGenerator
 
 import httpx
 
 from app.services import connector_config_cache
+from app.services.openai_compat import OpenAIChatStream
 
 logger = logging.getLogger("llama_chat")
 
@@ -98,24 +98,9 @@ async def chat_stream(model: str, messages: list[dict], params: dict) -> AsyncGe
     """
     config = _live_config()
     payload = _chat_payload(model, messages, params, stream=True)
-    async with httpx.AsyncClient(timeout=_CHAT_TIMEOUT) as client:
-        try:
-            async with client.stream(
-                "POST", f"{_openai_base(config)}/chat/completions", json=payload, headers=_headers(config)
-            ) as resp:
-                resp.raise_for_status()
-                async for line in resp.aiter_lines():
-                    if not line or not line.startswith("data:"):
-                        continue
-                    data = line[len("data:") :].strip()
-                    if data == "[DONE]":
-                        break
-                    choices = json.loads(data).get("choices") or [{}]
-                    content = choices[0].get("delta", {}).get("content", "")
-                    if content:
-                        yield content
-        except httpx.HTTPError as exc:
-            raise RunPodError(f"RunPod chat request failed: {exc}") from exc
+    url = f"{_openai_base(config)}/chat/completions"
+    async for chunk in OpenAIChatStream("RunPod", RunPodError).stream(url, payload, _headers(config), _CHAT_TIMEOUT):
+        yield chunk
 
 
 async def chat_once(model: str, messages: list[dict], params: dict | None = None) -> str:

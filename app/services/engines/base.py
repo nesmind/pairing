@@ -52,6 +52,8 @@ class EngineCapabilities:
     support_checking: bool
     # Whether get_format_support returns real data (architectures/quantizations) rather than None.
     format_introspection: bool
+    # Whether chat_stream passes MCP tools to the model (params["tools"]); False hides the chat's Tools button.
+    tools: bool = False
 
 
 class InferenceEngine(ABC):
@@ -101,6 +103,15 @@ class InferenceEngine(ABC):
         (EngineCapabilities.format_introspection).
         """
         return None
+
+    async def account_details(self) -> list[tuple[str, str]]:
+        """(label, value) facts a connector engine reports about its account, e.g. token status. None by default."""
+        return []
+
+    async def usage_summary(self) -> tuple[dict | None, str | None]:
+        """(usage, note): provider-reported usage (schemas.ConnectorUsage fields), or None plus why. None, None by
+        default: no usage to report."""
+        return None, None
 
     async def is_ready(self) -> bool:
         """Whether the engine can be activated now. Distinct from EngineCapabilities: a Connector-backed engine

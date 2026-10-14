@@ -27,6 +27,9 @@ class Document(Base):
     chunk_count = Column(Integer, default=0)
     # File size in bytes, for the per-user RAG quota (app/services/document_upload.py) without re-reading disk.
     size_bytes = Column(Integer, nullable=False, default=0)
+    # The embedding model its chunks were embedded with; NULL = embedded before this was recorded. Search uses only
+    # chunks from the current model (document_retrieval), and sync re-embeds the others (document_sync).
+    embedding_model = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=utcnow)
 
     # lazy="selectin" (see Conversation.messages); cascade delete and document.chunks rely on it.

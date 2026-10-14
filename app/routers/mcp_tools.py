@@ -9,6 +9,7 @@ from app.schemas.mcp import McpChatTool, McpChatTools, McpToolOut
 from app.services import channel_service, conversation_service, mcp_settings_service
 from app.services.auth_service import get_current_user
 from app.services.chat_tool_set import ChatToolSet
+from app.services.engines.registry import registry
 from app.services.mcp_tool_catalog import McpToolCatalog
 
 router = APIRouter(prefix="/api/mcp", tags=["mcp"])
@@ -22,7 +23,8 @@ async def list_tools(db: AsyncSession = Depends(get_db), _user: User = Depends(g
 
 
 async def _chat_tools(db: AsyncSession, conversation) -> McpChatTools:
-    enabled = await mcp_settings_service.get_enabled(db)
+    # Off too when the active engine can't pass tools to its models (e.g. a connector): the button would mislead.
+    enabled = registry.active().capabilities.tools and await mcp_settings_service.get_enabled(db)
     live = await McpToolCatalog(db).tools() if enabled else []
     saved = (conversation.params or {}).get("tool_snapshot") or []
     if not saved:

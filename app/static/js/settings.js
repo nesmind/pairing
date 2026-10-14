@@ -182,7 +182,7 @@ function formatSize(gb) {
 /* Real per-engine RAM figure (CatalogEntry.engine_support/EngineModelSupport), not the flat hand-typed min_ram_gb alone: engines' requirements for one file differ (Matricxon dequantizes to bf16 first; Ollama doesn't). Shows the active engine's number, falling back to the static estimate when it hasn't reported one (e.g. Matricxon, not installed there; never a figure borrowed from another engine, see EngineModelSupport.min_ram_gb). */
 function formatRam(entry) {
   const ram = entry.engine_support?.[currentActiveEngine]?.min_ram_gb ?? entry.min_ram_gb;
-  return ram != null ? `${ram}GB RAM` : null;
+  return ram ? `${ram}GB RAM` : null; // 0 = unknown (e.g. a connector model), not "needs no RAM"
 }
 
 /* Persists the selected model as the default for new chats at once. The Model tab has no Save button (nothing to batch); an existing conversation's model is changed from that chat's model badge (chat.js switchModel), so this always means "the default." */
@@ -365,8 +365,9 @@ function renderModelRow(entry, pairing = null, compact = false) {
   // parameter_size" (e.g. "Llama 3 8B") is short, always populated (build_model_catalog and the "installed but not in
   // the static catalog" branch) and reads like a name; the tag still shows below.
   const modelName = [entry.family, entry.parameter_size].filter(Boolean).join(" ");
+  // Only the facts the engine knows: a connector model (e.g. Cloudflare) has no download size or RAM figure.
   const metaParts = [
-    formatSize(entry.download_gb),
+    entry.download_gb ? formatSize(entry.download_gb) : null,
     formatContextLength(entry.context_length) ? `${formatContextLength(entry.context_length)} ctx` : null,
     formatRam(entry),
   ].filter(Boolean);
@@ -686,9 +687,11 @@ function renderModelCatalog() {
   // one-per-row list.
   renderCatalogGroup(installedModelCatalogEl, entries.filter((e) => e.installed), true);
   document.getElementById("installed-model-catalog-section").classList.toggle("hidden", !entries.some((e) => e.installed));
-  // The not-installed "Recommended" list is admin-only; regular users see only installed models.
-  const showRecommended = isAdmin && entries.some((e) => !e.installed);
-  renderCatalogGroup(modelCatalogEl, isAdmin ? entries.filter((e) => !e.installed) : [], true);
+  // The not-installed "Recommended" list is admin-only; regular users see only installed models. A connector engine
+  // (model_management false) has nothing to pull, so it shows none.
+  const listRecommended = isAdmin && (currentCatalog.model_management ?? true);
+  const showRecommended = listRecommended && entries.some((e) => !e.installed);
+  renderCatalogGroup(modelCatalogEl, listRecommended ? entries.filter((e) => !e.installed) : [], true);
   recommendedModelsHeadingEl.classList.toggle("hidden", !showRecommended);
   // Catches every way the stored default can point at nothing real: cleared by an engine switch
   // (engine_switch_service.clear_stale_default_models), the model uninstalled, or never chosen. A stale tag looks the
@@ -992,6 +995,10 @@ async function initModelTab() {
     // (ModelCatalogResponse.model_management): nothing to search Hugging Face for or pull.
     const browseMoreModelsSection = document.getElementById("browse-more-models-section");
     browseMoreModelsSection.classList.toggle("hidden", !(currentCatalog.model_management ?? true));
+    // Same for the embedding and diffusion pull lists: a connector's models come from its provider.
+    for (const id of ["embedding-models-section", "diffusion-models-section"]) {
+      document.getElementById(id)?.classList.toggle("hidden", !(currentCatalog.model_management ?? true));
+    }
     // "Browse more models" starts open (settings.html); preload it so the search box is usable at once. Own try/catch
     // so a failure (e.g. no internet) doesn't block the main picker. Guarded by currentExtendedCatalog like
     // toggleBrowseMoreModels' lazy load, so re-activating the tab doesn't re-fetch.
@@ -1072,8 +1079,8 @@ function renderEmbeddingCatalog() {
     label.className = "min-w-0";
     const modelName = [entry.family, entry.parameter_size].filter(Boolean).join(" ");
     const metaParts = [
-      formatSize(entry.download_gb),
-      `${entry.embedding_dim}-dim`,
+      entry.download_gb ? formatSize(entry.download_gb) : null,
+      entry.embedding_dim ? `${entry.embedding_dim}-dim` : null,
       formatContextLength(entry.context_length) ? `${formatContextLength(entry.context_length)} ctx` : null,
     ].filter(Boolean);
     const defaultBadge = isDefault
@@ -2348,6 +2355,8 @@ function applyActiveEngineVisibility() {
     const section = serverSectionEl(server);
     if (section) section.classList.toggle("hidden", server !== selectEl.value);
   }
+  // A connector engine has no form here; settings_connector_summary.js shows its summary instead.
+  document.dispatchEvent(new CustomEvent("active-engine-shown", { detail: selectEl.value }));
   // The saved-chat-caches box is a Matricxon feature (its API answers 409 for other engines): shown only while
   // Matricxon is both the picked and the saved engine; hidden at once when another is picked.
   const cachePanel = document.getElementById("matricxon-cache-panel");

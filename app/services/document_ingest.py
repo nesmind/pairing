@@ -82,5 +82,6 @@ async def ingest_document_stream(
         db.add(Chunk(document_id=document.id, text=piece, embedding=vector_to_bytes(vector)))
     document.chunk_count = len(kept)
     document.size_bytes = size_bytes
+    document.embedding_model = embedding_model
     await db.commit()
     yield {"stage": "ingested", "skipped_chunks": skipped_chunks}

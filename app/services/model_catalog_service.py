@@ -310,15 +310,22 @@ class ChatModelCatalogBuilder:
         # per-tag report, often the literal "unknown": truthy, it skipped the `or` fallback and rendered "Llama unknown"
         # . _clean_engine_reported filters it case-insensitively (applied to family defensively; not yet
         # observed).
-        family = (extended_entry or {}).get("family") or (
-            self._clean_engine_reported(details.get("family")) or "Other"
-        ).title()
-        parameter_size = (
-            (extended_entry or {}).get("parameter_size")
-            or self._clean_engine_reported(details.get("parameter_size"))
-            or self._quant_from_tag(name)
-            or "?"
+        # A connector engine (e.g. cloudflare_client) names its models itself: its tags are no Hugging Face paths.
+        display_name = installed_model.get("display_name")
+        family = (
+            display_name
+            or (extended_entry or {}).get("family")
+            or (self._clean_engine_reported(details.get("family")) or "Other").title()
         )
+        if display_name:  # already says what the model is; a tag-based guess would repeat it
+            parameter_size = self._clean_engine_reported(details.get("parameter_size")) or ""
+        else:
+            parameter_size = (
+                (extended_entry or {}).get("parameter_size")
+                or self._clean_engine_reported(details.get("parameter_size"))
+                or self._quant_from_tag(name)
+                or "?"
+            )
         # Bug: this assumed "installed while Matricxon is active" meant "proven to run there".
         # Matricxon's
         # /api/tags lists anything with a valid sidecar (written at pull time by its puller or matricxon_direct_puller),
@@ -345,7 +352,7 @@ class ChatModelCatalogBuilder:
         )
         return CatalogEntry(
             family=family,
-            vendor=self._vendor_from_tag(name),
+            vendor=installed_model.get("vendor") or self._vendor_from_tag(name),
             tag=name,
             parameter_size=parameter_size,
             context_length=details.get("context_length"),

@@ -674,3 +674,23 @@ async def test_build_marks_a_curated_projector_installed_despite_having_no_compl
     projector = next(e for e in response.entries if e.tag == tag)
     assert projector.installed and projector.is_projector and not projector.text_capable
     assert len([e for e in response.entries if e.tag == tag]) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_connector_models_own_name_and_vendor_are_shown(db, user, monkeypatch):
+    """A connector engine (cloudflare_client) gives a readable name, vendor and context: its tags aren't hf.co paths."""
+    cloudflare_model = {
+        "name": "@cf/meta/llama-3.1-8b-instruct-fp8",
+        "capabilities": ["completion"],
+        "display_name": "Llama 3.1 8B Instruct FP8",
+        "vendor": "Meta",
+        "details": {"context_length": 32000},
+    }
+    monkeypatch.setattr(svc, "list_models", lambda: _async_return([cloudflare_model]))
+
+    response = await ChatModelCatalogBuilder(db, user).build()
+
+    entry = next(e for e in response.entries if e.tag == cloudflare_model["name"])
+    assert entry.family == "Llama 3.1 8B Instruct FP8"
+    assert entry.parameter_size == ""  # no "?", and no tag-based "FP8" repeated
+    assert entry.vendor == "Meta" and entry.context_length == 32000

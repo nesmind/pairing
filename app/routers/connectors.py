@@ -10,7 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import User
-from app.schemas import ConnectorConfigUpdate, ConnectorEnabledUpdate, ConnectorOut, ConnectorsResponse, OkResponse
+from app.schemas import (
+    ConnectorConfigUpdate,
+    ConnectorEnabledUpdate,
+    ConnectorOut,
+    ConnectorsResponse,
+    ConnectorSummary,
+    OkResponse,
+)
 from app.services import connector_config_cache, connector_config_service, server_pool_broadcast
 from app.services.auth_service import require_admin
 from app.services.connectors import CONNECTORS, get_connector
@@ -120,6 +127,21 @@ async def test_connector_config(
     if failures:
         logger.warning("Some instances did not pick up %s's test result: %s", connector_id, "; ".join(failures))
     return await _to_out(db, connector)
+
+
+@router.get("/{connector_id}/summary", response_model=ConnectorSummary)
+async def connector_summary(
+    connector_id: str, db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)
+):
+    """State, settings, model counts and usage, for the External servers tab."""
+    # Imported here for the same circular-import reason as _to_out.
+    from app.services.connector_summary import ConnectorSummaryBuilder
+
+    try:
+        builder = ConnectorSummaryBuilder(db, connector_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return await builder.build()
 
 
 @router.post("/internal-refresh", response_model=OkResponse)

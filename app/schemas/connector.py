@@ -50,3 +50,47 @@ class ConnectorConfigUpdate(BaseModel):
 
 class ConnectorEnabledUpdate(BaseModel):
     enabled: bool
+
+
+class SummaryRow(BaseModel):
+    label: str
+    value: str
+
+
+class ModelUsage(BaseModel):
+    model: str
+    requests: int
+    units: float
+
+
+class ConnectorUsage(BaseModel):
+    """Usage the provider reports (cloudflare_client.usage_summary). `units` are its billing units, e.g. neurons."""
+
+    period: str
+    units_label: str
+    requests: int
+    units: float
+    input_tokens: int
+    output_tokens: int
+    today_requests: int
+    today_units: float
+    top_models: list[ModelUsage]
+
+
+class ConnectorSummary(BaseModel):
+    """GET /api/connectors/{id}/summary: what the External servers tab shows for a connector engine."""
+
+    id: str
+    display_name: str
+    enabled: bool
+    ready: bool
+    last_test_passed: bool
+    last_test_message: str | None = None
+    # Non-secret settings plus what the provider reports (e.g. token status).
+    details: list[SummaryRow]
+    chat_models: int | None = None
+    embedding_models: int | None = None
+    models_error: str | None = None
+    usage: ConnectorUsage | None = None
+    # Why usage is missing, when it is (e.g. a token permission).
+    usage_note: str | None = None

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import User
 from app.services.auth_service import PageAuth
+from app.services.engines.registry import registry
 from app.services.theme_service import get_ui_theme
 from app.templates_env import templates
 from app.theme_config import UI_THEMES
@@ -128,5 +129,7 @@ async def _settings_response(request: Request, db: AsyncSession, admin_page: boo
             "username": user.username,
             "ui_themes": UI_THEMES,
             "theme": await get_ui_theme(db, user),
+            # A connector engine manages its own models: its download sections start hidden, no flash on load.
+            "remote_models": not registry.active().capabilities.model_management,
         },
     )

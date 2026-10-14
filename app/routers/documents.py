@@ -15,9 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import KNOWLEDGE_DIR
 from app.database import get_db
 from app.models import Document, User
-from app.schemas import DocumentOut, KnowledgeSummary, OkResponse, UploadJobStatus
-from app.services import document_upload
-from app.services.auth_service import get_current_user
+from app.schemas import DocumentOut, EmbeddingStatus, KnowledgeSummary, OkResponse, ReembedResult, UploadJobStatus
+from app.services import document_sync, document_upload
+from app.services.auth_service import get_current_user, require_admin
+from app.services.document_embedding_status import DocumentEmbeddingStatus
 from app.services.document_ingest import MAX_UPLOAD_FILES
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -26,6 +27,20 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 @router.get("/summary", response_model=KnowledgeSummary)
 async def get_summary(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     return await document_upload.get_knowledge_summary(db, user)
+
+
+@router.get("/embedding-status", response_model=EmbeddingStatus)
+async def embedding_status(db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)):
+    """How many documents match the current embedding model (Settings > System > RAG)."""
+    return await DocumentEmbeddingStatus(db).get()
+
+
+@router.post("/reembed", response_model=ReembedResult)
+async def reembed_all_documents(db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)):
+    """Embeds every document again with the current model, e.g. after switching embedding models."""
+    stats = await document_sync.reembed_all(db)
+    status = await DocumentEmbeddingStatus(db).get()
+    return ReembedResult(updated=stats["updated"], errors=stats["errors"], status=status)
 
 
 @router.get("", response_model=list[DocumentOut])

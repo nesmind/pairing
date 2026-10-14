@@ -68,3 +68,23 @@ class UploadJobStatus(BaseModel):
     done: bool
     files: dict[str, dict]
     result: UploadResult | None = None
+
+
+class EmbeddingStatus(BaseModel):
+    """GET /api/documents/embedding-status: which documents match the current embedding model."""
+
+    current_model: str | None
+    total: int
+    current: int
+    # Embedded with another model: search skips them until they are embedded again.
+    outdated: int
+    # From before models were recorded: used only while their vectors fit the current model.
+    unknown: int
+
+
+class ReembedResult(BaseModel):
+    """POST /api/documents/reembed: the sync tally (document_sync.reembed_all) and the status after it."""
+
+    updated: int
+    errors: list[str]
+    status: EmbeddingStatus

@@ -20,6 +20,7 @@ class MatricxonEngine(InferenceEngine):
         local_process=True,
         host_pool=True,
         support_checking=True,
+        tools=True,
         format_introspection=True,
     )
     error_types = (MatricxonError,)
