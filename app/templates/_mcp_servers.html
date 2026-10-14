@@ -7,6 +7,11 @@
     tool returns is shown to the model. Header values (such as an API key) are stored encrypted and never
     shown again.
   </p>
+  <!-- Shown by engine_capability_notes.js when the active engine can't pass tools to models. -->
+  <p data-engine-note="tools" class="hidden text-xs text-warning-400 bg-slate-900 border border-warning-500/50 rounded-lg px-3 py-2">
+    <span data-engine-name></span>, the active engine, doesn't support tools, so models can't use these servers and
+    the chat's Tools button is hidden. Tools work on Ollama and Matricxon (Admin settings &gt; External servers).
+  </p>
   <div id="mcp-list-header" class="flex items-center justify-between">
     <p class="text-xs font-medium text-slate-400">Connected servers</p>
     <button type="button" id="mcp-add"

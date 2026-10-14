@@ -25,6 +25,9 @@ def test_only_the_local_engines_pass_tools():
         "runpod": False,
         "cloudflare": False,
         "digitalocean": False,
+        "openrouter": False,
+        "gemini": False,
+        "groq": False,
     }
 
 
@@ -42,3 +45,8 @@ async def test_the_tool_loop_does_not_start_on_a_connector_engine(db):
     engine_service._cached_engine = "cloudflare"
     params = {"use_tools": True, "conversation_id": "c1"}
     assert await tool_loop_service.tool_stream_or_none(db, "@cf/m", [], params) is None
+
+
+def test_only_the_local_engines_send_images():
+    vision = {engine.name for engine in registry.all() if engine.capabilities.vision}
+    assert vision == {"ollama", "matricxon"}

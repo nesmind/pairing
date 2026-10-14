@@ -2396,12 +2396,18 @@ async function loadActiveEngineIntoEditor() {
   applyActiveEngineSwitchNote();
 }
 
-/* Ollama and Matricxon have separate model storage (see the External Servers page), which the picker alone doesn't show. Shown the moment the selection differs from the saved one (not after Save, to inform the decision) and hidden again if changed back. */
-function applyActiveEngineSwitchNote() {
+/* Shown the moment the selection differs from the saved one (not after Save, to inform the decision) and hidden again if changed back: the storage note for Ollama and Matricxon (separate model storage), the connector note for a cloud connector (its own models only). */
+async function applyActiveEngineSwitchNote() {
   const selectEl = document.getElementById("active-engine-select");
-  const noteEl = document.getElementById("active-engine-switch-note");
-  if (!selectEl || !noteEl) return;
-  noteEl.classList.toggle("hidden", selectEl.value === savedActiveEngine);
+  const localNoteEl = document.getElementById("active-engine-switch-note");
+  const connectorNoteEl = document.getElementById("active-engine-connector-note");
+  if (!selectEl || !localNoteEl || !connectorNoteEl) return;
+  const target = (await engineOptionsList()).find((e) => e.name === selectEl.value);
+  const switching = selectEl.value !== savedActiveEngine && Boolean(target);
+  const isLocal = Boolean(target?.capabilities.local_process);
+  localNoteEl.classList.toggle("hidden", !switching || !isLocal);
+  connectorNoteEl.classList.toggle("hidden", !switching || isLocal);
+  connectorNoteEl.querySelector("[data-switch-engine-name]").textContent = target?.display_name || "";
 }
 
 async function loadExternalServersIntoEditor() {

@@ -16,6 +16,7 @@ from app.schemas import (
     ConnectorOut,
     ConnectorsResponse,
     ConnectorSummary,
+    ConnectorTestResult,
     OkResponse,
 )
 from app.services import connector_config_cache, connector_config_service, server_pool_broadcast
@@ -127,6 +128,28 @@ async def test_connector_config(
     if failures:
         logger.warning("Some instances did not pick up %s's test result: %s", connector_id, "; ".join(failures))
     return await _to_out(db, connector)
+
+
+@router.post("/{connector_id}/test-values", response_model=ConnectorTestResult)
+async def test_connector_values(
+    connector_id: str,
+    body: ConnectorConfigUpdate,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """Tests the form's values, saved or not (connector_tester); a test of the saved values is recorded."""
+    from app.services.connector_tester import ConnectorTester
+
+    try:
+        tester = ConnectorTester(db, connector_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    result = await tester.run(body.values)
+    if result.saved:
+        failures = await server_pool_broadcast.broadcast_refresh("/api/connectors/internal-refresh")
+        if failures:
+            logger.warning("Some instances did not pick up %s's test result: %s", connector_id, "; ".join(failures))
+    return result
 
 
 @router.get("/{connector_id}/summary", response_model=ConnectorSummary)

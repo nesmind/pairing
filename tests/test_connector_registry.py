@@ -9,7 +9,7 @@ from app.services.engines.runpod_engine import RunPodEngine
 
 
 def test_runpod_is_not_offered():
-    assert [c.id for c in CONNECTORS] == ["cloudflare", "digitalocean"]
+    assert [c.id for c in CONNECTORS] == ["cloudflare", "digitalocean", "openrouter", "gemini", "groq"]
     with pytest.raises(KeyError):
         get_connector("runpod")
 

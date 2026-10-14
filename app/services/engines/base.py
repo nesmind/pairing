@@ -54,6 +54,8 @@ class EngineCapabilities:
     format_introspection: bool
     # Whether chat_stream passes MCP tools to the model (params["tools"]); False hides the chat's Tools button.
     tools: bool = False
+    # Whether chat_stream sends attached images (the Default vision model); connectors send text only.
+    vision: bool = False
 
 
 class InferenceEngine(ABC):

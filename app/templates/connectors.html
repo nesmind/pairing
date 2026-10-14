@@ -37,7 +37,7 @@
       <p id="connectors-error" class="hidden text-sm text-red-400"></p>
 
       <!-- Filled by app/static/js/connectors.js: one card per connector, with a generic form from its config_fields (app.services.connectors), so a new connector needs no template change. A grid (not flex) left-aligns a partial last row instead of centering/stretching it; items-start keeps a collapsed card from stretching to a taller expanded neighbor. -->
-      <div id="connectors-list" class="grid grid-cols-1 md:grid-cols-2 gap-4 items-start"></div>
+      <div id="connectors-list" class="flex items-start gap-4"></div>
     </div>
   </div>
 </div>
@@ -72,29 +72,25 @@
       <form class="connector-config-form space-y-2">
         <!-- One row per config field, appended by connectors.js. -->
         <div class="connector-fields space-y-2"></div>
-        <div class="flex items-center gap-3 pt-1">
+        <div class="flex flex-wrap items-center gap-3 pt-1">
           <button type="submit"
             class="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-500 transition-colors">
             Save
           </button>
-          <span class="connector-save-status text-xs text-slate-500"></span>
-        </div>
-      </form>
-
-      <div class="border-t border-slate-800 pt-3 space-y-2">
-        <div class="flex items-center gap-3">
+          <!-- Tests the values in the form, saved or not (connectors.js). -->
           <button type="button"
             class="connector-test-btn rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             Test connection
           </button>
-          <span class="connector-test-status text-xs text-slate-500"></span>
+          <span class="connector-save-status text-xs text-slate-500"></span>
         </div>
         <p class="text-[11px] text-slate-500">
-          Must pass before this connector can be picked as the active engine in Admin settings &gt; External servers —
-          re-run this any time the config above changes.
+          Test connection checks the values above before you save them. Saving tests them again; the test of the
+          saved values must pass before this connector can be picked as the active engine in Admin settings &gt;
+          External servers.
         </p>
         <p class="connector-test-result hidden text-xs"></p>
-      </div>
+      </form>
     </div>
   </div>
 </template>

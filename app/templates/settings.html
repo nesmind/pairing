@@ -733,6 +733,11 @@
           Applies to every user's own document uploads (Settings > Knowledge). The per-file limit
           also applies to shared/global uploads; the storage quota doesn't.
         </p>
+        <!-- Shown by engine_capability_notes.js when the active engine has no embeddings. -->
+        <p data-engine-note="embeddings" class="hidden text-xs text-warning-400 bg-slate-900 border border-warning-500/50 rounded-lg px-3 py-2">
+          <span data-engine-name></span>, the active engine, has no embedding models, so the knowledge base can't be
+          used while it is active, even with RAG enabled. Switch to an engine with embeddings to use it.
+        </p>
         <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 flex items-center justify-between gap-3">
           <div class="min-w-0">
             <p class="text-sm text-slate-200">Enable RAG (Knowledge base) for users</p>
@@ -806,6 +811,11 @@
           <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-2">
             <select id="default-vision-model"
               class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500"></select>
+            <!-- Shown by engine_capability_notes.js when the active engine sends text only. -->
+            <p data-engine-note="vision" class="hidden text-xs text-warning-400 bg-slate-900 border border-warning-500/50 rounded-lg px-3 py-2">
+              <span data-engine-name></span>, the active engine, doesn't support images: messages are sent as text
+              only, so this setting has no effect until you switch to Ollama or Matricxon.
+            </p>
             <p id="default-vision-model-empty" class="hidden text-xs text-warning-400">
               No vision-capable models installed yet — pull one (e.g. llava) above to enable image attachments.
             </p>
@@ -1050,6 +1060,13 @@
           automatically available under the other. A conversation whose model isn't installed on the engine
           you're switching to will fall back to another installed model automatically, but you may still need to
           pull models again below for anything you specifically want available here.
+        </p>
+        <!-- Shown instead of the note above when switching to a connector (settings.js applyActiveEngineSwitchNote). -->
+        <p id="active-engine-connector-note" class="hidden text-xs text-warning-400 bg-slate-900 border border-warning-500/50 rounded-lg px-3 py-2">
+          <span data-switch-engine-name></span> is a cloud connector: the model lists will show only its models, and
+          models installed on Ollama or Matricxon aren't used while it is active. A conversation whose model isn't
+          offered there falls back to one of its models. Images and tools aren't sent, and the knowledge base works
+          only if it has embedding models.
         </p>
       </section>
 
@@ -1643,6 +1660,7 @@
 <script src="/static/js/app.js?v={{ static_version }}"></script>
 <script src="/static/js/theme.js?v={{ static_version }}"></script>
 <script src="/static/js/settings.js?v={{ static_version }}"></script>
+<script src="/static/js/engine_capability_notes.js?v={{ static_version }}"></script>
 <script src="/static/js/settings_cache_persistence.js?v={{ static_version }}"></script>
 {% if admin_page %}<script src="/static/js/settings_cluster_managed.js?v={{ static_version }}"></script>
 <script src="/static/js/settings_images_check.js?v={{ static_version }}"></script>{% endif %}

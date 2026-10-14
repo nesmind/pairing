@@ -128,7 +128,7 @@ It is also important not to expose more models to users than the system RAM/VRAM
 
 **Connectors**
 - Extend the system with connectors, which add support for more inference engines, such as cloud services that offer GPU and serverless ML. pAIring is intended to run privately or locally without external services and providers (except for downloading models or outer MCP tools), but this is a much appreciated optional extra.
-- Currently supported connectors are Cloudflare Workers AI and DigitalOcean Serverless Inference.
+- Currently supported connectors are Cloudflare Workers AI, DigitalOcean Serverless Inference, OpenRouter, Google Gemini and Groq.
 
 **Guardrails for admin changes**
 - Risky settings (switching database, external servers) get tested before they're saved, so a bad edit doesn't take the UI down.

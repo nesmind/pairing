@@ -21,6 +21,7 @@ class MatricxonEngine(InferenceEngine):
         host_pool=True,
         support_checking=True,
         tools=True,
+        vision=True,
         format_introspection=True,
     )
     error_types = (MatricxonError,)

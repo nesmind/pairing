@@ -7,6 +7,10 @@ from collections.abc import AsyncGenerator
 import httpx
 
 
+class StreamErrorEvent(Exception):
+    """The provider reported an error inside the stream (e.g. OpenRouter's mid-stream rate limit), not as HTTP."""
+
+
 class OpenAIChatStream:
     """Streams one chat completion; any failure becomes `error_type`, so callers keep their own error class."""
 
@@ -22,7 +26,11 @@ class OpenAIChatStream:
         data = line[len("data:") :].strip()
         if data == "[DONE]":
             return None
-        choices = json.loads(data).get("choices") or [{}]
+        event = json.loads(data)
+        if event.get("error"):
+            error = event["error"]
+            raise StreamErrorEvent(error.get("message", str(error)) if isinstance(error, dict) else str(error))
+        choices = event.get("choices") or [{}]
         return (choices[0].get("delta") or {}).get("content") or ""
 
     async def stream(
@@ -40,7 +48,10 @@ class OpenAIChatStream:
                             f"{self._provider} chat request failed ({resp.status_code}): {detail}"
                         ) from exc
                     async for line in resp.aiter_lines():
-                        content = self.content_of(line)
+                        try:
+                            content = self.content_of(line)
+                        except StreamErrorEvent as exc:
+                            raise self._error_type(f"{self._provider} stopped the reply: {exc}") from exc
                         if content is None:
                             break
                         if content:

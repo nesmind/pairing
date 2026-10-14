@@ -4,13 +4,31 @@
 // edited doesn't collapse.
 let openConnectorId = null;
 
+// Two independent columns from md up (alternating, so reading order stays left, right, left...): opening a card then
+// only moves the cards below it in its own column, never its neighbour, as a shared-row grid did. One column below md.
+const twoColumns = window.matchMedia("(min-width: 768px)");
+let connectorCards = [];
+
+function layoutConnectorCards() {
+  const listEl = document.getElementById("connectors-list");
+  const columnCount = twoColumns.matches ? 2 : 1;
+  const columns = Array.from({ length: columnCount }, () => {
+    const column = document.createElement("div");
+    column.className = "flex min-w-0 flex-1 flex-col gap-4";
+    return column;
+  });
+  connectorCards.forEach((card, index) => columns[index % columnCount].appendChild(card));
+  listEl.replaceChildren(...columns);
+}
+
+twoColumns.addEventListener("change", layoutConnectorCards);
+
 async function loadConnectors() {
   const errorEl = document.getElementById("connectors-error");
-  const listEl = document.getElementById("connectors-list");
   try {
     const { connectors } = await api("/api/connectors");
-    listEl.innerHTML = "";
-    connectors.forEach((connector) => listEl.appendChild(renderConnectorCard(connector)));
+    connectorCards = connectors.map((connector) => renderConnectorCard(connector));
+    layoutConnectorCards();
     errorEl.classList.add("hidden");
   } catch (err) {
     errorEl.textContent = err.message;
@@ -80,45 +98,56 @@ function renderConnectorCard(connector) {
   });
 
   const saveStatus = card.querySelector(".connector-save-status");
+  const testBtn = card.querySelector(".connector-test-btn");
+  const resultEl = card.querySelector(".connector-test-result");
+  const formValues = () => Object.fromEntries(Object.entries(inputsByName).map(([name, input]) => [name, input.value]));
+
+  const showResult = (passed, message) => {
+    resultEl.textContent = `${passed ? "✓" : "✗"} ${message}`;
+    resultEl.classList.remove("hidden", "text-emerald-400", "text-red-400");
+    resultEl.classList.add(passed ? "text-emerald-400" : "text-red-400");
+  };
+
+  // Tests the form's values, saved or not; a test of the saved values is recorded and may make it ready.
+  const runTest = async (values) => {
+    testBtn.disabled = true;
+    saveStatus.textContent = "Testing…";
+    try {
+      const result = await api(`/api/connectors/${connector.id}/test-values`, {
+        method: "POST",
+        body: JSON.stringify({ values }),
+      });
+      if (result.saved) {
+        await loadConnectors();
+        return;
+      }
+      saveStatus.textContent = "";
+      showResult(result.passed, result.passed ? `${result.message} Not saved yet — press Save to keep these values.` : result.message);
+    } catch (err) {
+      saveStatus.textContent = err.message;
+    } finally {
+      testBtn.disabled = false;
+    }
+  };
+
+  testBtn.addEventListener("click", () => runTest(formValues()));
+
   card.querySelector(".connector-config-form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const values = {};
-    Object.entries(inputsByName).forEach(([name, input]) => {
-      values[name] = input.value;
-    });
+    saveStatus.textContent = "Saving…";
     try {
       await api(`/api/connectors/${connector.id}/config`, {
         method: "PUT",
-        body: JSON.stringify({ values }),
+        body: JSON.stringify({ values: formValues() }),
       });
-      await loadConnectors();
+      // Saving clears the last test, so test the saved values at once.
+      await runTest(formValues());
     } catch (err) {
       saveStatus.textContent = err.message;
     }
   });
 
-  const testBtn = card.querySelector(".connector-test-btn");
-  const testStatus = card.querySelector(".connector-test-status");
-  testBtn.disabled = !connector.configured;
-  testBtn.title = connector.configured ? "" : "Save the required fields above first";
-  testBtn.addEventListener("click", async () => {
-    testBtn.disabled = true;
-    testStatus.textContent = "Testing…";
-    try {
-      await api(`/api/connectors/${connector.id}/test`, { method: "POST" });
-      await loadConnectors();
-    } catch (err) {
-      testStatus.textContent = err.message;
-      testBtn.disabled = false;
-    }
-  });
-
-  const resultEl = card.querySelector(".connector-test-result");
-  if (connector.last_test_message) {
-    resultEl.textContent = connector.last_test_passed ? `✓ ${connector.last_test_message}` : `✗ ${connector.last_test_message}`;
-    resultEl.classList.remove("hidden", "text-emerald-400", "text-red-400");
-    resultEl.classList.add(connector.last_test_passed ? "text-emerald-400" : "text-red-400");
-  }
+  if (connector.last_test_message) showResult(connector.last_test_passed, connector.last_test_message);
 
   return card;
 }

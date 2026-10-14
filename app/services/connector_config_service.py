@@ -61,6 +61,19 @@ async def is_configured(db: AsyncSession, connector_id: str) -> bool:
     return all(values.get(f.name) for f in connector.config_fields if f.required)
 
 
+def merge_values(connector_id: str, existing: dict[str, str], values: dict[str, str]) -> dict[str, str]:
+    """Form values over the saved ones: a blank secret keeps the saved one, a blank text field clears it."""
+    merged: dict[str, str] = {}
+    for field in get_connector(connector_id).config_fields:
+        if field.secret:
+            value = values.get(field.name) or existing.get(field.name, "")
+        else:
+            value = values.get(field.name, "")
+        if value:
+            merged[field.name] = value
+    return merged
+
+
 async def set_config(db: AsyncSession, connector_id: str, values: dict[str, str]) -> None:
     """A blank/missing `secret` value keeps the saved one (the browser never has it, see get_config_for_display).
     Non-secret fields are shown back, so blank really clears them.
@@ -70,16 +83,12 @@ async def set_config(db: AsyncSession, connector_id: str, values: dict[str, str]
     row = await db.get(AppSetting, (SYSTEM_OWNER_ID, _key(connector_id)))
     enabled = bool(row.value.get("enabled", False)) if row else False
 
+    merged = merge_values(connector_id, existing, values)
     stored: dict[str, str] = {}
     for field in connector.config_fields:
-        if field.secret:
-            new_value = values.get(field.name) or existing.get(field.name)
-            if new_value:
-                stored[f"{field.name}_encrypted"] = secret_crypto.encrypt(new_value)
-        else:
-            new_value = values.get(field.name, "")
-            if new_value:
-                stored[field.name] = new_value
+        if field.name in merged:
+            key = f"{field.name}_encrypted" if field.secret else field.name
+            stored[key] = secret_crypto.encrypt(merged[field.name]) if field.secret else merged[field.name]
 
     # Any edit invalidates the last "Test connection" result (new credentials are unproven;
     # get_test_result/set_test_result), so the connector must be re-tested to become ready

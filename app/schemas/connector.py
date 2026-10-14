@@ -48,6 +48,15 @@ class ConnectorConfigUpdate(BaseModel):
     values: dict[str, str]
 
 
+class ConnectorTestResult(BaseModel):
+    """POST /api/connectors/{id}/test-values: `saved` is True when the tested values are the saved ones, so the
+    result was recorded."""
+
+    passed: bool
+    message: str
+    saved: bool
+
+
 class ConnectorEnabledUpdate(BaseModel):
     enabled: bool
 
