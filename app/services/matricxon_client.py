@@ -158,12 +158,13 @@ async def chat_stream(model: str, messages: list[dict], params: dict) -> AsyncGe
     # Cluster: a chat's processed state lives in RAM on one node. Send it there, or, when it must go elsewhere
     # (that node busy or down), have that node write it to the shared disk first.
     chat_tag = params.get("conversation_id")
-    holder = await matricxon_pool.find_holder(chat_tag)
+    holder, route = await matricxon_pool.route_hints(chat_tag, model)  # + what each node reports
     moved: dict = {}
 
     async def _raw_content_chunks_from(host: str) -> AsyncGenerator[str, None]:
         call_state["host"] = host
         call_state["attempts"] += 1
+        matricxon_pool.note_model_used(host, model)
         if holder and holder != host and not moved:
             moved["spilled"] = await matricxon_pool.spill_chat(holder, chat_tag)
             logger.info(
@@ -205,7 +206,7 @@ async def chat_stream(model: str, messages: list[dict], params: dict) -> AsyncGe
     ) as span:
         span.set_attribute("gen_ai.request.model", model)
         try:
-            async for chunk in matricxon_pool.stream_with_failover(_raw_content_chunks_from, prefer=holder):
+            async for chunk in matricxon_pool.stream_with_failover(_raw_content_chunks_from, prefer=holder, info=route):
                 yield chunk
         except (httpx.HTTPError, MatricxonError) as exc:
             matricxon_telemetry.record_chat_error(span, call_state.get("host", ""), call_state["attempts"], exc)

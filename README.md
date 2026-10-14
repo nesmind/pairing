@@ -8,7 +8,7 @@
 
 # pAIring
 
-Private AI ring is a self-hosted, production-ready platform for deploying private LLMs & image generation models across a single node, a team, a department, or an organization — role-based access, load balancing failover across servers, and rock solid UI validations to avoid configuration mistakes. Start chatting with open weights LLMs, create images and much more. Supports every existing public GGUF model out of the box, browsable from Hugging Face or your own private repository. Nothing leaves your network.
+Private AI ring is a self-hosted, production-ready platform for deploying private LLMs & image generation models across a single node, a team, a department, or an organization — role-based access, load balancing failover across servers, and rock solid UI validations to avoid configuration mistakes. Start chatting with open weights LLMs, create images and much more. Supports every existing public GGUF model out of the box, browsable from Hugging Face or your own private repository. Switch the inference engine with one setting: local Ollama or Matricxon, or one of a growing number of cloud connectors.
 
 ## Quick start
 
@@ -33,7 +33,7 @@ Supports MySQL migration and multi-server deployment.
 
 **After install, open the UI and configure the essentials to get started:**
 
-1. Go to **Settings → External servers** and choose your inference engine. Ollama and Matricxon are supported (Matricxon has many more options but still has some important limitations — see the Matricxon repository for details). Both can be pulled and installed directly from there.
+1. Go to **Settings → External servers** and choose your inference engine. Ollama and Matricxon are supported (Matricxon has many more options — see the Matricxon repository for details). Both can be pulled and installed directly from there. Prefer the cloud? Set up a connector on the **Connectors** page and pick it here instead; switching back is just as quick.
 2. After configuring the engine, go to **Settings → Models** and download some models. Embedding models are needed for RAG support, and vision projectors are needed for image understanding in chats and channels.
 3. Want images? Go to **Settings → Image**, press **Install from GitHub** for stable-diffusion.cpp (or, on Linux, **Build from source** — needs `git`, `cmake` and `g++`: `sudo apt install git cmake build-essential`; `scripts/install_on_fresh_server.sh` installs them), then download a diffusion model (SD-Turbo is a good start) under **Settings → Models → Diffusion models**, choose it in the engine's *Model* dropdown and press **Start**.
 4. Once the models are ready, go to **Settings → System** and set the important parameters (such as the default vision model).
@@ -116,6 +116,9 @@ It is also important not to expose more models to users than the system RAM/VRAM
 **GPU-aware**
 - Live GPUs usage shows up right in the dashboard, alongside CPU/RAM/disk.
 
+**One place to switch engines**
+- Ollama, Matricxon and every cloud connector sit in the same **Active engine** picker (Settings → External servers): change it and the whole app follows, with no reinstall and nothing lost.
+
 **Load balancing**
 - Point at extra ML engine (Ollama or Matricxon) servers (more GPUs, more machines) and this app spreads requests across them, with automatic failover if one goes down.
 - Can also run multiple copies of itself behind one URL, no reverse proxy needed.
@@ -128,7 +131,8 @@ It is also important not to expose more models to users than the system RAM/VRAM
 
 **Connectors**
 - Extend the system with connectors, which add support for more inference engines, such as cloud services that offer GPU and serverless ML. pAIring is intended to run privately or locally without external services and providers (except for downloading models or outer MCP tools), but this is a much appreciated optional extra.
-- Currently supported connectors are Cloudflare Workers AI, DigitalOcean Serverless Inference, OpenRouter, Google Gemini and Groq.
+- Currently supported connectors are Cloudflare Workers AI, DigitalOcean Serverless Inference, OpenRouter, Google Gemini and Groq; more connectors will be added soon. Each can be tried for free (a daily allowance, free models or a free tier).
+- Setting one up takes an API key and a **Test connection**; then it is one pick away in the **Active engine** list.
 
 **Guardrails for admin changes**
 - Risky settings (switching database, external servers) get tested before they're saved, so a bad edit doesn't take the UI down.

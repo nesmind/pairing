@@ -8,6 +8,7 @@ import asyncio
 import time
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from typing import TypeVar
 
 import httpx
@@ -26,6 +27,18 @@ async def ping_host(host: str, timeout: httpx.Timeout, path: str = "/") -> bool:
             return resp.status_code == 200
     except httpx.HTTPError:
         return False
+
+
+@dataclass(frozen=True)
+class RouteInfo:
+    """What the hosts report about themselves (cluster_routing.NodeLoads), for one request: `warm` have its model
+    loaded, `active` counts each host's replies from every client, `capacity` is its compute relative to the
+    biggest host (1.0), and `no_room` lack the free memory to load the model."""
+
+    warm: frozenset[str] = frozenset()
+    active: dict[str, int] = field(default_factory=dict)
+    capacity: dict[str, float] = field(default_factory=dict)
+    no_room: frozenset[str] = frozenset()
 
 
 class _HostState:
@@ -58,7 +71,27 @@ class HostPool:
     def get_hosts(self) -> list[str]:
         return list(self._hosts)
 
-    def pick_host(self, exclude: frozenset[str] = frozenset(), prefer: str | None = None, slack: int = 2) -> str:
+    def load(self, host: str, info: RouteInfo | None = None) -> float:
+        """How busy `host` is, in requests on the biggest host: this pool's own in-flight count or the host's own
+        count (every client), whichever is higher, divided by its relative capacity."""
+        busy = self._states[host].in_flight
+        if info is not None:
+            busy = max(busy, info.active.get(host, 0))
+            return busy / max(info.capacity.get(host, 1.0), 0.05)
+        return busy
+
+    def healthy_hosts(self) -> list[str]:
+        now = time.monotonic()
+        return [h for h in self._hosts if self._states[h].cooldown_until <= now]
+
+    def pick_host(
+        self,
+        exclude: frozenset[str] = frozenset(),
+        prefer: str | None = None,
+        slack: int = 2,
+        info: RouteInfo | None = None,
+        warm_slack: int = 1,
+    ) -> str:
         """The healthy host with the fewest in-flight requests; "healthy" = outside its cooldown and not in `exclude`
         (hosts already tried this request; stream_with_failover/call_with_failover). If all are excluded or cooling
         down, falls back to the least-recently-failed rather than raising: a stale host beats refusing. IndexError if
@@ -69,11 +102,25 @@ class HostPool:
         now = time.monotonic()
         healthy = [h for h in self._hosts if h not in exclude and self._states[h].cooldown_until <= now]
         if healthy:
-            best = min(healthy, key=lambda h: self._states[h].in_flight)
+            info = info or RouteInfo()
+            # A host without room for the model only if nothing else is left.
+            healthy = [h for h in healthy if h not in info.no_room or h in info.warm] or healthy
+
+            def busy(h: str) -> float:
+                return self.load(h, info)
+
+            best = min(healthy, key=busy)
             # Affinity: the host already holding this request's cached state wins unless clearly busier than the best
             # (more than `slack` extra requests in flight); then load wins.
-            if prefer in healthy and self._states[prefer].in_flight <= self._states[best].in_flight + slack:
+            if prefer in healthy and busy(prefer) <= busy(best) + slack:
                 return prefer
+            # Then a host that already has the model loaded, but only up to `warm_slack` extra requests: past that the
+            # least busy host gets it, so load keeps spreading and cold hosts join in.
+            warm_healthy = [h for h in healthy if h in info.warm]
+            if warm_healthy:
+                best_warm = min(warm_healthy, key=busy)
+                if busy(best_warm) <= busy(best) + warm_slack:
+                    return best_warm
             return best
         fallback = [h for h in self._hosts if h not in exclude] or list(self._hosts)
         return min(fallback, key=lambda h: self._states[h].cooldown_until)
@@ -97,7 +144,10 @@ class HostPool:
             self._states[host].in_flight -= 1
 
     async def stream_with_failover(
-        self, make_stream: Callable[[str], AsyncGenerator[str, None]], prefer: str | None = None
+        self,
+        make_stream: Callable[[str], AsyncGenerator[str, None]],
+        prefer: str | None = None,
+        info: RouteInfo | None = None,
     ) -> AsyncGenerator[str, None]:
         """Runs `make_stream(host)` on the chosen host, retrying on another if `httpx.HTTPError` occurs *before* any
         chunk was yielded (safe: nothing downstream has seen anything). After one chunk has gone out a failure
@@ -105,7 +155,7 @@ class HostPool:
         """
         tried: set[str] = set()
         while True:
-            host = self.pick_host(exclude=frozenset(tried), prefer=prefer)
+            host = self.pick_host(exclude=frozenset(tried), prefer=prefer, info=info)
             tried.add(host)
             first_chunk_sent = False
             async with self.track_request(host):

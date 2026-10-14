@@ -13,7 +13,8 @@ import httpx
 
 from app.schemas import MatricxonServerConfig
 from app.services import matricxon_http
-from app.services.server_pool import HostPool, ping_host
+from app.services.cluster_routing import NodeLoads, WarmUp
+from app.services.server_pool import HostPool, RouteInfo, ping_host
 
 # Matches../matricxon/app/config.py's default (MATRICXON_PORT=8420). Like ollama_pool.LOCAL_OLLAMA_HOST it is
 # a fixed fact (matricxon_process passes no host/port override to scripts/start.sh), not admin-editable.
@@ -23,6 +24,7 @@ _HEALTH_CHECK_TIMEOUT = httpx.Timeout(3.0, connect=2.0)
 _COOLDOWN_SECONDS = 30.0
 _AFFINITY_TIMEOUT = httpx.Timeout(1.5, connect=0.5)
 _SPILL_TIMEOUT = httpx.Timeout(15.0, connect=1.0)
+_WARM_UP_TIMEOUT = httpx.Timeout(900.0, connect=2.0)  # a cold model load can take minutes
 
 _pool = HostPool(cooldown_seconds=_COOLDOWN_SECONDS)
 _pool.set_hosts([LOCAL_MATRICXON_HOST])
@@ -62,9 +64,36 @@ def track_request(host: str):
     return _pool.track_request(host)
 
 
-async def stream_with_failover(make_stream, prefer: str | None = None):
-    async for chunk in _pool.stream_with_failover(make_stream, prefer=prefer):
+async def stream_with_failover(make_stream, prefer: str | None = None, info: RouteInfo | None = None):
+    async for chunk in _pool.stream_with_failover(make_stream, prefer=prefer, info=info):
         yield chunk
+
+
+async def _load_model(host: str, model: str) -> None:
+    async with matricxon_http.client(timeout=_WARM_UP_TIMEOUT) as client:
+        resp = await client.post(f"{host}/api/generate", json={"model": model})
+    resp.raise_for_status()
+
+
+_loads = NodeLoads(matricxon_http.client)
+_warm_up = WarmUp(_load_model)
+
+
+async def route_info(model: str) -> RouteInfo:
+    """What the chat-serving nodes report for `model` (cached ~2 s); empty with one node."""
+    return await _loads.route_info(_pool.get_hosts(), model)
+
+
+def note_model_used(host: str, model: str) -> None:
+    _loads.note(host, model)
+
+
+async def route_hints(tag: str | None, model: str) -> tuple[str | None, RouteInfo]:
+    """(node holding chat `tag` in RAM, what the nodes report for `model`), asked in one round; also starts warming
+    an idle node when every node with the model is busy (cluster_routing.WarmUp)."""
+    holder, info = await asyncio.gather(find_holder(tag), route_info(model))
+    _warm_up.start_if_needed(_pool, model, info)
+    return holder, info
 
 
 async def find_holder(tag: str | None) -> str | None:

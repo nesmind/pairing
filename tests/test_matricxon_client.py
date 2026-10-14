@@ -199,7 +199,7 @@ async def test_chat_stream_routes_the_actual_http_call_through_stream_with_failo
     seen_hosts: list[str] = []
     sent_payloads: list[dict] = []
 
-    async def fake_stream_with_failover(make_stream, prefer=None):
+    async def fake_stream_with_failover(make_stream, prefer=None, info=None):
         async for chunk in make_stream("http://chosen-by-pool:8420"):
             yield chunk
 
@@ -255,7 +255,7 @@ async def test_chat_stream_surfaces_matricxons_own_error_body_not_the_generic_ht
     10.9GB available") in a {"error": "..."} body. It must reach the admin, not a generic "503 Service Unavailable".
     """
 
-    async def fake_stream_with_failover(make_stream, prefer=None):
+    async def fake_stream_with_failover(make_stream, prefer=None, info=None):
         async for chunk in make_stream("http://chosen-by-pool:8420"):
             yield chunk
 
@@ -302,7 +302,7 @@ async def test_chat_stream_falls_back_to_raw_body_text_when_it_isnt_json(monkeyp
     reach the admin.
     """
 
-    async def fake_stream_with_failover(make_stream, prefer=None):
+    async def fake_stream_with_failover(make_stream, prefer=None, info=None):
         async for chunk in make_stream("http://chosen-by-pool:8420"):
             yield chunk
 
@@ -344,7 +344,7 @@ async def test_chat_stream_falls_back_to_raw_body_text_when_it_isnt_json(monkeyp
 
 @pytest.mark.asyncio
 async def test_chat_stream_raises_matricxon_error_on_http_failure(monkeypatch):
-    async def fake_stream_with_failover(make_stream, prefer=None):
+    async def fake_stream_with_failover(make_stream, prefer=None, info=None):
         async for _ in make_stream("http://chosen-by-pool:8420"):
             pass
         raise httpx.ConnectError("boom", request=httpx.Request("POST", "http://x/api/chat"))

@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from app.services import matricxon_client, matricxon_pool
-from app.services.server_pool import HostPool
+from app.services.server_pool import HostPool, RouteInfo
 
 A, B = "http://a:8420", "http://b:8420"
 REAL_CLIENT = httpx.AsyncClient  # captured once: monkeypatching replaces httpx.AsyncClient
@@ -127,12 +127,16 @@ async def test_chat_stream_prefers_the_holder_and_spills_it_only_when_the_chat_m
 
     chosen: dict = {}
 
-    async def fake_stream(make_stream, prefer=None):
-        chosen["prefer"] = prefer
+    async def fake_stream(make_stream, prefer=None, info=None):
+        chosen["prefer"], chosen["info"] = prefer, info
         async for chunk in make_stream(chosen["host"]):
             yield chunk
 
+    async def loaded(_model):
+        return RouteInfo(warm=frozenset({A}))
+
     monkeypatch.setattr(matricxon_pool, "find_holder", holder)
+    monkeypatch.setattr(matricxon_pool, "route_info", loaded)
     monkeypatch.setattr(matricxon_pool, "spill_chat", spill)
     monkeypatch.setattr(matricxon_pool, "stream_with_failover", fake_stream)
     _serve(
@@ -147,4 +151,5 @@ async def test_chat_stream_prefers_the_holder_and_spills_it_only_when_the_chat_m
         return [c async for c in matricxon_client.chat_stream("m", messages, dict(PARAMS))]
 
     assert await run(B) == ["hi"] and chosen["prefer"] == B and spilled == []
+    assert chosen["info"].warm == frozenset({A})  # what the nodes report reaches the pool
     assert await run(A) == ["hi"] and spilled == [(B, "chat-1")]  # moved: holder spilled it first
