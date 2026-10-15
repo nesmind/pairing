@@ -45,7 +45,7 @@ async def test_admin_settings_has_the_admin_tabs_and_the_admin_models_page(db, a
     response = await pages.admin_settings_page(_request(admin_user.id), db=db)
     html = response.body.decode()
 
-    assert _tabs(response) == ["model", "system", "external-servers", "mcp-servers", "users", "channels"]
+    assert _tabs(response) == ["model", "system", "external-servers", "mcp-servers", "users", "channels", "update"]
     assert 'id="hf-search-input"' in html and 'id="mcp-panel"' in html
     assert "will not affect other users" not in html
     # truly separate: none of the user-level panels or controls are in this page

@@ -49,6 +49,7 @@ from app.routers import (
     system_metrics,
     telemetry,
     theme,
+    update_admin,
     users,
 )
 from app.services import startup_service
@@ -148,6 +149,7 @@ app.include_router(stats.router)
 app.include_router(telemetry.router)
 app.include_router(system_metrics.router)
 app.include_router(theme.router)
+app.include_router(update_admin.router)
 
 
 @app.on_event("startup")

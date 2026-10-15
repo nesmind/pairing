@@ -121,6 +121,9 @@ MATRICXON_GITHUB_REPO = "upupabit/matricxon"
 # Exception: Matricxon is developed alongside this app, so installs default to its newest main branch.
 # A tag or branch can be set in Settings (MatricxonServerConfig.install_version).
 MATRICXON_DEFAULT_VERSION = "main"
+# Admin settings > Update: where pAIring updates itself from.
+PAIRING_GITHUB_REPO = "upupabit/pairing"
+PAIRING_DEFAULT_BRANCH = "main"
 
 # Where auto-installed engines go; outside BASE_DIR so git status never sees them.
 EXTERNAL_DIR = Path(os.environ.get("EXTERNAL_DIR", BASE_DIR / "external"))

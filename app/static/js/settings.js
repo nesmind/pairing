@@ -986,7 +986,8 @@ async function initModelTab() {
   document.getElementById("model-unavailable").classList.add("hidden");
   document.getElementById("model-field-normal").classList.add("hidden");
   try {
-    currentActiveEngine = (await api("/health")).active_engine;
+    // Read even on 503 (engine down), so the engine is still known.
+    currentActiveEngine = (await EngineDownReason.health())?.active_engine;
     await loadCatalog();
     selectedModelTag = (await api("/api/settings/default-model")).model;
     renderModelCatalog();
@@ -1012,18 +1013,8 @@ async function initModelTab() {
     }
   } catch (err) {
     modelsAvailable = false;
-    // Seen: this always showed "System is not configured for models yet, ask your admin.", whether the cause
-    // was a fresh install or (more often) a transient failure reaching the active engine (Matricxon can answer slowly
-    // mid-generation, see MatricxonSupportChecker). Naming the engine is clearer than err.message alone: a slow
-    // Matricxon request that times out in some layer doesn't always forward GET /api/settings/model-catalog's clean 503
-    // detail (routers/settings.py get_model_catalog), leaving a bare "Service Unavailable". currentActiveEngine doesn't
-    // depend on that. err.message is still appended when present, as it can be more specific (e.g. "connection
-    // refused").
-    const engineLabel = { ollama: "Ollama", matricxon: "Matricxon" }[currentActiveEngine] || "the active engine";
-    const detail = err.message ? ` (${err.message})` : "";
-    document.getElementById("model-unavailable-reason").textContent =
-      `Couldn't reach ${engineLabel} to load the model list${detail} — it may be unreachable, still starting up, ` +
-      "or slow to respond right now. Try refreshing in a moment.";
+    // Names the engine, and says plainly when it isn't running (engine_down_reason.js).
+    document.getElementById("model-unavailable-reason").textContent = await EngineDownReason.describe(err, isAdmin);
   }
   loadingEl.classList.add("hidden");
   document.getElementById("model-unavailable").classList.toggle("hidden", modelsAvailable);
@@ -1623,7 +1614,7 @@ const knowledgeBaseSectionEl = document.getElementById("knowledge-base-section")
 // Knowledge tab.
 const saveBarHomeParent = saveBarEl?.parentNode;
 const saveBarHomeNextSibling = saveBarEl?.nextSibling;
-const TAB_CONTENT_IDS = ["model", "behavior", "knowledge", "account", "system", "external-servers", "mcp-servers", "users", "channels"];
+const TAB_CONTENT_IDS = ["model", "behavior", "knowledge", "account", "system", "external-servers", "mcp-servers", "users", "channels", "update"];
 
 let activeTabName = "model";
 

@@ -52,6 +52,10 @@
         class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
         Channels
       </button>
+      <button type="button" data-tab="update"
+        class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
+        Update
+      </button>
       {% else %}
       <button type="button" data-tab="behavior"
         class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
@@ -1458,6 +1462,13 @@
       </div>
     </div>
 
+    <!-- Update tab: admin-only, updates pAIring and a local Matricxon from GitHub (_update_panel.html). -->
+    {% if admin_page %}
+    <div id="tab-update" class="hidden mx-auto max-w-3xl px-4 py-8 space-y-8">
+      {% include "_update_panel.html" %}
+    </div>
+    {% endif %}
+
     <!-- MCP servers tab: the tool servers every user's chats can use (Admin settings > System has the on/off switch and limits). Wired by app/static/js/settings_mcp_servers.js. -->
     <div id="tab-mcp-servers" class="hidden mx-auto max-w-3xl px-4 py-8 space-y-8">
       {% include "_mcp_servers.html" %}
@@ -1550,6 +1561,7 @@
 
 <script src="/static/js/app.js?v={{ static_version }}"></script>
 <script src="/static/js/theme.js?v={{ static_version }}"></script>
+<script src="/static/js/engine_down_reason.js?v={{ static_version }}"></script>
 <script src="/static/js/settings.js?v={{ static_version }}"></script>
 <script src="/static/js/engine_picker.js?v={{ static_version }}"></script>
 <script src="/static/js/engine_capability_notes.js?v={{ static_version }}"></script>
@@ -1560,6 +1572,7 @@
 <script src="/static/js/settings_connector_summary.js?v={{ static_version }}"></script>
 <script src="/static/js/settings_reembed.js?v={{ static_version }}"></script>{% endif %}
 {% if is_admin %}<script src="/static/js/settings_mcp_servers.js?v={{ static_version }}"></script>{% endif %}
+{% if admin_page %}<script src="/static/js/settings_update.js?v={{ static_version }}"></script>{% endif %}
 <script src="/static/js/settings_diffusion_models.js?v={{ static_version }}"></script>
 <script src="/static/js/settings_context_window.js?v={{ static_version }}"></script>
 <script src="/static/js/settings_group_select.js?v={{ static_version }}"></script>
