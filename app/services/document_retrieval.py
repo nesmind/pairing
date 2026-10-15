@@ -6,9 +6,10 @@ import numpy as np
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import RAG_TOP_K
+from app.config import RAG_RERANK_CANDIDATES, RAG_TOP_K
 from app.models import Chunk, Document
 from app.services import model_catalog_service
+from app.services.document_rerank import ChunkReranker
 from app.services.inference_client import embed
 
 
@@ -65,9 +66,12 @@ async def retrieve_context(
         scored.append((similarity, chunk))
 
     scored.sort(key=lambda pair: pair[0], reverse=True)
+    # A reranker, if set, picks the best top_k from a wider similarity shortlist.
+    candidates = [chunk for _similarity, chunk in scored[: max(top_k, RAG_RERANK_CANDIDATES)]]
+    best = await ChunkReranker(db).order(query, candidates, top_k)
     return [
         {"text": chunk.text, "filename": Path(chunk.document.filename).name, "document_id": chunk.document_id}
-        for _similarity, chunk in scored[:top_k]
+        for chunk in best
     ]
 
 

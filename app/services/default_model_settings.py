@@ -14,6 +14,7 @@ from app.services.inference_client import list_models
 
 _VISION_KEY = "default_vision_model"
 _EMBEDDING_KEY = "default_embedding_model"
+_RERANK_KEY = "default_rerank_model"
 
 
 class DefaultModelSettings:
@@ -26,7 +27,7 @@ class DefaultModelSettings:
         row = await self._db.get(AppSetting, (SYSTEM_OWNER_ID, key))
         return row.value["model"] if row else None
 
-    async def _set(self, key: str, model: str) -> None:
+    async def _set(self, key: str, model: str | None) -> None:
         row = await self._db.get(AppSetting, (SYSTEM_OWNER_ID, key))
         value = {"model": model}
         if row is None:
@@ -75,6 +76,30 @@ class DefaultModelSettings:
 
     async def set_embedding(self, model: str) -> None:
         await self._set(_EMBEDDING_KEY, model)
+
+    async def rerank(self) -> str | None:
+        """The reranker for Knowledge base retrieval (document_retrieval.py): the configured one, else the first
+        installed model with "rerank". None when switched off (set_rerank(None)) or none is installed.
+        """
+        row = await self._db.get(AppSetting, (SYSTEM_OWNER_ID, _RERANK_KEY))
+        if row is not None and row.value["model"] is None:
+            return None
+        installed = await self._installed_with_capability("rerank")
+        configured = row.value["model"] if row else None
+        if configured in installed:
+            return configured
+        return installed[0] if installed else None
+
+    async def installed_rerankers(self) -> list[str]:
+        return await self._installed_with_capability("rerank")
+
+    async def rerank_enabled(self) -> bool:
+        row = await self._db.get(AppSetting, (SYSTEM_OWNER_ID, _RERANK_KEY))
+        return row is None or row.value["model"] is not None
+
+    async def set_rerank(self, model: str | None) -> None:
+        """None switches reranking off."""
+        await self._set(_RERANK_KEY, model)
 
     @staticmethod
     async def _installed_with_capability(capability: str) -> list[str]:

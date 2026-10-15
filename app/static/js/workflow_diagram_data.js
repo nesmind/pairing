@@ -312,7 +312,37 @@ const WORKFLOW_NODES = [
       server: APP_NAME,
       title: "RAG — finding the best-matching chunks",
       location: "app/services/document_retrieval.py — retrieve_context",
-      body: "Plain math, not machine learning — every candidate stored Chunk (already scoped by owner above) is scored by cosine similarity against the embedding vector the AI model just produced, sorted descending, and the top-k (default 4, adjustable per conversation as rag_top_k) are kept.",
+      body: "Plain math, not machine learning — every candidate stored Chunk (already scoped by owner above) is scored by cosine similarity against the embedding vector the AI model just produced, sorted descending, and the top-k (default 4, adjustable per conversation as rag_top_k) are kept. With a reranker installed and switched on, a wider shortlist (20) goes to the reranking step below instead, which picks the final top-k.",
+    },
+  },
+  {
+    id: "rag_rerank",
+    label: "inference_client.rerank()",
+    category: "service",
+    x: 1100,
+    y: 815,
+    w: 200,
+    h: 60,
+    detail: {
+      server: APP_NAME,
+      title: "RAG — reranking the shortlist (optional)",
+      location: "app/services/document_rerank.py — ChunkReranker.order, model from DefaultModelSettings.rerank",
+      body: "Only when the active engine can rerank (Matricxon) and a reranker is installed and switched on (Admin settings > System > Reranker). The shortlist from similarity search goes to a separate scoring model, which reads the question together with each chunk and gives it a relevance score; the best top-k are kept. If the reranker is off, missing or fails, the similarity order is kept instead, so RAG never breaks because of this step.",
+    },
+  },
+  {
+    id: "rag_rerank_ml_engine",
+    label: "ML engine",
+    category: "engine",
+    x: 1100,
+    y: 890,
+    w: 160,
+    h: 40,
+    detail: {
+      server: "ML engine",
+      title: "Where the relevance scores are computed",
+      location: "Matricxon's POST /api/rerank — running the configured reranker (e.g. Qwen3-Reranker)",
+      body: "A reranker is a scoring model, not a chat model: for each chunk it runs one pass over the question plus the chunk and outputs a single relevance score between 0 and 1 instead of generating text. It is slower than similarity search, which is why it only sees the short list.",
     },
   },
   {
@@ -578,6 +608,9 @@ const WORKFLOW_EDGES = [
   { from: "rag_retrieve", to: "rag_embed", branch: true },
   { from: "rag_embed", to: "rag_embed_ml_engine", branch: true },
   { from: "rag_rank", to: "rag_augment", branch: true },
+  { from: "rag_rank", to: "rag_rerank", branch: true },
+  { from: "rag_rerank", to: "rag_rerank_ml_engine", branch: true },
+  { from: "rag_rerank", to: "rag_augment", branch: true },
   { from: "rag_augment", to: "chat_prompt_service", branch: true },
 
   // Attachments branch

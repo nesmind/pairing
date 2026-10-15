@@ -81,6 +81,17 @@ async def test_pull_model_accepts_an_embedding_catalog_tag(db, admin_user, monke
     assert isinstance(result, StreamingResponse)
 
 
+@pytest.mark.asyncio
+async def test_pull_model_accepts_a_reranker_catalog_tag(db, admin_user, monkeypatch):
+    """CATALOG.rerank_models (default_models.json "rerank_models") passes the same gate."""
+    monkeypatch.setattr(hardware, "available_capacity_gb", lambda: 100.0)
+    tag = "hf.co/ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF:Q8_0"
+
+    result = await settings_router.pull_model(PullModelRequest(tag=tag), db=db, _admin=admin_user)
+
+    assert isinstance(result, StreamingResponse)
+
+
 _MINISTRAL_TAG = "hf.co/mistralai/Ministral-3-3B-Instruct-2512-GGUF:Ministral-3-3B-Instruct-2512-Q4_K_M"
 
 

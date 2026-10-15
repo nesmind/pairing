@@ -60,10 +60,12 @@ class CuratedCatalog:
         chat_models: list[CuratedModel],
         embedding_models: list[CuratedModel],
         diffusion_models: list[CuratedModel] | None = None,
+        rerank_models: list[CuratedModel] | None = None,
     ) -> None:
         self._chat_models = chat_models
         self._embedding_models = embedding_models
         self._diffusion_models = diffusion_models or []
+        self._rerank_models = rerank_models or []
 
     @property
     def chat_models(self) -> list[CuratedModel]:
@@ -79,6 +81,11 @@ class CuratedCatalog:
         (app.services.image_model_service)."""
         return self._diffusion_models
 
+    @property
+    def rerank_models(self) -> list[CuratedModel]:
+        """Rerankers for Knowledge base retrieval (app.services.document_rerank)."""
+        return self._rerank_models
+
     def find(self, tag: str) -> CuratedModel | None:
         """Chat-model entry by exact tag."""
         return next((entry for entry in self._chat_models if entry.tag == tag), None)
@@ -89,6 +96,9 @@ class CuratedCatalog:
 
     def find_diffusion(self, tag: str) -> CuratedModel | None:
         return next((entry for entry in self._diffusion_models if entry.tag == tag), None)
+
+    def find_rerank(self, tag: str) -> CuratedModel | None:
+        return next((entry for entry in self._rerank_models if entry.tag == tag), None)
 
 
 class _CuratedModelJSON(BaseModel):
@@ -114,14 +124,15 @@ class _CuratedModelJSON(BaseModel):
 class CuratedCatalogLoader:
     @staticmethod
     def load(path: Path) -> CuratedCatalog:
-        """Reads and validates `path` ({"chat_models", "embedding_models", "diffusion_models"}); malformed input
-        raises so a bad edit fails loudly at import instead of emptying the catalog.
+        """Reads and validates `path` ({"chat_models", "embedding_models", "diffusion_models", "rerank_models"});
+        malformed input raises so a bad edit fails loudly at import instead of emptying the catalog.
         """
         raw = json.loads(path.read_text())
         return CuratedCatalog(
             chat_models=[CuratedCatalogLoader._to_model(entry) for entry in raw["chat_models"]],
             embedding_models=[CuratedCatalogLoader._to_model(entry) for entry in raw["embedding_models"]],
             diffusion_models=[CuratedCatalogLoader._to_model(entry) for entry in raw.get("diffusion_models", [])],
+            rerank_models=[CuratedCatalogLoader._to_model(entry) for entry in raw.get("rerank_models", [])],
         )
 
     @staticmethod

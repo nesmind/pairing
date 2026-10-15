@@ -218,5 +218,23 @@
       "embedding_dim": null,
       "note": "Fast, high-quality 6B image model (8 steps, cfg 1.0). A split model: the Qwen3-4B text encoder (~2.5 GB) and VAE (~0.3 GB) are downloaded with it and passed to sd-server automatically (see image_companions). An image model: installs into the stable-diffusion.cpp models folder."
     }
+  ],
+  "rerank_models": [
+    {
+      "family": "Qwen3 Reranker",
+      "vendor": "Qwen (ggml-org GGUF)",
+      "tag": "hf.co/ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF:Q8_0",
+      "parameter_size": "0.6B",
+      "context_length": 40960,
+      "download_gb": 0.64,
+      "min_ram_gb": 2,
+      "locally_runnable": true,
+      "architecture": "qwen3",
+      "quantizations": ["Q8_0"],
+      "vision": false,
+      "unavailable_reason": null,
+      "embedding_dim": null,
+      "note": "ggml-org's official llama.cpp conversion: arch \"qwen3\" with rank pooling and a yes/no scoring head (cls.output.weight). Checked 2026-10-15 against llama.cpp's own reranking on this exact file: identical tokens, scores within 0.01 (matricxon tools/oracle/validate_qwen3_reranker.py). Matricxon only (Ollama can't rerank). Multilingual, 0.6B: a fair CPU cost per passage."
+    }
   ]
 }

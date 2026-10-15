@@ -180,6 +180,14 @@
         <div id="embedding-model-catalog" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
       </section>
 
+      <!-- Reranker models: order Knowledge base results (Matricxon only). The one in use is picked under Admin settings > System > Reranker. Wired by app/static/js/settings_rerank_models.js. -->
+      <section id="rerank-models-section" class="space-y-3 border-t border-slate-800 pt-6{% if remote_models %} hidden{% endif %}">
+        <h2 class="text-sm font-semibold text-slate-200">Reranker models</h2>
+        <p class="text-xs text-slate-500 -mt-2">Improve Knowledge base (RAG) answers: a reranker reads the question with each shortlisted passage and keeps the best ones — not used for chat.</p>
+        <p id="rerank-model-catalog-note" class="hidden text-xs text-warning-400"></p>
+        <div id="rerank-model-catalog" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+      </section>
+
       <!-- Diffusion models: image models for the Images page, the same list for either chat engine. They install into the stable-diffusion.cpp models folder, never Ollama/Matricxon (app/services/image_model_service.py). Image repos found via "Browse more models" land here. Wired by app/static/js/settings_diffusion_models.js. -->
       <section id="diffusion-models-section" class="space-y-3 border-t border-slate-800 pt-6{% if remote_models %} hidden{% endif %}">
         <h2 class="text-sm font-semibold text-slate-200">Diffusion models</h2>
@@ -857,6 +865,10 @@
             <span id="default-embedding-model-status" class="text-xs text-slate-500"></span>
           </div>
         </div>
+
+        <div class="border-t border-slate-800"></div>
+
+        {% include "_rerank_model.html" %}
 
         </div>
       </section>
@@ -1573,6 +1585,8 @@
 <script src="/static/js/settings_reembed.js?v={{ static_version }}"></script>{% endif %}
 {% if is_admin %}<script src="/static/js/settings_mcp_servers.js?v={{ static_version }}"></script>{% endif %}
 {% if admin_page %}<script src="/static/js/settings_update.js?v={{ static_version }}"></script>{% endif %}
+{% if admin_page %}<script src="/static/js/settings_rerank.js?v={{ static_version }}"></script>{% endif %}
+{% if admin_page %}<script src="/static/js/settings_rerank_models.js?v={{ static_version }}"></script>{% endif %}
 <script src="/static/js/settings_diffusion_models.js?v={{ static_version }}"></script>
 <script src="/static/js/settings_context_window.js?v={{ static_version }}"></script>
 <script src="/static/js/settings_group_select.js?v={{ static_version }}"></script>

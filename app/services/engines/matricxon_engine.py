@@ -7,6 +7,7 @@ from collections.abc import AsyncGenerator
 from app.services import matricxon_admin, matricxon_client, matricxon_pool
 from app.services.engines.base import EngineCapabilities, InferenceEngine
 from app.services.matricxon_client import MatricxonError
+from app.services.matricxon_rerank import MatricxonRerankClient
 from app.services.matricxon_support_checker import MatricxonSupportChecker
 
 
@@ -23,6 +24,7 @@ class MatricxonEngine(InferenceEngine):
         tools=True,
         vision=True,
         format_introspection=True,
+        rerank=True,
     )
     error_types = (MatricxonError,)
     support_checker = MatricxonSupportChecker
@@ -41,6 +43,9 @@ class MatricxonEngine(InferenceEngine):
 
     async def embed(self, text: str, model: str) -> list[float]:
         return await matricxon_client.embed(text, model)
+
+    async def rerank(self, query: str, documents: list[str], model: str) -> list[float]:
+        return await MatricxonRerankClient().rerank(query, documents, model)
 
     async def stop_model(self, model: str, request_id: str | None = None) -> None:
         await matricxon_client.stop_model(model, request_id)

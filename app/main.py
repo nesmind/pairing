@@ -43,6 +43,7 @@ from app.routers import (
     ollama_admin,
     pages,
     proxy_admin,
+    rerank_admin,
     sdcpp_admin,
     settings,
     stats,
@@ -132,6 +133,7 @@ app.include_router(image_engine_admin.router)
 app.include_router(image_model_admin.router)
 app.include_router(sdcpp_admin.router)
 app.include_router(proxy_admin.router)
+app.include_router(rerank_admin.router)
 app.include_router(http_proxy_admin.router)
 app.include_router(ollama_admin.router)
 app.include_router(matricxon_admin.router)

@@ -1,0 +1,20 @@
+<!-- Admin settings > System: the Knowledge base reranker. Wired by app/static/js/settings_rerank.js to /api/settings/rerank-model (app/routers/rerank_admin.py). -->
+<div class="space-y-3" id="rerank-panel">
+  <h3 class="text-xs font-semibold uppercase tracking-wide text-brand-500">Reranker</h3>
+  <p class="text-xs text-slate-500 -mt-2">
+    Improves Knowledge base answers: similarity search shortlists 20 passages, and the reranker reads each one
+    with the question and keeps the best. Adds a short wait before each answer that uses the Knowledge base.
+  </p>
+  <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-2">
+    <select id="rerank-model" title="Which installed reranker orders Knowledge base results, or Off."
+      class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500"></select>
+    <p id="rerank-model-note" class="hidden text-xs text-warning-400"></p>
+  </div>
+  <div class="flex items-center gap-3">
+    <button id="rerank-model-save-btn" type="button"
+      class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-40 transition-colors">
+      Save
+    </button>
+    <span id="rerank-model-status" class="text-xs text-slate-500"></span>
+  </div>
+</div>

@@ -56,6 +56,8 @@ class EngineCapabilities:
     tools: bool = False
     # Whether chat_stream sends attached images (the Default vision model); connectors send text only.
     vision: bool = False
+    # Whether rerank scores documents (Knowledge base reranking); False skips that step.
+    rerank: bool = False
 
 
 class InferenceEngine(ABC):
@@ -87,6 +89,10 @@ class InferenceEngine(ABC):
 
     async def embed(self, text: str, model: str) -> list[float]:
         raise EngineCapabilityError(f"{self.display_name} does not support embeddings.")
+
+    async def rerank(self, query: str, documents: list[str], model: str) -> list[float]:
+        """Relevance of each document to `query`, in input order."""
+        raise EngineCapabilityError(f"{self.display_name} does not support reranking.")
 
     async def stop_model(  # noqa: B027 - deliberate no-op default, not abstract
         self, model: str, request_id: str | None = None

@@ -34,7 +34,7 @@ Supports MySQL migration and multi-server deployment.
 **After install, open the UI and configure the essentials to get started:**
 
 1. Go to **Settings → Inference engines** and choose your inference engine. Ollama and Matricxon are supported (Matricxon has many more options — see the Matricxon repository for details). Both can be pulled and installed directly from there. Prefer the cloud? Set up a connector on the **Connectors** page and pick it here instead; switching back is just as quick.
-2. After configuring the engine, go to **Settings → Models** and download some models. Embedding models are needed for RAG support, and vision projectors are needed for image understanding in chats and channels.
+2. After configuring the engine, go to **Settings → Models** and download some models. Embedding models are needed for RAG support, an optional reranker model (Matricxon) makes RAG answers more accurate, and vision projectors are needed for image understanding in chats and channels.
 3. Want images? Go to **Settings → Image**, press **Install from GitHub** for stable-diffusion.cpp (or, on Linux, **Build from source** — needs `git`, `cmake` and `g++`: `sudo apt install git cmake build-essential`; `scripts/install_on_fresh_server.sh` installs them), then download a diffusion model (SD-Turbo is a good start) under **Settings → Models → Diffusion models**, choose it in the engine's *Model* dropdown and press **Start**.
 4. Once the models are ready, go to **Settings → System** and set the important parameters (such as the default vision model).
 5. Run a few tests.
@@ -84,6 +84,19 @@ It is also important not to expose more models to users than the system RAM/VRAM
   manual or a team's internal docs, same mechanism either way
 - Private-per-user and shared/global scopes, with per-user storage
   quotas; answers cite which document they drew on.
+- How it works: each document is split into short passages, and an
+  embedding model turns every passage into a vector once, when it is
+  added. For each question, pAIring finds the passages whose vectors are
+  closest to the question's and adds the best few (4 by default) to the
+  prompt.
+- **Reranking (optional, Matricxon):** vector search is fast but rough.
+  With a reranker installed (Settings → Models → Reranker models, e.g.
+  Qwen3 Reranker 0.6B), pAIring shortlists 20 passages, the reranker
+  reads the question together with each one and scores how well it
+  answers it, and only the best few go into the prompt: more accurate
+  answers without a longer prompt, at the cost of a short wait. Choose
+  the reranker or switch it off under Settings → System → Reranker; if
+  it is off or fails, retrieval simply keeps the vector order.
 
 **Tools (MCP)**
 - Admins connect MCP tool servers (streamable HTTP) under Settings → Knowledge → Configure MCP, with

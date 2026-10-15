@@ -156,6 +156,8 @@ DEFAULT_GENERATION_PARAMS = {
 
 # Fallback where a conversation's rag_top_k is unavailable (app.rag.retrieve_context).
 RAG_TOP_K = DEFAULT_GENERATION_PARAMS["rag_top_k"]
+# With a reranker (document_rerank.py): how many chunks similarity search shortlists for it to order.
+RAG_RERANK_CANDIDATES = 20
 
 # Chunk size in characters (not tokens) and overlap between chunks. Kept well under EMBEDDING_NUM_CTX
 # (512): non-Latin scripts tokenize ~4x worse (measured for Hebrew). app.rag.ingest_document_stream skips

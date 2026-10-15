@@ -43,6 +43,17 @@ async def embed(text: str, model: str) -> list[float]:
         raise InferenceError(str(exc)) from exc
 
 
+async def rerank(query: str, documents: list[str], model: str) -> list[float]:
+    """Each document's relevance to `query` (input order); InferenceError if the engine can't rerank."""
+    engine = registry.active()
+    if not engine.capabilities.rerank:
+        raise InferenceError(f"{engine.display_name} does not support reranking.")
+    try:
+        return await engine.rerank(query, documents, model)
+    except registry.all_error_types() as exc:
+        raise InferenceError(str(exc)) from exc
+
+
 async def chat_stream(model: str, messages: list[dict], params: dict) -> AsyncGenerator[str, None]:
     try:
         async for chunk in registry.active().chat_stream(model, messages, params):
