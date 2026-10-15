@@ -43,10 +43,12 @@ def _find_project_dir(project_dir: str | None = None) -> Path | None:
     """
     candidates = [Path(project_dir).expanduser()] if project_dir else []
     candidates.append(_DEFAULT_PROJECT_DIR)
-    for candidate in candidates:
-        if (candidate / "scripts" / "start.sh").is_file():
-            return candidate
-    return None
+    return next((c for c in candidates if is_checkout(c)), None)
+
+
+def is_checkout(path: str | Path) -> bool:
+    """A Matricxon checkout has scripts/start.sh."""
+    return (Path(path).expanduser() / "scripts" / "start.sh").is_file()
 
 
 def is_installed(project_dir: str | None = None) -> bool:
@@ -298,9 +300,12 @@ async def stop(project_dir_override: str | None = None) -> MatricxonServerStatus
     return await get_status(project_dir_override)
 
 
-async def apply_local_config(config: MatricxonServerConfig, proxy_url: str | None = None) -> MatricxonServerStatus:
+async def apply_local_config(
+    config: MatricxonServerConfig, proxy_url: str | None = None, previous: MatricxonServerConfig | None = None
+) -> MatricxonServerStatus:
     """Backs a config Save while Matricxon runs locally. It reads MATRICXON_* only at startup (like Ollama), so this
     stops and restarts it. Callers (routers/matricxon_admin.py) should have warned about the interruption.
+    `previous` (the config before the Save): a changed project_dir stops the old checkout's process first.
     """
     if not IS_PRIMARY:
         raise ValueError("Matricxon can only be managed from the primary instance.")
@@ -308,6 +313,9 @@ async def apply_local_config(config: MatricxonServerConfig, proxy_url: str | Non
         project_dir = _find_project_dir(config.project_dir)
         if project_dir is None:
             raise RuntimeError("Could not find a Matricxon checkout to restart.")
+        old_dir = _find_project_dir(previous.project_dir) if previous else None
+        if old_dir is not None and old_dir != project_dir:
+            await asyncio.to_thread(_stop, old_dir)
         await asyncio.to_thread(_stop, project_dir)
         logger.info("Starting Matricxon with the updated local configuration...")
         await asyncio.to_thread(_start, project_dir, config, proxy_url)

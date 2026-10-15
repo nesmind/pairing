@@ -71,6 +71,15 @@ async def _save_and_broadcast(db: AsyncSession, body: MatricxonServerConfig) -> 
             logger.warning("Some instances did not pick up the new Matricxon config: %s", "; ".join(failures))
 
 
+def _require_checkout(body: MatricxonServerConfig) -> None:
+    """Refuses a local project_dir without Matricxon (else the default checkout would be used silently)."""
+    if body.mode == "local" and body.project_dir and not matricxon_process.is_checkout(body.project_dir):
+        raise HTTPException(
+            status_code=400,
+            detail=f"No Matricxon found in {body.project_dir} (it needs scripts/start.sh). Please check the path.",
+        )
+
+
 @router.get("/config", response_model=MatricxonServerConfig)
 async def get_config(db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)):
     return _without_secret(await settings_service.get_matricxon_server_config(db))
@@ -94,6 +103,7 @@ async def update_config(
 ):
     """Persists the config; does not restart a running local Matricxon (POST /apply does), as
     ollama_admin.update_config."""
+    _require_checkout(body)
     await _save_and_broadcast(db, body)
     return _without_secret(body)
 
@@ -102,11 +112,14 @@ async def update_config(
 async def apply_config(
     body: MatricxonServerConfig, db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)
 ):
+    _require_checkout(body)
+    # Read before saving: a new project_dir must stop the process in the old one.
+    previous = await settings_service.get_matricxon_server_config(db)
     await _save_and_broadcast(db, body)
     proxy_config = await http_proxy_service.get_http_proxy_config(db)
     try:
         await ExtendedModelCatalog(db).clear()
-        return await matricxon_process.apply_local_config(body, proxy_url=proxy_config.proxy_url())
+        return await matricxon_process.apply_local_config(body, proxy_url=proxy_config.proxy_url(), previous=previous)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -118,6 +131,7 @@ async def save_plan(
     body: MatricxonServerConfig, db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)
 ):
     """Whether saving `body` needs a restart; the page asks to confirm only then."""
+    _require_checkout(body)
     plan = MatricxonSettingsPlan(await settings_service.get_matricxon_server_config(db), body)
     return MatricxonSavePlan(restart_required=plan.restart_required, restart_labels=plan.restart_labels)
 
@@ -128,6 +142,7 @@ async def apply_live(
 ):
     """Saves and applies `body` to the running local Matricxon without a restart. 409 when a restart is
     needed (the page then uses POST /apply)."""
+    _require_checkout(body)
     plan = MatricxonSettingsPlan(await settings_service.get_matricxon_server_config(db), body)
     if plan.restart_required:
         raise HTTPException(status_code=409, detail="These changes need a restart.")

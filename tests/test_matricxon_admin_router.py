@@ -92,7 +92,7 @@ async def test_update_config_refreshes_the_pool_when_matricxon_is_the_active_eng
 
 @pytest.mark.asyncio
 async def test_apply_config_maps_value_error_to_400(db, monkeypatch):
-    async def fake_apply(_config, proxy_url=None):
+    async def fake_apply(_config, proxy_url=None, previous=None):
         raise ValueError("Matricxon can only be managed from the primary instance.")
 
     monkeypatch.setattr(matricxon_process, "apply_local_config", fake_apply)
@@ -104,7 +104,7 @@ async def test_apply_config_maps_value_error_to_400(db, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_apply_config_maps_runtime_error_to_502(db, monkeypatch):
-    async def fake_apply(_config, proxy_url=None):
+    async def fake_apply(_config, proxy_url=None, previous=None):
         raise RuntimeError("Matricxon did not come back up in time.")
 
     monkeypatch.setattr(matricxon_process, "apply_local_config", fake_apply)
@@ -112,6 +112,50 @@ async def test_apply_config_maps_runtime_error_to_502(db, monkeypatch):
     with pytest.raises(HTTPException) as exc_info:
         await matricxon_admin.apply_config(MatricxonServerConfig(), db=db, _admin=None)
     assert exc_info.value.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_apply_config_passes_the_previous_project_dir(db, monkeypatch, tmp_path):
+    old, new = _checkout(tmp_path / "old"), _checkout(tmp_path / "new")
+    await matricxon_admin.update_config(MatricxonServerConfig(project_dir=old), db=db, _admin=None)
+    captured = {}
+
+    async def fake_apply(config, proxy_url=None, previous=None):
+        captured["new"], captured["old"] = config.project_dir, previous.project_dir
+        return MatricxonServerStatus(running=True, installed=True)
+
+    monkeypatch.setattr(matricxon_process, "apply_local_config", fake_apply)
+    await matricxon_admin.apply_config(MatricxonServerConfig(project_dir=new), db=db, _admin=None)
+
+    assert captured == {"new": new, "old": old}
+
+
+def _checkout(path) -> str:
+    (path / "scripts").mkdir(parents=True)
+    (path / "scripts" / "start.sh").write_text("")
+    return str(path)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", ["update_config", "apply_config", "save_plan", "apply_live"])
+async def test_saving_a_project_dir_without_matricxon_is_refused(db, monkeypatch, tmp_path, route):
+    monkeypatch.setattr(matricxon_process, "apply_local_config", lambda *_a, **_kw: pytest.fail("must not restart"))
+    body = MatricxonServerConfig(project_dir=str(tmp_path / "missing"))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await getattr(matricxon_admin, route)(body, db=db, _admin=None)
+
+    assert exc_info.value.status_code == 400
+    assert "No Matricxon found" in exc_info.value.detail
+    assert (await matricxon_admin.get_config(db=db, _admin=None)).project_dir is None
+
+
+@pytest.mark.asyncio
+async def test_remote_mode_ignores_the_project_dir_check(db, tmp_path):
+    body = MatricxonServerConfig(
+        mode="remote", remote_hosts=["http://10.0.0.5:8420"], project_dir=str(tmp_path / "missing")
+    )
+    await matricxon_admin.update_config(body, db=db, _admin=None)
 
 
 @pytest.mark.asyncio

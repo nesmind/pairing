@@ -2,6 +2,8 @@
 A real start/stop isn't exercised (subprocess/os.kill/httpx are patched; see tests/test_ollama_process.py).
 """
 
+from pathlib import Path
+
 import httpx
 import pytest
 from pydantic import ValidationError
@@ -321,6 +323,24 @@ async def test_apply_local_config_stops_then_starts(tmp_path, monkeypatch):
     monkeypatch.setattr(matricxon_process, "_ping_health", fake_ping)
     await matricxon_process.apply_local_config(_config())
     assert calls == ["stop", "start"]
+
+
+@pytest.mark.asyncio
+async def test_apply_local_config_stops_the_old_checkout_when_project_dir_changes(tmp_path, monkeypatch):
+    old, new = tmp_path / "old", tmp_path / "new"
+    monkeypatch.setattr(matricxon_process, "_find_project_dir", lambda project_dir=None: Path(project_dir))
+    calls = []
+    monkeypatch.setattr(matricxon_process, "_stop", lambda d: calls.append(("stop", d)))
+    monkeypatch.setattr(matricxon_process, "_start", lambda d, _config, _proxy_url=None: calls.append(("start", d)))
+    monkeypatch.setattr(matricxon_process, "_is_running", lambda _project_dir: False)
+
+    async def fake_ping():
+        return True
+
+    monkeypatch.setattr(matricxon_process, "_ping_health", fake_ping)
+    await matricxon_process.apply_local_config(_config(project_dir=str(new)), previous=_config(project_dir=str(old)))
+
+    assert calls == [("stop", old), ("stop", new), ("start", new)]
 
 
 @pytest.mark.asyncio
