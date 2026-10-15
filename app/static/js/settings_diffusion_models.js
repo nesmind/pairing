@@ -6,6 +6,7 @@ class DiffusionModelsSection {
     this.grid = root.querySelector("#diffusion-model-catalog");
     this.note = root.querySelector("#diffusion-model-note");
     document.addEventListener("pairing:models-changed", () => this.load());
+    document.addEventListener("pairing:image-engine-saved", () => this.load());
     this.load();
   }
 
@@ -38,7 +39,7 @@ class DiffusionModelsSection {
     const label = document.createElement("div");
     label.className = "min-w-0";
     label.innerHTML =
-      `<span class="block truncate font-medium text-slate-100">${escapeHtml(entry.family)}</span>` +
+      `<span class="block truncate font-medium text-slate-100">${escapeHtml(entry.family)}${entry.in_use_as?.length ? inUseBadge(entry.in_use_as.join(" · ")) : ""}</span>` +
       `<span class="block truncate text-xs text-slate-500">${escapeHtml([entry.vendor, formatSize(entry.download_gb)].filter(Boolean).join(" · "))}</span>`;
 
     const action = document.createElement("div");

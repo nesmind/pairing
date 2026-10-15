@@ -170,6 +170,12 @@ function findCatalogEntry(tag) {
   );
 }
 
+// "In use" pill: the model is chosen under Admin settings > System. Shared by the chat, embedding and reranker lists.
+function inUseBadge(title = "") {
+  const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
+  return ` <span class="inline-flex items-center rounded-full bg-[rgb(var(--color-brand-500)/0.15)] border border-[rgb(var(--color-brand-500)/0.4)] px-1.5 py-0.5 text-[10px] font-medium text-brand-500 align-middle"${titleAttr}>In use</span>`;
+}
+
 function formatContextLength(length) {
   if (!length) return null;
   return length >= 1000 ? `${Math.round(length / 1000)}K` : `${length}`;
@@ -402,6 +408,7 @@ function renderModelRow(entry, pairing = null, compact = false) {
   label.innerHTML =
     `<span class="block truncate font-medium text-slate-100">${escapeHtml(modelName || entry.tag)}` +
     (entry.hidden ? ` <span class="text-xs font-normal text-slate-500">(disabled for users)</span>` : "") +
+    (entry.in_use_as?.length ? inUseBadge(entry.in_use_as.join(" · ")) : "") +
     visionBadge +
     (compact ? "" : matricxonBadge + notInCatalogBadge + chatFormatUnverifiedBadge) +
     `</span>` +
@@ -1083,7 +1090,7 @@ function renderEmbeddingCatalog() {
       ? ""
       : ` <span class="inline-flex items-center rounded-full bg-slate-800 border border-slate-700 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 align-middle" title="${escapeHtml(activeSupport.reason || "Not supported by the active engine")}">Not supported</span>`;
     label.innerHTML =
-      `<span class="block truncate font-medium text-slate-100">${escapeHtml(modelName || entry.tag)}${defaultBadge}${matricxonBadge}</span>` +
+      `<span class="block truncate font-medium text-slate-100">${escapeHtml(modelName || entry.tag)}${defaultBadge + (entry.in_use ? inUseBadge() : "")}${matricxonBadge}</span>` +
       `<span class="block truncate text-xs text-slate-500">${escapeHtml(metaParts.join(" · "))}</span>`;
 
     const action = document.createElement("div");
@@ -2615,6 +2622,7 @@ for (const server of EXTERNAL_SERVERS) {
           await api(`/api/settings/${server}/apply`, { method: "POST", body: JSON.stringify(body) }),
         );
         statusEl.textContent = `Saved — ${engineLabel} restarted.`;
+        if (server === "sdcpp") document.dispatchEvent(new Event("pairing:image-engine-saved"));  // moves the "In use" badge
         reloadIfModeChanged(section, body, true);
         return;
       }
@@ -2622,6 +2630,7 @@ for (const server of EXTERNAL_SERVERS) {
       statusEl.textContent = "Saved.";
       // A new Models folder changes what the Model dropdown lists: re-read it.
       if (server === "sdcpp") await loadServerSection(server);
+      if (server === "sdcpp") document.dispatchEvent(new Event("pairing:image-engine-saved"));  // moves the "In use" badge
       // Not running (stopped by hand, or a previous restart failed, e.g. a GPU device that isn't there): saving alone
       // shows nothing, which reads as "nothing happened"; offer to start it with the new settings.
       if (localStatus && localStatus.installed && !localStatus.running) {
@@ -3001,6 +3010,7 @@ if (defaultModelForNewUsersSaveBtn) {
         method: "PUT", body: JSON.stringify({ model: selectEl.value }),
       });
       statusEl.textContent = "Saved.";
+      await refreshCatalogs();
     } catch (err) {
       statusEl.textContent = `Failed to save: ${err.message}`;
     } finally {
@@ -3060,6 +3070,7 @@ if (defaultVisionModelSaveBtn) {
         method: "PUT", body: JSON.stringify({ model: selectEl.value }),
       });
       statusEl.textContent = "Saved.";
+      await refreshCatalogs();
     } catch (err) {
       statusEl.textContent = `Failed to save: ${err.message}`;
     } finally {
@@ -3118,6 +3129,7 @@ if (defaultEmbeddingModelSaveBtn) {
         method: "PUT", body: JSON.stringify({ model: selectEl.value }),
       });
       statusEl.textContent = "Saved.";
+      await loadEmbeddingCatalog();
     } catch (err) {
       statusEl.textContent = `Failed to save: ${err.message}`;
     } finally {

@@ -173,6 +173,17 @@ async def test_catalog_marks_an_installed_model_and_ignores_untagged_files(db, m
 
 
 @pytest.mark.asyncio
+async def test_catalog_marks_the_engine_model_in_use(db, models_root):
+    path = models_root / _REPO / _FILE
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"x")
+    await image_engine_service.set_sdcpp_config(db, SdCppConfig(model_path=str(path)))
+    entries = await (await ImageModelStore.open(db)).catalog_entries()
+    assert next(e for e in entries if e.tag == _TAG).in_use_as == ["Image engine model"]
+    assert all(not e.in_use_as for e in entries if e.tag != _TAG)
+
+
+@pytest.mark.asyncio
 async def test_catalog_adds_admin_added_and_otherwise_installed_models_after_the_curated_ones(db, models_root):
     added = "hf.co/second-state/stable-diffusion-v1-5-GGUF:sd-v1-5-Q8_0"
     await _register(db, added)

@@ -86,3 +86,16 @@ async def test_build_hardware_ok_exempts_an_installed_entry(monkeypatch, db):
     by_tag = {e.tag: e for e in response.entries}
     assert by_tag[_NOMIC_TAG].hardware_ok is True
     assert by_tag[_MINILM_TAG].hardware_ok is False
+
+
+@pytest.mark.asyncio
+async def test_build_marks_only_the_system_choice_in_use(monkeypatch, db):
+    _stub_list_models(
+        monkeypatch,
+        [{"name": _NOMIC_TAG, "capabilities": ["embedding"]}, {"name": _MINILM_TAG, "capabilities": ["embedding"]}],
+    )
+    await default_model_settings.DefaultModelSettings(db).set_embedding(_MINILM_TAG)
+
+    by_tag = {e.tag: e for e in (await EmbeddingModelCatalogService(db).build()).entries}
+    assert by_tag[_MINILM_TAG].in_use is True
+    assert by_tag[_NOMIC_TAG].in_use is False

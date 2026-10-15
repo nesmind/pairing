@@ -135,3 +135,27 @@ async def test_setting_one_default_never_affects_the_other_two(db, monkeypatch):
     await settings.set_embedding("other-tag-not-installed")
     # Setting vision/embedding must not change what for_new_users returns.
     assert await settings.for_new_users(["shared-tag"]) == "shared-tag"
+
+
+# chat_roles
+
+
+@pytest.mark.asyncio
+async def test_chat_roles_lists_every_role_a_model_fills(db):
+    installed = [{"name": "chat-a", "capabilities": ["completion"]}, {"name": "see-b", "capabilities": ["vision"]}]
+    roles = await DefaultModelSettings(db).chat_roles(installed)
+    assert roles == {"chat-a": ["Default for new users"], "see-b": ["Vision"]}
+
+
+@pytest.mark.asyncio
+async def test_chat_roles_merges_both_roles_on_one_model(db):
+    installed = [{"name": "both", "capabilities": ["completion", "vision"]}]
+    assert await DefaultModelSettings(db).chat_roles(installed) == {"both": ["Default for new users", "Vision"]}
+
+
+@pytest.mark.asyncio
+async def test_chat_roles_follows_the_configured_vision_model(db):
+    installed = [{"name": n, "capabilities": ["completion", "vision"]} for n in ("a", "b")]
+    settings = DefaultModelSettings(db)
+    await settings.set_vision("b")
+    assert await settings.chat_roles(installed) == {"a": ["Default for new users"], "b": ["Vision"]}

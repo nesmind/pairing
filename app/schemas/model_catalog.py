@@ -60,6 +60,8 @@ class CatalogEntry(BaseModel):
     # from the active engine's "vision" tag (the curated flag mirrors Ollama's projector auto-pairing and can
     # disagree under Matricxon).
     vision: bool = False
+    # System-tab roles this model fills (DefaultModelSettings.chat_roles); non-empty shows "In use".
+    in_use_as: list[str] = Field(default_factory=list)
     # Whether the model can also hold a text conversation: true for every entry (they pass ChatModelCatalogBuilder's
     # "completion" filter), so only `vision and text_capable` ("+Vision") occurs; `vision and not text_capable` is
     # modeled but unreachable.
@@ -146,6 +148,8 @@ class EmbeddingCatalogEntry(BaseModel):
     installed: bool
     hardware_ok: bool
     unavailable_reason: str | None = None
+    # Chosen under Admin settings > System > Default embedding model.
+    in_use: bool = False
 
     # See CatalogEntry's computed properties.
     @computed_field  # type: ignore[prop-decorator]

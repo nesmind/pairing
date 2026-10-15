@@ -123,6 +123,7 @@ class ImageModelStore:
         added = {e["tag"]: e for e in await ExtendedModelCatalog(self._db).list() if e.get("kind") == "image"}
         installed = {f.tag: f for f in self.list_files() if f.tag}
         curated = {m.tag: m for m in CATALOG.diffusion_models}
+        engine_model = (await image_engine_service.get_sdcpp_config(self._db)).model_path
         entries = []
         for tag in [
             *curated,
@@ -148,6 +149,7 @@ class ImageModelStore:
                     removable=is_admin and tag in added and file is None,
                     is_image=True,
                     companions=self.companions_for(tag),
+                    in_use_as=["Image engine model"] if file and file.path == engine_model else [],
                 )
             )
         return entries

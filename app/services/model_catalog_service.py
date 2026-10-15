@@ -187,6 +187,9 @@ class ChatModelCatalogBuilder:
         entries.extend(
             InstalledProjectorCatalog.entries(installed_models, catalog_tags, hidden_tags, is_admin, support_set)
         )
+        roles = await DefaultModelSettings(self._db).chat_roles(installed_models)
+        for catalog_entry in entries:
+            catalog_entry.in_use_as = roles.get(catalog_entry.tag or "", [])
         return ModelCatalogResponse(
             entries=entries,
             hardware=hardware.hardware_summary(),

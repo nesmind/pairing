@@ -28,6 +28,7 @@ class EmbeddingModelCatalogService:
         capacity_gb = hardware.available_capacity_gb()
         support_set = await EngineSupportSet.load(installed_models)
 
+        in_use = await DefaultModelSettings(self._db).embedding()
         entries = []
         for entry in CATALOG.embedding_models:
             installed_model = installed_by_tag.get(entry.tag)
@@ -61,12 +62,13 @@ class EmbeddingModelCatalogService:
                     installed=installed,
                     hardware_ok=installed or capacity_gb >= entry.min_ram_gb,
                     unavailable_reason=entry.unavailable_reason,
+                    in_use=entry.tag == in_use,
                 )
             )
 
         # The admin's choice if installed; otherwise the built-in default tag, so the "Default" badge points a
         # fresh install at something to pull.
-        default_tag = (await DefaultModelSettings(self._db).embedding()) or EMBEDDING_MODEL
+        default_tag = in_use or EMBEDDING_MODEL
 
         return EmbeddingModelCatalogResponse(
             entries=entries, default_tag=default_tag, hardware=hardware.hardware_summary()

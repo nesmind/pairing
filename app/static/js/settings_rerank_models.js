@@ -37,9 +37,7 @@ class RerankModelCatalog {
   row(entry) {
     const row = document.createElement("div");
     row.className = "rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm flex flex-col justify-between gap-1.5";
-    const inUse = entry.in_use
-      ? ` <span class="inline-flex items-center rounded-full bg-[rgb(var(--color-brand-500)/0.15)] border border-[rgb(var(--color-brand-500)/0.4)] px-1.5 py-0.5 text-[10px] font-medium text-brand-500 align-middle">In use</span>`
-      : "";
+    const inUse = entry.in_use ? inUseBadge() : "";
     const meta = [entry.vendor, entry.download_gb ? formatSize(entry.download_gb) : null].filter(Boolean).join(" · ");
     const label = document.createElement("div");
     label.className = "min-w-0";

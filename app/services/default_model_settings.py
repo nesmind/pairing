@@ -54,13 +54,24 @@ class DefaultModelSettings:
         Same installed/fallback contract as for_new_users; None if no vision model is installed.
         """
         installed = await self._installed_with_capability("vision")
-        configured = await self._get(_VISION_KEY)
-        if configured in installed:
-            return configured
-        return installed[0] if installed else None
+        return self._configured_or_first(await self._get(_VISION_KEY), installed)
 
     async def set_vision(self, model: str) -> None:
         await self._set(_VISION_KEY, model)
+
+    async def chat_roles(self, installed_models: list[dict]) -> dict[str, list[str]]:
+        """Tag -> the System-tab roles it fills, for the Models tab's "In use" badge. Takes list_models() output."""
+        chat = [m["name"] for m in installed_models if "completion" in m.get("capabilities", [])]
+        vision = [m["name"] for m in installed_models if "vision" in m.get("capabilities", [])]
+        roles: dict[str, list[str]] = {}
+        picks = (
+            ("Default for new users", await self.for_new_users(chat)),
+            ("Vision", self._configured_or_first(await self._get(_VISION_KEY), vision)),
+        )
+        for label, tag in picks:
+            if tag:
+                roles.setdefault(tag, []).append(label)
+        return roles
 
     async def embedding(self) -> str | None:
         """The model inference_client.embed uses for the Knowledge base
@@ -100,6 +111,12 @@ class DefaultModelSettings:
     async def set_rerank(self, model: str | None) -> None:
         """None switches reranking off."""
         await self._set(_RERANK_KEY, model)
+
+    @staticmethod
+    def _configured_or_first(configured: str | None, installed: list[str]) -> str | None:
+        if configured in installed:
+            return configured
+        return installed[0] if installed else None
 
     @staticmethod
     async def _installed_with_capability(capability: str) -> list[str]:
