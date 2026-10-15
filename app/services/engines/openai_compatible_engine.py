@@ -25,7 +25,7 @@ def cloud_capabilities(*, embeddings: bool) -> EngineCapabilities:
 
 class OpenAICompatibleEngine(InferenceEngine):
     provider: ClassVar[OpenAICompatibleProvider]
-    usage_note: ClassVar[str | None] = None  # shown in External servers when the provider has no usage API
+    usage_note: ClassVar[str | None] = None  # shown in Inference engines when the provider has no usage API
 
     async def list_models(self) -> list[dict]:
         return await self.provider.list_models()

@@ -158,7 +158,7 @@ class ClusterService:
             kind = self._probe.fstype(folder) or "unknown"
             hint = (
                 f"Move {folder} ({size / 1e9:.2f} GB) to shared storage mounted on every machine running pAIring, "
-                f"then set it in the image engine's settings (Settings > External servers). "
+                f"then set it in the image engine's settings (Settings > Inference engines). "
                 f"Now on a local '{kind}' filesystem."
             )
             return ClusterCheck(

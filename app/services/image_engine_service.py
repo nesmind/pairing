@@ -1,5 +1,5 @@
 """Persistence for image-engine settings: which engine serves the Images page, and the stable-diffusion.cpp
-config (ComfyUI's is in settings_service). Split from settings_service for the file-size rule.
+config. Split from settings_service for the file-size rule.
 """
 
 import os
@@ -12,8 +12,7 @@ from app.schemas import DEFAULT_IMAGE_ENGINE, ImageEngineName, SdCppConfig
 
 ACTIVE_IMAGE_ENGINE_KEY = "active_image_engine"
 SDCPP_CONFIG_KEY = "sdcpp_config"
-# Selectable engines. ComfyUI is switched off ahead of removal: its code remains but can't be chosen, and a saved
-# selection falls back to the default.
+# Selectable engines. ComfyUI was removed; a selection an older version saved falls back to the default.
 ENABLED_IMAGE_ENGINES: tuple[str, ...] = ("sdcpp",)
 
 

@@ -1,8 +1,8 @@
 """Installs stable-diffusion.cpp from GitHub: the "local" auto-install behind Settings > Image's Install.
 Downloads the pinned release's prebuilt Linux x86_64 CPU zip (`sd-server` plus shared libs with per-CPU ggml
-backends down to SSE4.2, so no AVX2 requirement unlike ComfyUI's PyTorch) and unzips it into EXTERNAL_DIR.
+backends down to SSE4.2, so no AVX2 requirement) and unzips it into EXTERNAL_DIR.
 
-A reinstall preserves target_dir's "models" subdirectory (as comfyui_installer): downloaded models are the
+A reinstall preserves target_dir's "models" subdirectory: downloaded models are the
 admin's library, not disposable artifacts.
 """
 

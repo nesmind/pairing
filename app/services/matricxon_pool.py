@@ -1,7 +1,7 @@
 """Routes chat/embedding/model-management across Matricxon host(s): the analogue of ollama_pool.py, its own
 module (not a wrapper of ollama_pool's state) so Matricxon traffic never shares host list, cooldown or
 failure history with Ollama; they're unrelated backends configured independently (engine_service says
-which serves traffic). Both wrap server_pool.HostPool, as comfyui_pool.py does.
+which serves traffic). Both wrap server_pool.HostPool, as sdcpp_pool.py does.
 
 "local" mode resolves to LOCAL_MATRICXON_HOST alone (the process matricxon_process.py manages); "remote"
 to the admin's remote_hosts. Cached via refresh_from_config, not re-read per request (see ollama_pool.py).
@@ -154,7 +154,7 @@ async def check_hosts() -> dict[str, bool]:
 
 
 async def check_host(host: str) -> bool:
-    """Same probe as check_hosts for one arbitrary host, possibly unsaved; Settings > External servers verifies a
+    """Same probe as check_hosts for one arbitrary host, possibly unsaved; Settings > Inference engines verifies a
     remote URL before saving (routers/matricxon_admin.py check_host).
     """
     return await ping_host(host, _HEALTH_CHECK_TIMEOUT, path="/api/tags")

@@ -1,5 +1,5 @@
 """Image-generation JSON API: submit a prompt, poll a job, list your generations, fetch the file.
-Lifecycle: app/services/image_generation_service.py; engine calls behind /checkpoints: comfyui_client.py,
+Lifecycle: app/services/image_generation_service.py; engine calls behind /checkpoints:
 sdcpp_client.py.
 """
 
@@ -12,9 +12,8 @@ from app.config import IMAGES_DIR
 from app.database import get_db
 from app.models import ImageGenerationJob, User
 from app.schemas import CheckpointList, ImageGenerationJobOut, ImageGenerationRequest, OkResponse
-from app.services import comfyui_client, image_engine_service, image_generation_service, sdcpp_client, sdcpp_progress
+from app.services import image_engine_service, image_generation_service, sdcpp_client, sdcpp_progress
 from app.services.auth_service import get_current_user
-from app.services.comfyui_client import ComfyUIError
 from app.services.sdcpp_client import SdCppError
 
 router = APIRouter(prefix="/api/image-generation", tags=["image-generation"])
@@ -89,13 +88,9 @@ async def delete_job(job_id: str, db: AsyncSession = Depends(get_db), user: User
 
 @router.get("/checkpoints", response_model=CheckpointList)
 async def list_checkpoints(db: AsyncSession = Depends(get_db), _user: User = Depends(get_current_user)):
-    """Models of the active image engine."""
-    engine = await image_engine_service.get_active_image_engine(db)
+    """Models of the image engine (stable-diffusion.cpp)."""
     try:
-        if engine == "sdcpp":
-            checkpoints = await sdcpp_client.list_checkpoints()
-        else:
-            checkpoints = await comfyui_client.list_checkpoints()
-    except (ComfyUIError, SdCppError) as exc:
+        checkpoints = await sdcpp_client.list_checkpoints()
+    except SdCppError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return CheckpointList(checkpoints=checkpoints)

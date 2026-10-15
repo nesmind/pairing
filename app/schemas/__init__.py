@@ -4,7 +4,6 @@
 
 from app.schemas.channel import ChannelCreate, ChannelMemberOut, ChannelOut, ChannelSummary, ChannelUpdate
 from app.schemas.chat import DeleteMessageResponse, MessageOut, MessagesLatestResponse, ShareMessageRequest
-from app.schemas.comfyui_config import ComfyUIProcessConfig, ComfyUIStatus
 from app.schemas.common import (
     DEFAULT_ENGINE,
     ActiveEngineConfig,
@@ -164,8 +163,6 @@ __all__ = [
     "MessageOut",
     "ShareMessageRequest",
     "MessagesLatestResponse",
-    "ComfyUIProcessConfig",
-    "ComfyUIStatus",
     "DEFAULT_IMAGE_ENGINE",
     "ImageEngineConfig",
     "DiffusionModelCatalogResponse",

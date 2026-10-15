@@ -1,7 +1,7 @@
 /* Settings page controller: loads the model catalog and the target's (a conversation, or the app-wide defaults) params, renders a slider per tunable value plus the model picker, and saves on demand. Also handles the Knowledge tab's private document upload/list/delete (every chat searches these automatically) and, for admins, the RAG upload limits on the System tab. */
 
 // A small inline "animate-spin" SVG shared by this page's loading indicators (install progress, Admin settings > System
-// default-model selects, External servers Start/Stop, the Matricxon panel's fetch div) so they look alike.
+// default-model selects, Inference engines Start/Stop, the Matricxon panel's fetch div) so they look alike.
 const SPINNER_SVG_HTML =
   '<svg class="h-3.5 w-3.5 animate-spin text-brand-500" viewBox="0 0 24 24" fill="none">' +
   '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
@@ -34,7 +34,7 @@ function addInlineSpinner(anchorEl) {
 }
 
 // Dims `panelEl` (must be `position: relative`) behind a centered spinner while `promise` is pending, for a whole
-// section (e.g. External servers' per-engine panel) whose fields are empty/stale during its fetch.
+// section (e.g. Inference engines' per-engine panel) whose fields are empty/stale during its fetch.
 function withPanelSpinner(panelEl, promise) {
   const overlay = document.createElement("div");
   overlay.className = "absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-slate-900/60";
@@ -379,7 +379,7 @@ function renderModelRow(entry, pairing = null, compact = false) {
   const visionBadge = entry.vision || entry.is_projector
     ? ` <span class="inline-flex items-center rounded-full bg-[rgb(var(--color-brand-500)/0.15)] border border-[rgb(var(--color-brand-500)/0.4)] px-1.5 py-0.5 text-[10px] font-medium text-brand-500 align-middle">${visionBadgeText}</span>`
     : "";
-  // Shown for the active engine (see the "Active engine" picker above External servers). Most engines (e.g. Ollama) run
+  // Shown for the active engine (see the "Active engine" picker above Inference engines). Most engines (e.g. Ollama) run
   // every catalog entry, so it would be noise for them. Also skipped for a vision projector (entry.is_projector): "Not
   // supported" would read as "this engine can't run it" for a file never meant as a chat model; its vision badge
   // (visionBadge) says what it is. See CatalogEntry.engine_support/EngineModelSupport.
@@ -1665,7 +1665,7 @@ function activateTab(name) {
 
 // Extracted from the click handler so the per-tab data load also runs when a reload restores a saved tab
 // (SETTINGS_TAB_STORAGE_KEY); otherwise a reload lands on the default "Model" tab and discards where the admin was
-// (seen: reloading right after starting Ollama on External Servers left it blank until re-clicked, as its data loads
+// (seen: reloading right after starting Ollama on Inference engines left it blank until re-clicked, as its data loads
 // only on that tab's click).
 function loadTabData(name) {
   if (name === "model") {
@@ -1953,13 +1953,13 @@ if (httpProxySaveBtn) {
   });
 }
 
-// External servers: Ollama & ComfyUI (admin only)
+// Inference engines: Ollama, Matricxon and stable-diffusion.cpp (admin only)
 //
-// Both sections share one DOM shape (settings.html's [data-server="ollama"|"comfyui"]): a mode select, a "local" div
-// (install/start/stop + tunable parameters) and a "remote" div (up to 12 host rows), so one generic controller drives
-// both. installServer is where their local-mode "Install" buttons differ (what happens after each install).
+// The sections share one DOM shape (settings.html's [data-server="ollama"|"matricxon"|"sdcpp"]): a mode select, a
+// "local" div (install/start/stop + tunable parameters) and a "remote" div (host rows), so one generic controller
+// drives them all. installServer is where their local-mode "Install" buttons differ (what happens after each install).
 
-const EXTERNAL_SERVERS = ["ollama", "matricxon", "comfyui", "sdcpp"];
+const EXTERNAL_SERVERS = ["ollama", "matricxon", "sdcpp"];
 const MAX_REMOTE_HOSTS = 120;
 
 function serverSectionEl(server) {
@@ -1972,7 +1972,6 @@ const HOST_CHECK_STATUS_IDLE_CLASS = "shrink-0 text-xs text-slate-500 w-24 text-
 const REMOTE_HOST_EXAMPLE = {
   ollama: { port: "11434", name: "Ollama" },
   matricxon: { port: "8420", name: "Matricxon" },
-  comfyui: { port: "8188", name: "ComfyUI" },
   sdcpp: { port: "8189", name: "stable-diffusion.cpp" },
 };
 
@@ -1991,7 +1990,7 @@ function addRemoteHostRow(section, value = "") {
     "flex-1 rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500";
 
   // Reachability check for this row's URL: a real ping (check-host endpoint in
-  // app/routers/ollama_admin.py|comfyui_admin.py), not limited to saved hosts, so an admin can verify a remote
+  // app/routers/ollama_admin.py|matricxon_admin.py|sdcpp_admin.py), not limited to saved hosts, so an admin can verify a remote
   // candidate before Save. Cleared on edit, since a stale "✓ healthy" beside a changed URL would mislead.
   const statusEl = document.createElement("span");
   statusEl.className = HOST_CHECK_STATUS_IDLE_CLASS;
@@ -2059,7 +2058,7 @@ const lastServerStatus = {};
 /*
  * Local mode with nothing installed shows only the install flow (no local parameter fields, Start/Stop or Save):
  * half-filled params for a server that doesn't exist are more confusing than useful. Both servers have a manual
- * override link for an admin pointing at their own Ollama/ComfyUI install (see "manual-path-entry" actions below).
+ * override link for an admin pointing at their own Ollama install (see "manual-path-entry" actions below).
  * Remote mode shows the full form but never Start/Stop, since this app doesn't supervise a process it doesn't own.
  * 
  * install-controls (Install/Reinstall button + version override) stay visible either way; hiding them once installed
@@ -2325,7 +2324,7 @@ async function loadServerSection(server) {
   renderServerStatus(section, await api(`/api/settings/${server}/status`));
 }
 
-/* Grays out "Install from GitHub" with an explanation on any OS the auto-installer can't run on (app.hardware.local_install_supported: Ollama's pinned release asset and this app's deployment assume Linux), so the admin doesn't wait minutes for a doomed attempt. ollama_installer/comfyui_installer install_stream enforce the same check server-side; this is a courtesy. */
+/* Grays out "Install from GitHub" with an explanation on any OS the auto-installer can't run on (app.hardware.local_install_supported: Ollama's pinned release asset and this app's deployment assume Linux), so the admin doesn't wait minutes for a doomed attempt. the installers' install_stream enforce the same check server-side; this is a courtesy. */
 function applyLocalInstallSupport(server, section, supported) {
   if (!section) return;
   const installBtn = section.querySelector('[data-action="install"]');
@@ -2343,8 +2342,8 @@ function applyLocalInstallSupport(server, section, supported) {
   }
 }
 
-// Ollama and Matricxon are mutually exclusive chat backends (see the "Active engine" picker); ComfyUI (image
-// generation) is separate and always visible.
+// Ollama and Matricxon are mutually exclusive chat backends (see the "Active engine" picker); stable-diffusion.cpp
+// (image generation) is separate and always visible.
 const ENGINE_SERVERS = ["ollama", "matricxon"];
 
 /* Shows only the selected engine's configuration section, hiding the other so an admin doesn't edit the form of a backend that isn't live. Re-run on load and on the select's "change" event. */
@@ -2383,11 +2382,13 @@ async function loadActiveEngineIntoEditor() {
   // connector-backed engine (e.g. "runpod") only after an admin configures, enables and tests it on the Connectors
   // page. The active engine is always shown, even if it became not-ready (e.g. its connector was disabled), so the
   // picker reflects reality.
-  for (const { name, display_name: displayName, ready } of engineOptions) {
+  for (const { name, display_name: displayName, ready, capabilities } of engineOptions) {
     if (!ready && name !== activeEngine) continue;
     const option = document.createElement("option");
     option.value = name;
     option.textContent = displayName;
+    // A cloud connector runs no local process; engine_picker.js shows it with a "Cloud" badge.
+    option.dataset.cloud = String(!capabilities.local_process);
     selectEl.appendChild(option);
   }
   selectEl.value = activeEngine;
@@ -2436,7 +2437,7 @@ if (activeEngineSaveBtn) {
       await api("/api/settings/engine", { method: "PUT", body: JSON.stringify({ active_engine: selectEl.value }) });
       // A full reload, not a refetch: the Model tab's catalog (currentCatalog) and other model fetches (installed
       // vision/embedding models, RAG availability,...) cache for the page load and go stale on an engine switch. Same
-      // reload-instead-of-invalidating pattern as the Ollama/Matricxon Start button below. Stays on External servers so
+      // reload-instead-of-invalidating pattern as the Ollama/Matricxon Start button below. Stays on Inference engines so
       // the admin can keep configuring the new engine.
       try {
         sessionStorage.setItem(SETTINGS_TAB_STORAGE_KEY, "external-servers");
@@ -2472,7 +2473,7 @@ async function loadAvailableVersions(server, section) {
   }
 }
 
-/* Switching Ollama/Matricxon between local and remote changes which models exist (a remote server has its own storage, managed via its API), so every model cache on this page is stale: reload as for the active-engine switch and return to External servers. Returns true if it reloaded. */
+/* Switching Ollama/Matricxon between local and remote changes which models exist (a remote server has its own storage, managed via its API), so every model cache on this page is stale: reload as for the active-engine switch and return to Inference engines. Returns true if it reloaded. */
 function reloadIfModeChanged(section, body, force = false) {
   const server = section.dataset.server;
   if (!["ollama", "matricxon"].includes(server) || (!force && body.mode === section.dataset.loadedMode)) return false;
@@ -2494,7 +2495,7 @@ for (const server of EXTERNAL_SERVERS) {
   });
   section.querySelector('[data-action="add-host"]').addEventListener("click", () => addRemoteHostRow(section));
 
-  // Both servers (settings.html): an admin pointing at their own Ollama/ComfyUI install, not one this app's installer
+  // Both servers (settings.html): an admin pointing at their own Ollama or Matricxon install, not one this app's installer
   // manages.
   const manualPathBtn = section.querySelector('[data-action="manual-path-entry"]');
   if (manualPathBtn) {
@@ -2684,7 +2685,7 @@ for (const server of EXTERNAL_SERVERS) {
         statusEl.textContent = "Done.";
         // Ollama (or Matricxon) coming up can newly make models available for "Model & behavior", which loads the
         // catalog once at page load and would keep saying "System is not configured for models yet". A full reload is
-        // the simplest reliable fix for an infrequent admin action, saved so it returns to External Servers (otherwise
+        // the simplest reliable fix for an infrequent admin action, saved so it returns to Inference engines (otherwise
         // the status line went blank until re-clicked, which read as stuck).
         if ((server === "ollama" || server === "matricxon") && (action === "stop" || result.running)) {
           try {
@@ -2717,7 +2718,7 @@ for (const server of EXTERNAL_SERVERS) {
     const status = lastServerStatus[server];
     const wasRunning = !!status?.running;
     if (wasRunning) {
-      const engineLabel = { ollama: "Ollama", matricxon: "Matricxon", comfyui: "ComfyUI", sdcpp: "stable-diffusion.cpp" }[server] || server;
+      const engineLabel = { ollama: "Ollama", matricxon: "Matricxon", sdcpp: "stable-diffusion.cpp" }[server] || server;
       const buildNote = buildOverride === "source" ? " Building from source can take 10-30 minutes, and it stays stopped meanwhile." : "";
       if (!confirm(`${engineLabel} is currently running — reinstalling stops it first.${buildNote} Continue?`)) return;
       button.disabled = true;
@@ -2731,7 +2732,7 @@ for (const server of EXTERNAL_SERVERS) {
       button.disabled = false;
     }
     // Restart afterward only if this click stopped it: a first-time install leaves it stopped on purpose, matching
-    // Ollama/ComfyUI's separate first Start click.
+    // Ollama's separate first Start click.
     await installServer(server, section, wasRunning, buildOverride);
   }
   installBtn?.addEventListener("click", () => startInstall(installBtn));
@@ -2739,9 +2740,9 @@ for (const server of EXTERNAL_SERVERS) {
 }
 
 /*
- * Downloads/installs Ollama or ComfyUI from GitHub (app.services.ollama_installer/comfyui_installer), streaming
+ * Downloads/installs an engine from GitHub (app.services.ollama_installer/matricxon_installer/sdcpp_installer), streaming
  * progress over SSE as pullModel reads a model pull (fetch + reader, not EventSource, since it is a POST). It can
- * take many minutes (Ollama's release is multi-GB; ComfyUI's pip install pulls torch), so every installer event
+ * take many minutes (Ollama's release is multi-GB; Matricxon's pip install pulls torch), so every installer event
  * (step/total_steps/step_label, byte progress, raw git/pip lines) is shown live: a step label, a progress bar
  * (determinate once byte counts are known) and a scrolling log of raw status lines. The mode <select> is disabled
  * meanwhile so switching mid-install can't desync the UI from the server.
@@ -2900,7 +2901,7 @@ async function installServer(server, section, restartAfter = false, buildOverrid
     // auto-detected. The gap this closes: an explicit binary_path override (_find_binary checks it first and
     // exclusively if valid) would make every Reinstall install a binary that is never used, since the stale override
     // keeps winning (seen: "looks ok" after reinstall because the OLD binary still started). Saving the installed path,
-    // like ComfyUI/Matricxon below, makes a reinstall take effect.
+    // like Matricxon below, makes a reinstall take effect.
     if (server === "ollama" && doneEvent) {
       section.querySelector('[data-field="binary_path"]').value = doneEvent.binary_path;
       await api("/api/settings/ollama/config", {
@@ -2908,19 +2909,7 @@ async function installServer(server, section, restartAfter = false, buildOverrid
         body: JSON.stringify(collectServerConfig("ollama", section)),
       });
     }
-    // ComfyUI has no fixed path to auto-discover, unlike Ollama's managed binary (ollama_process._FALLBACK_BIN_PATHS);
-    // the installed paths are filled in and saved so Start works at once. extra_args is "--cpu" on a machine without an
-    // NVIDIA GPU (comfyui_installer), since the default CUDA torch build crashes at startup there.
-    if (server === "comfyui" && doneEvent) {
-      section.querySelector('[data-field="python_path"]').value = doneEvent.python_path;
-      section.querySelector('[data-field="main_py_path"]').value = doneEvent.main_py_path;
-      if (doneEvent.extra_args) section.querySelector('[data-field="extra_args"]').value = doneEvent.extra_args;
-      await api("/api/settings/comfyui/config", {
-        method: "PUT",
-        body: JSON.stringify(collectServerConfig("comfyui", section)),
-      });
-    }
-    // stable-diffusion.cpp: as ComfyUI above, save the installed sd-server path so Start works. The model file is the
+    // stable-diffusion.cpp: save the installed sd-server path so Start works. The model file is the
     // admin's own (see the models folder in the log) and stays as entered.
     if (server === "sdcpp" && doneEvent) {
       section.querySelector('[data-field="binary_path"]').value = doneEvent.binary_path;
@@ -2931,9 +2920,8 @@ async function installServer(server, section, restartAfter = false, buildOverrid
         body: JSON.stringify(collectServerConfig("sdcpp", section)),
       });
     }
-    // Matricxon has no fixed auto-discovered path either; as ComfyUI above, with project_dir instead of
-    // python_path/main_py_path (matricxon_process._find_project_dir treats this saved value as an override ahead of its
-    // sibling-directory default).
+    // Matricxon has no fixed auto-discovered path either: the installed project_dir is saved
+    // (matricxon_process._find_project_dir treats this saved value as an override ahead of its sibling-directory default).
     if (server === "matricxon" && doneEvent) {
       section.querySelector('[data-field="project_dir"]').value = doneEvent.project_dir;
       await api("/api/settings/matricxon/config", {

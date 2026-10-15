@@ -20,8 +20,8 @@ def _png_size(data: bytes) -> tuple[int, int] | None:
 
 
 class ImageGenerationRequest(BaseModel):
-    """POST /api/image-generation/jobs body. Bounds are sanity limits for a ComfyUI txt2img workflow, not
-    tuned to a checkpoint (see comfyui_client's workflow template).
+    """POST /api/image-generation/jobs body. Bounds are sanity limits for a text-to-image run, not
+    tuned to a model.
     """
 
     prompt: str = Field(min_length=1, max_length=4000)

@@ -7,8 +7,8 @@ from pydantic import BaseModel, Field
 
 PinType = Literal["persona", "rules", "skill"]
 
-# Shared by OllamaServerConfig and ComfyUIProcessConfig: "local" = this app owns the process
-# (ollama_process.py/comfyui_process.py); "remote" = 1-12 external hosts, load-balanced (server_pool.HostPool).
+# Shared by OllamaServerConfig, MatricxonServerConfig and SdCppConfig: "local" = this app owns the process
+# (ollama_process.py/sdcpp_process.py); "remote" = 1-12 external hosts, load-balanced (server_pool.HostPool).
 ServerMode = Literal["local", "remote"]
 
 # Which backend inference_client dispatches chat/embedding/model-management to. Live state is in
@@ -79,8 +79,8 @@ MAX_REMOTE_HOSTS = 120
 
 
 class InstallDefaults(BaseModel):
-    """The GitHub repo/version ollama_installer or comfyui_installer uses unless overridden; shown in Settings
-    > External servers next to Install and as placeholders.
+    """The GitHub repo/version an engine installer (ollama/matricxon/sdcpp) uses unless overridden; shown in Settings
+    > Inference engines next to Install and as placeholders.
     """
 
     repo: str

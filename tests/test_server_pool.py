@@ -1,5 +1,5 @@
 """Tests for services/server_pool.py's HostPool, the "fewest in-flight, health-aware" selection/cooldown/failover
-shared by ollama_pool.py and comfyui_pool.py. Tested directly on a fresh HostPool, once, not per wrapper.
+shared by every pool. Tested directly on a fresh HostPool, once, not per wrapper.
 """
 
 import httpx

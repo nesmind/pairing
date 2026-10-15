@@ -107,7 +107,7 @@ async def settings_page(request: Request, db: AsyncSession = Depends(get_db)):
 
 @router.get("/admin-settings", response_class=HTMLResponse)
 async def admin_settings_page(request: Request, db: AsyncSession = Depends(get_db)):
-    """Admin settings (System, External servers, MCP servers, Users, Channels, admin Models), same layout as
+    """Admin settings (System, Inference engines, MCP servers, Users, Channels, admin Models), same layout as
     /settings. Non-admins go back to /settings.
     """
     return await _settings_response(request, db, admin_page=True)

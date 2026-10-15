@@ -1,8 +1,8 @@
 """Routes chat/embedding requests across Ollama host(s): a thin wrapper around server_pool.HostPool (the
-selection/cooldown/failover algorithm, shared with comfyui_pool.py). Public names are unchanged, so callers
+selection/cooldown/failover algorithm, shared with the other pools). Public names are unchanged, so callers
 (ollama_client.py, routers/health.py) were unaffected by that extraction.
 
-The host list is admin-configured (Settings > External servers, settings_service.get_ollama_server_config):
+The host list is admin-configured (Settings > Inference engines, settings_service.get_ollama_server_config):
 "local" resolves to LOCAL_OLLAMA_HOST alone (the process ollama_process.py manages), "remote" to the
 admin's remote_hosts. Cached via refresh_from_config, not read from the DB per chat request (hot path):
 loaded at startup (startup_service) and refreshed on every admin save, like instance_pool.set_cached_proxy_mode.
@@ -14,7 +14,7 @@ from app.schemas import OllamaServerConfig
 from app.services.server_pool import HostPool, ping_host
 
 # The managed process binds Ollama's built-in default (ollama_process never passes host/port to `ollama
-# serve`), so this is a fixed fact, not a setting: no env var or UI field (like app.config.COMFYUI_HOST).
+# serve`), so this is a fixed fact, not a setting: no env var or UI field (like app.config.SDCPP_HOST).
 # "Remote" hosts are admin-editable (OllamaServerConfig.remote_hosts).
 LOCAL_OLLAMA_HOST = "http://localhost:11434"
 
@@ -67,7 +67,7 @@ async def check_hosts() -> dict[str, bool]:
 
 
 async def check_host(host: str) -> bool:
-    """Same probe as check_hosts for one arbitrary, possibly unsaved host; Settings > External servers verifies a
+    """Same probe as check_hosts for one arbitrary, possibly unsaved host; Settings > Inference engines verifies a
     remote URL before saving (routers/ollama_admin.py check_host).
     """
     return await ping_host(host, _HEALTH_CHECK_TIMEOUT, path="/api/tags")

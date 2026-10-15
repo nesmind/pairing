@@ -1,6 +1,6 @@
-"""Settings > System > Outbound HTTP proxy: get/set the proxy for internet-facing downloads (Ollama/ComfyUI
+"""Settings > System > Outbound HTTP proxy: get/set the proxy for internet-facing downloads (engine
 installers, Ollama pulls in local mode). Split from settings_service for the file-size rule; same
-AppSetting pattern as get_comfyui_config/set_comfyui_config.
+AppSetting pattern as settings_service's get/set_ollama_server_config.
 
 The password is encrypted at rest (secret_crypto) under "password_encrypted", never plaintext. Unlike the
 MySQL password (db_config_url), which sits in .env beside the encryption key and is left unencrypted (see

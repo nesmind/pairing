@@ -1,20 +1,19 @@
-"""Installs Matricxon from GitHub (the "local" auto-install behind Settings > External servers' Install), the
-twin of comfyui_installer (see its docstring for the steps). `git clone`s app.config.MATRICXON_DEFAULT_VERSION
-(Matricxon's main branch, its newest code, unlike Ollama/ComfyUI's pinned tags) unless the admin chose a
-tag/branch, then builds a `.venv` (not ComfyUI's `venv`: Matricxon's scripts/start.sh hardcodes
-`.venv/bin/uvicorn`) and `pip install`s requirements.txt (not requirements-dev.txt; a service needs no pytest/ruff).
+"""Installs Matricxon from GitHub (the "local" auto-install behind Settings > Inference engines' Install), in
+steps (each a "Step X of Y" event). `git clone`s app.config.MATRICXON_DEFAULT_VERSION (Matricxon's main branch,
+its newest code, unlike Ollama's pinned tag) unless the admin chose a tag/branch, then builds a `.venv`
+(Matricxon's scripts/start.sh hardcodes `.venv/bin/uvicorn`) and `pip install`s requirements.txt (not
+requirements-dev.txt; a service needs no pytest/ruff).
 
-Needs `git` and `python3 -m venv`, as comfyui_installer.
+Needs `git` and `python3 -m venv`.
 
-No AVX2 gate, unlike comfyui_installer: on a Sandy Bridge Sandy Bridge CPU without AVX2, Matricxon's
-dependencies are fine. Current torch 2.14 / numpy 2.5 wheels dispatch CPU features at runtime (numpy's
-OpenBLAS is "DYNAMIC_ARCH"), and a POST /api/chat on that machine returned 200. ComfyUI's gate stays: it
-pulls other torch-adjacent packages (kornia,...) with no such evidence.
+No AVX2 gate: on a Sandy Bridge CPU without AVX2, Matricxon's dependencies are fine. Current torch 2.14 /
+numpy 2.5 wheels dispatch CPU features at runtime (numpy's OpenBLAS is "DYNAMIC_ARCH"), and a POST /api/chat on
+that machine returned 200.
 
-Installs into app.config.EXTERNAL_DIR (admin checkouts kept apart from a dev's files, like Ollama/ComfyUI),
+Installs into app.config.EXTERNAL_DIR (admin checkouts kept apart from a dev's files, like Ollama),
 then saves the path into MatricxonServerConfig.project_dir. matricxon_process._find_project_dir already
 prefers an explicit project_dir over its sibling-directory default, so no marker file or new detection is
-needed (unlike comfyui_installer's _marker_path, as ComfyUI has no config override).
+needed.
 
 A reinstall preserves target_dir's "data" subdirectory (_preserve_data_dir/_restore_data_dir): the
 downloaded models there are pAIring's managed library, not disposable install artifacts. Ollama avoids this
@@ -38,7 +37,7 @@ from app.services.pip_progress import PipProgressTracker
 
 logger = logging.getLogger("llama_chat")
 
-# See ollama_installer/comfyui_installer: every event carries step/total_steps/step_label for the "Step X of Y" panel.
+# As ollama_installer: every event carries step/total_steps/step_label for the "Step X of Y" panel.
 _TOTAL_STEPS = 3
 _STEP_CLONE = 1
 _STEP_VENV = 2
@@ -79,7 +78,7 @@ def is_installed() -> bool:
 async def _run_streamed(
     argv: list[str], cwd: Path | None = None, env: dict[str, str] | None = None
 ) -> AsyncIterator[str]:
-    """See comfyui_installer._run_streamed (real-time progress; a disconnect kills the subprocess)."""
+    """Runs `argv`, yielding each output line as it comes (real-time progress); a disconnect kills the subprocess."""
     process = await asyncio.create_subprocess_exec(
         *argv,
         cwd=str(cwd) if cwd else None,
@@ -102,7 +101,7 @@ async def _run_streamed(
 
 
 def _proxied_env(proxy_url: str | None) -> dict[str, str] | None:
-    """See comfyui_installer._proxied_env."""
+    """The environment for git/pip to go through the admin's HTTP proxy, or None (inherit) without one."""
     if not proxy_url:
         return None
     return {
@@ -117,12 +116,12 @@ def _proxied_env(proxy_url: str | None) -> dict[str, str] | None:
 async def install_stream(
     repo: str | None = None, version: str | None = None, proxy_url: str | None = None
 ) -> AsyncIterator[dict]:
-    """Yields progress events like ollama_installer/comfyui_installer ({"status":...}, then {"done": True,...}
+    """Yields progress events like ollama_installer ({"status":...}, then {"done": True,...}
     or {"error":...}), relayed by routers/matricxon_admin.py. Cleans up a partial clone on failure.
 
     `repo`/`version` (MatricxonServerConfig.install_repo/install_version) override MATRICXON_GITHUB_REPO/
     MATRICXON_DEFAULT_VERSION; None uses the default. `proxy_url` routes the git clone and pip install
-    through the admin's HTTP proxy, as comfyui_installer.
+    through the admin's HTTP proxy.
     """
     repo = repo or MATRICXON_GITHUB_REPO
     version = version or MATRICXON_DEFAULT_VERSION

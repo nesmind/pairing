@@ -17,16 +17,13 @@ EXEMPT_PREFIXES = (
     "/api/settings/instances",
     "/api/settings/database",
     "/api/settings/proxy-mode",
-    # Ollama process state (ollama_process.py) exists only on the primary, as for ComfyUI below. Covers
+    # Ollama process state (ollama_process.py) exists only on the primary, as for sd-server below. Covers
     # local-mode start/stop/status and the old "Ollama concurrency" config, now under the same prefix.
     "/api/settings/ollama",
-    # ComfyUI process state (comfyui_service.py) exists only on the primary, like the other supervision entries.
-    # Without this, a start/stop/status load-balanced to a sibling would 400 (comfyui_service's IS_PRIMARY guard)
-    # or read/write that *sibling's* own comfyui.json.
-    "/api/settings/comfyui",
-    # stable-diffusion.cpp's sd-server: primary-only process state, as ComfyUI.
+    # stable-diffusion.cpp's sd-server: primary-only process state. Without this, a start/stop/status load-balanced to
+    # a sibling would 400 (sdcpp_service's IS_PRIMARY guard) or read/write that *sibling's* own tracking file.
     "/api/settings/sdcpp",
-    # Matricxon process state (matricxon_process.py) exists only on the primary, like Ollama/ComfyUI. It was
+    # Matricxon process state (matricxon_process.py) exists only on the primary, like Ollama/sd-server. It was
     # missing: a start/stop landing on a sibling 400'd with "Matricxon can only be managed from the primary
     # instance", so the button worked about half the time.
     "/api/settings/matricxon",

@@ -1,5 +1,5 @@
-"""A GitHub repo's tag list for Settings > External servers' version picker (shared available-versions
-endpoint in routers/ollama_admin, comfyui_admin, matricxon_admin). Helps fill the installers' install_repo/
+"""A GitHub repo's tag list for Settings > Inference engines' version picker (shared available-versions
+endpoint in routers/ollama_admin, matricxon_admin, sdcpp_admin). Helps fill the installers' install_repo/
 install_version overrides correctly (a typo'd tag otherwise fails several steps into an install).
 
 GitHub's unauthenticated REST API allows 60 requests/hour per IP, easily exhausted, so results are cached

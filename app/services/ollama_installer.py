@@ -1,5 +1,5 @@
 """Downloads and installs Ollama's official prebuilt release from GitHub: the "local" auto-install behind
-Settings > External servers' Install. Never builds from source (no Go) and never "latest": always the pinned
+Settings > Inference engines' Install. Never builds from source (no Go) and never "latest": always the pinned
 app.config.OLLAMA_PINNED_VERSION, for predictable restarts and reinstalls.
 
 Asset shape (checked against the real release): `ollama-linux-{arch}.tar.zst`, a Zstandard tarball with
@@ -24,7 +24,7 @@ logger = logging.getLogger("llama_chat")
 
 _DOWNLOAD_TIMEOUT = httpx.Timeout(None, connect=10.0)  # unbounded read: a multi-GB download
 
-# Every event carries step/total_steps/step_label with its status text, rendered by Settings > External servers
+# Every event carries step/total_steps/step_label with its status text, rendered by Settings > Inference engines
 # as a labeled "Step X of Y" panel (settings.js installServer) so admins see where a multi-minute install is.
 _TOTAL_STEPS = 2
 _STEP_DOWNLOAD = 1

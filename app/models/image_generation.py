@@ -1,4 +1,4 @@
-"""ImageGenerationJob model (lifecycle: app/services/image_generation_service.py; ComfyUI calls: comfyui_client.py)."""
+"""ImageGenerationJob model (lifecycle: app/services/image_generation_service.py; engine calls: sdcpp_client.py)."""
 
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
 
@@ -21,7 +21,7 @@ class ImageGenerationJob(Base):
     status = Column(String(20), nullable=False, default="queued")
     prompt = Column(Text, nullable=False)
     negative_prompt = Column(Text, nullable=True)
-    # ComfyUI checkpoint name used (from comfyui_client.list_checkpoints); not an FK, since ComfyUI owns the files.
+    # Image model file used (from sdcpp_client.list_checkpoints); not an FK, since the engine owns the files.
     checkpoint = Column(String(255), nullable=False)
     width = Column(Integer, nullable=False)
     height = Column(Integer, nullable=False)
@@ -32,8 +32,8 @@ class ImageGenerationJob(Base):
     # The source image is not stored (app.services.image_init).
     mode = Column(String(20), nullable=False, default="text_to_image", server_default="text_to_image")
     strength = Column(Float, nullable=True)
-    # ComfyUI's /prompt response id, for polling GET /history/{id}. Null until submit succeeds.
-    comfy_prompt_id = Column(String(64), nullable=True)
+    # The engine's own job id, for polling it. Null until submit succeeds.
+    engine_job_id = Column(String(64), nullable=True)
     # stable-diffusion.cpp only: log file size at job start, so progress reads only this job's lines
     # (app.services.sdcpp_progress). Null for other engines.
     log_offset = Column(Integer, nullable=True)

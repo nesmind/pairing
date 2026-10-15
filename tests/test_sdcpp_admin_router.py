@@ -1,9 +1,10 @@
 """Tests for routers/sdcpp_admin.py and image_engine_admin.py, called directly (see
-tests/test_comfyui_admin_router.py); start/stop logic is in test_sdcpp_service.py.
+tests/test_ollama_admin_router.py); start/stop logic is in test_sdcpp_service.py.
 """
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from app.config import SDCPP_GITHUB_REPO, SDCPP_PINNED_VERSION
 from app.routers import image_engine_admin, sdcpp_admin
@@ -94,22 +95,24 @@ async def test_status_and_install_defaults(db, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_image_engine_defaults_to_sdcpp_and_refuses_the_disabled_comfyui(db):
+async def test_image_engine_is_sdcpp_and_refuses_any_other(db):
     assert (await image_engine_admin.get_image_engine(db=db, _admin=None)).active_image_engine == "sdcpp"
-    with pytest.raises(HTTPException) as exc_info:
-        await image_engine_admin.set_image_engine(ImageEngineConfig(active_image_engine="comfyui"), db=db, _admin=None)
-    assert exc_info.value.status_code == 400
-    assert (await image_engine_admin.get_image_engine(db=db, _admin=None)).active_image_engine == "sdcpp"
+    with pytest.raises(ValidationError):
+        ImageEngineConfig(active_image_engine="comfyui")
 
 
 @pytest.mark.asyncio
-async def test_an_install_that_saved_comfyui_falls_back_to_sdcpp(db, monkeypatch):
+async def test_an_install_that_saved_comfyui_falls_back_to_sdcpp(db):
+    """ComfyUI was removed; a row an older version saved must not break the Images page."""
+    from app.models import SYSTEM_OWNER_ID, AppSetting
     from app.services import image_engine_service
 
-    monkeypatch.setattr(image_engine_service, "ENABLED_IMAGE_ENGINES", ("sdcpp", "comfyui"))
-    await image_engine_service.set_active_image_engine(db, "comfyui")
-    assert await image_engine_service.get_active_image_engine(db) == "comfyui"
-    monkeypatch.setattr(image_engine_service, "ENABLED_IMAGE_ENGINES", ("sdcpp",))
+    db.add(
+        AppSetting(
+            owner_id=SYSTEM_OWNER_ID, key=image_engine_service.ACTIVE_IMAGE_ENGINE_KEY, value={"engine": "comfyui"}
+        )
+    )
+    await db.commit()
     assert await image_engine_service.get_active_image_engine(db) == "sdcpp"
 
 

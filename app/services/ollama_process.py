@@ -1,14 +1,14 @@
-"""Starts/stops the local Ollama: the supervisor behind Settings > External servers > Ollama "local" mode.
+"""Starts/stops the local Ollama: the supervisor behind Settings > Inference engines > Ollama "local" mode.
 Unlike other admin toggles, a local-mode parameter can't apply live: Ollama reads OLLAMA_* only at startup,
 so a change kills and restarts it, interrupting every in-flight reply on every local instance sharing it (not
 a quiet reconcile like instance_service).
 
 Binary discovery and the `ollama serve` launch mirror scripts/start.sh (same PATH-then-fallback search,
 same OLLAMA_MODELS); this and that script are the only places that start Ollama. No PID file (unlike
-comfyui_process.py): the binary name "ollama" is distinctive, so `pgrep -x`/`pkill -x` work, simpler than
-comfyui_process's /proc/{pid}/cmdline (ComfyUI's generic "python" comm isn't distinctive).
+sdcpp_process.py): the binary name "ollama" is distinctive, so `pgrep -x`/`pkill -x` work, simpler than
+tracked_process's /proc/{pid}/cmdline check.
 
-Only the primary (app.config.IS_PRIMARY) may start/stop it, as comfyui_service.py.
+Only the primary (app.config.IS_PRIMARY) may start/stop it, as sdcpp_service.py.
 """
 
 import asyncio
@@ -38,12 +38,12 @@ _STOP_GRACE_SECONDS = 5.0
 _START_TIMEOUT_SECONDS = 20.0
 _HEALTH_CHECK_TIMEOUT = httpx.Timeout(3.0, connect=2.0)
 
-# As comfyui_service._lock: a Start/Stop must not interleave with a status poll or another start/stop.
+# As sdcpp_service._lock: a Start/Stop must not interleave with a status poll or another start/stop.
 _lock = asyncio.Lock()
 
 
 def _find_binary(binary_path: str | None = None) -> str | None:
-    """`binary_path` is the admin's override (Settings > External servers' "Already have Ollama installed
+    """`binary_path` is the admin's override (Settings > Inference engines' "Already have Ollama installed
     elsewhere?"): checked first and exclusively if given; if missing or not executable, falls through to the
     PATH/fixed-location search.
     """
@@ -59,7 +59,7 @@ def _find_binary(binary_path: str | None = None) -> str | None:
 
 
 def is_installed(binary_path: str | None = None) -> bool:
-    """Whether an `ollama` binary is reachable; Settings > External servers uses it to show Start/Stop or "Install"
+    """Whether an `ollama` binary is reachable; Settings > Inference engines uses it to show Start/Stop or "Install"
     (ollama_installer)."""
     return _find_binary(binary_path) is not None
 
@@ -161,7 +161,7 @@ async def _wait_until_healthy(timeout: float) -> bool:
 
 async def get_status(binary_path: str | None = None) -> OllamaServerStatus:
     """The synchronous pgrep check is the truth; the health ping is informational for the admin UI (as
-    comfyui_service.get_status). `pid` is always None: identity is by process *name*, not a tracked PID.
+    sdcpp_service.get_status). `pid` is always None: identity is by process *name*, not a tracked PID.
     `binary_path` is the admin's override (see _find_binary; routers/ollama_admin.py passes
     OllamaServerConfig.binary_path).
     """
@@ -173,7 +173,7 @@ async def get_status(binary_path: str | None = None) -> OllamaServerStatus:
 
 async def start(config: OllamaServerConfig, proxy_url: str | None = None) -> OllamaServerStatus:
     """POST.../start. RuntimeError if the binary isn't found or it doesn't come up healthy in time; ValueError if
-    not the primary (the router makes a 4xx/502; same as comfyui_service.start). `proxy_url`: the admin's HTTP proxy, if
+    not the primary (the router makes a 4xx/502; same as sdcpp_service.start). `proxy_url`: the admin's HTTP proxy, if
     any (_build_env).
     """
     if not IS_PRIMARY:

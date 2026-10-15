@@ -1,5 +1,5 @@
 """Generic "fewest in-flight requests, health-aware" host pool: the selection/cooldown/failover algorithm of
-ollama_pool.py, extracted when comfyui_pool.py needed the same for another backend. No engine or ComfyUI
+ollama_pool.py, extracted when another backend needed the same. No engine
 specifics here; the thin wrappers keep their public names (pick_host/mark_failure/...), so call sites are
 unchanged.
 """
@@ -18,8 +18,8 @@ T = TypeVar("T")
 
 async def ping_host(host: str, timeout: httpx.Timeout, path: str = "/") -> bool:
     """One-off reachability probe: a plain `GET`, success = 200. Used by HostPool.check_hosts (all configured hosts)
-    and admin endpoints checking a candidate URL typed into Settings > External servers before saving
-    (ollama_pool.check_host / comfyui_pool.check_host).
+    and admin endpoints checking a candidate URL typed into Settings > Inference engines before saving
+    (ollama_pool.check_host / sdcpp_pool.check_host).
     """
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -50,7 +50,7 @@ class _HostState:
 
 
 class HostPool:
-    """One independent pool; each engine and ComfyUI own one, sharing no state. `cooldown_seconds`: how long a
+    """One independent pool; each engine and the image engine own one, sharing no state. `cooldown_seconds`: how long a
     just-failed host sits out of rotation (mark_failure).
     """
 
@@ -173,7 +173,7 @@ class HostPool:
                     return
 
     async def call_with_failover(self, make_call: Callable[[str], Awaitable[T]]) -> T:
-        """Same retry/cooldown contract as stream_with_failover for a single request/response call (comfyui_client): no
+        """Same retry/cooldown contract as stream_with_failover for a single request/response call: no
         partial output exists, so retrying on another host is always safe.
         """
         tried: set[str] = set()

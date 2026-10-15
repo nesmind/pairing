@@ -8,7 +8,7 @@
  * 
  * Node: {id, label, category, x, y, w, h, detail: {server, title, location, body}}. `detail.server` is the process
  * running the step: "Browser" (chat.js), "pAIring" (this backend) or "ML engine" (the model-serving process, Ollama or
- * Matricxon per Admin settings > External servers; see inference_client/engine_service). It shows as a badge in the
+ * Matricxon per Admin settings > Inference engines; see inference_client/engine_service). It shows as a badge in the
  * detail panel.
  * 
  * Edge: {from, to, branch}. `branch: true` edges are side paths (RAG, attachments, error handling, live delivery,
@@ -175,7 +175,7 @@ const WORKFLOW_NODES = [
       server: APP_NAME,
       title: "Resolving the active engine and calling it",
       location: "app/services/inference_client.py — chat_stream",
-      body: "This is the step that actually hands the conversation off to the AI language model for inference. Reads engine_service.current_engine() — an admin-configurable choice, Admin settings > External servers' \"Active engine\" picker — and dispatches to that engine's own client unchanged: ollama_client.chat_stream (host failover via ollama_pool — local mode: the one Ollama process this app manages itself; remote mode: the admin's configured host list) or matricxon_client.chat_stream (same failover shape via matricxon_pool; in a Matricxon cluster the node is chosen in order: the one holding this chat in RAM, then one with the model already loaded (up to one extra request in flight), else the least busy; when every node with the model is busy, an idle one loads it in the background, cluster_routing.py). Either engine's own error type is normalized into one InferenceError here, so nothing downstream needs to know which engine actually served the request. If the model is a \"thinking\" model, raw reasoning tokens are stripped before anything is yielded upward (Ollama's own ollama_client only — Matricxon implements no thinking-capable architecture yet).",
+      body: "This is the step that actually hands the conversation off to the AI language model for inference. Reads engine_service.current_engine() — an admin-configurable choice, Admin settings > Inference engines' \"Active engine\" picker — and dispatches to that engine's own client unchanged: ollama_client.chat_stream (host failover via ollama_pool — local mode: the one Ollama process this app manages itself; remote mode: the admin's configured host list) or matricxon_client.chat_stream (same failover shape via matricxon_pool; in a Matricxon cluster the node is chosen in order: the one holding this chat in RAM, then one with the model already loaded (up to one extra request in flight), else the least busy; when every node with the model is busy, an idle one loads it in the background, cluster_routing.py). Either engine's own error type is normalized into one InferenceError here, so nothing downstream needs to know which engine actually served the request. If the model is a \"thinking\" model, raw reasoning tokens are stripped before anything is yielded upward (Ollama's own ollama_client only — Matricxon implements no thinking-capable architecture yet).",
     },
   },
   {

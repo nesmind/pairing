@@ -179,9 +179,9 @@ async function loadCheckpoints() {
   try {
     const { checkpoints } = await api("/api/image-generation/checkpoints");
     checkpointSelect.innerHTML = checkpoints.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
-    document.getElementById("comfyui-unavailable")?.classList.add("hidden");
+    document.getElementById("image-engine-unavailable")?.classList.add("hidden");
   } catch (_) {
-    document.getElementById("comfyui-unavailable")?.classList.remove("hidden");
+    document.getElementById("image-engine-unavailable")?.classList.remove("hidden");
   }
 }
 

@@ -156,7 +156,7 @@ async def test_connector_values(
 async def connector_summary(
     connector_id: str, db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)
 ):
-    """State, settings, model counts and usage, for the External servers tab."""
+    """State, settings, model counts and usage, for the Inference engines tab."""
     # Imported here for the same circular-import reason as _to_out.
     from app.services.connector_summary import ConnectorSummaryBuilder
 

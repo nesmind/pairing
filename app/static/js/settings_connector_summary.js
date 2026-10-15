@@ -1,4 +1,4 @@
-/* Settings > External servers: when the Active engine picker shows a connector (Cloudflare, RunPod), this panel
+/* Settings > Inference engines: when the Active engine picker shows a connector (Cloudflare, RunPod), this panel
    shows its state, account, model counts and usage (GET /api/connectors/{id}/summary). settings.js sends an
    "active-engine-shown" event with the picked engine each time it updates the page for the picker. */
 

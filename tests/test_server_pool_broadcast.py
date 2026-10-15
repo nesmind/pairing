@@ -81,7 +81,7 @@ async def test_broadcast_refresh_is_best_effort_and_reports_failures(monkeypatch
     monkeypatch.setattr(server_pool_broadcast, "_other_live_ports", lambda: [8001, 8002])
     monkeypatch.setattr(httpx, "AsyncClient", lambda **_kw: _FakeAsyncClient())
 
-    failures = await server_pool_broadcast.broadcast_refresh("/api/settings/comfyui/internal-refresh")
+    failures = await server_pool_broadcast.broadcast_refresh("/api/settings/ollama/internal-refresh")
 
     assert len(failures) == 1
     assert "8001" in failures[0]

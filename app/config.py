@@ -41,7 +41,7 @@ INSTANCE_INDEX = int(os.environ.get("PAIRING_INSTANCE_INDEX", "0"))
 IS_PRIMARY = INSTANCE_INDEX == 0
 
 # This build's version (a constant); shown in Settings > System and near the logo.
-APP_VERSION = "0.1"
+APP_VERSION = "1.5"  # the one place: login form, chat sidebar and Admin settings > System read it
 
 # The display name (a constant): single source for UI/API occurrences of "pAIring". Templates read it
 # via `templates.env.globals["app_name"]`, plain JS via base.html's `window.APP_NAME`.
@@ -103,10 +103,6 @@ AVATARS_DIR = Path(os.environ.get("AVATARS_DIR", BASE_DIR / "avatars"))
 AVATARS_DIR.mkdir(parents=True, exist_ok=True)
 MAX_AVATAR_MB = 2
 
-# Image generation (ComfyUI)
-# ComfyUI's HTTP API address (app/services/comfyui_client.py); a deployment fact. How to launch it
-# is an admin AppSetting (settings_service.get_comfyui_config).
-COMFYUI_HOST = os.environ.get("COMFYUI_HOST", "http://localhost:8188")
 # stable-diffusion.cpp's `sd-server` (default image engine, app/services/sdcpp_client.py); its port derives from this
 # URL.
 SDCPP_HOST = os.environ.get("SDCPP_HOST", "http://localhost:8189")
@@ -115,12 +111,10 @@ SDCPP_HOST = os.environ.get("SDCPP_HOST", "http://localhost:8189")
 IMAGES_DIR = Path(os.environ.get("IMAGES_DIR", BASE_DIR / "generated_images"))
 IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
-# Local-mode auto-install (Settings > External servers)
+# Local-mode auto-install (Settings > Inference engines)
 # Tested tags, never "latest": bump them on purpose after verifying. Read only by the installers in app/services/.
 OLLAMA_GITHUB_REPO = "ollama/ollama"
 OLLAMA_PINNED_VERSION = "v0.33.3"
-COMFYUI_GITHUB_REPO = "comfyanonymous/ComfyUI"
-COMFYUI_PINNED_VERSION = "v0.35.1"
 SDCPP_GITHUB_REPO = "leejet/stable-diffusion.cpp"
 SDCPP_PINNED_VERSION = "master-929-3f8527a"
 MATRICXON_GITHUB_REPO = "upupabit/matricxon"

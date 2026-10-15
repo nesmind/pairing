@@ -47,8 +47,8 @@ def available_capacity_gb() -> float:
 
 
 def has_avx2() -> bool:
-    """Whether the CPU supports AVX2. Prebuilt wheels (numpy, torch, ComfyUI's kornia) assume it; without
-    it they crash with SIGILL (seen on a 2011 CPU), so comfyui_installer gates on this before a big download.
+    """Whether the CPU supports AVX2. Prebuilt wheels (numpy, torch) often assume it; without it they
+    crash with SIGILL (seen on a 2011 CPU), so an installer can check this before a big download.
     Reads /proc/cpuinfo (Linux only); fails open (True) if unreadable.
     """
     try:

@@ -1,4 +1,4 @@
-"""Settings > External servers > Matricxon admin: local-mode params (max_loaded_models) or remote host list,
+"""Settings > Inference engines > Matricxon admin: local-mode params (max_loaded_models) or remote host list,
 and start/stop/status of the local process via its scripts. Same shape as ollama_admin.py, except
 Matricxon is a sibling checkout plus scripts, not a binary (matricxon_process.py).
 

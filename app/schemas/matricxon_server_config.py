@@ -1,4 +1,4 @@
-"""Schemas for the Matricxon process-supervision admin (Settings > External servers). Supervisor:
+"""Schemas for the Matricxon process-supervision admin (Settings > Inference engines). Supervisor:
 services/matricxon_process.py (runs the sibling checkout's scripts/start.sh|stop.sh, no binary);
 HTTP half: matricxon_pool.py / matricxon_client.py. Mirrors OllamaServerConfig with project_dir
 instead of binary_path (Matricxon is a Python venv launched by a `uvicorn` script).
@@ -84,7 +84,7 @@ class MatricxonServerConfig(BaseModel):
     admin_secret: str | None = None
     # Nodes that only vote (Matricxon node_kind "voter"): listed with the other nodes but never given chats.
     voter_hosts: list[str] = Field(default_factory=list, max_length=MAX_REMOTE_HOSTS)
-    # Overrides for matricxon_installer.install_stream; kept for parity with Ollama/ComfyUI but not functional
+    # Overrides for matricxon_installer.install_stream; kept for parity with Ollama but not functional
     # yet (Matricxon isn't published on GitHub).
     install_repo: str | None = None
     install_version: str | None = None

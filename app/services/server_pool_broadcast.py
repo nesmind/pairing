@@ -1,5 +1,5 @@
-"""Propagates a live engine/ComfyUI config change (mode switch or remote host edit) to every other local
-instance, the gap instance_db_broadcast fixed for database switches: ollama_pool/comfyui_pool.refresh_from_config
+"""Propagates a live engine or image-engine config change (mode switch or remote host edit) to every other local
+instance, the gap instance_db_broadcast fixed for database switches: ollama_pool/sdcpp_pool.refresh_from_config
 update only their own process's memory, so with instance_count > 1 every instance except the one that got the
 admin's save keeps routing through a stale host list until restart.
 

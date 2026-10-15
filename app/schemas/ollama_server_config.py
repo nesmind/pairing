@@ -1,4 +1,4 @@
-"""Schemas for the Ollama process-supervision admin (Settings > External servers). Supervisor:
+"""Schemas for the Ollama process-supervision admin (Settings > Inference engines). Supervisor:
 services/ollama_process.py (`ollama serve`); HTTP half: ollama_pool.py (local: managed process; remote:
 `remote_hosts`, load-balanced), which this config only chooses between. Replaces the old
 OllamaConcurrency schemas: num_parallel is now one of several local-mode params.
@@ -11,13 +11,13 @@ from app.schemas.common import MAX_REMOTE_HOSTS, ServerMode
 
 class OllamaServerConfig(BaseModel):
     """Admin-configured. Local-mode fields are optional: None = let Ollama use its default. Explicit fields
-    (not a free-text arg string like ComfyUI's `extra_args`) since Ollama's env vars are a small, known set.
+    (not a free-text arg string) since Ollama's env vars are a small, known set.
     """
 
     mode: ServerMode = "local"
     remote_hosts: list[str] = Field(default_factory=list, max_length=MAX_REMOTE_HOSTS)
     # For an Ollama installed in a non-standard place instead of "Install from GitHub"; ollama_process._find_binary
-    # checks it before PATH and fixed locations. None = auto-detect. One field (not ComfyUI's python/main pair)
+    # checks it before PATH and fixed locations. None = auto-detect. One field
     # since the binary is self-contained.
     binary_path: str | None = None
     # Where pulled models go (OLLAMA_MODELS). None = pAIring's own models/ folder (ollama_process._build_env),
@@ -30,7 +30,7 @@ class OllamaServerConfig(BaseModel):
     max_loaded_models: int | None = None
     context_length: int | None = None
     # Overrides for ollama_installer.install_stream. None = app.config.OLLAMA_GITHUB_REPO/OLLAMA_PINNED_VERSION;
-    # set to pin another fork or release (Settings > External servers' "Use a different version or repo").
+    # set to pin another fork or release (Settings > Inference engines' "Use a different version or repo").
     install_repo: str | None = None
     install_version: str | None = None
 
@@ -55,7 +55,7 @@ class OllamaAutoDetectedPath(BaseModel):
 
 
 class OllamaServerStatus(BaseModel):
-    """GET.../status, same shape as ComfyUIStatus. `pid`/`healthy` are None when not running. `installed`
+    """GET.../status, same shape as SdCppStatus. `pid`/`healthy` are None when not running. `installed`
     (ollama_process.is_installed) is independent of `running`: the binary may be present but stopped.
     """
 

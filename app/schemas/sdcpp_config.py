@@ -1,6 +1,6 @@
 """Schemas for the stable-diffusion.cpp image engine (Settings > Image). Supervisor: services/sdcpp_service.py
 (`sd-server`); HTTP half: sdcpp_client.py / sdcpp_pool.py (local: app.config.SDCPP_HOST; remote:
-`remote_hosts`). Mirrors schemas/comfyui_config.
+`remote_hosts`).
 """
 
 from typing import Literal
@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.common import MAX_REMOTE_HOSTS, ServerMode
 
-ImageEngineName = Literal["sdcpp", "comfyui"]
+ImageEngineName = Literal["sdcpp"]
 # Which prebuilt release to fetch ("auto" picks Vulkan with a GPU + Vulkan loader), or "source": build with
 # CMake (Linux; sdcpp_source_build).
 SdCppBuild = Literal["auto", "cpu", "vulkan", "rocm", "source"]
@@ -37,7 +37,8 @@ class SdCppConfig(BaseModel):
 
     @model_validator(mode="after")
     def _fall_back_to_local_when_remote_has_no_hosts(self) -> "SdCppConfig":
-        """See ComfyUIProcessConfig's validator."""
+        """Like OllamaServerConfig's validator: "remote" with no hosts is never useful, and the local UI has no Save
+        button while nothing is installed, so this is the way back."""
         if self.mode == "remote" and not self.remote_hosts:
             self.mode = "local"
         return self

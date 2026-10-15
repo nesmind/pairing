@@ -1,4 +1,4 @@
-"""The summary the External servers tab shows when a connector engine is picked (GET /api/connectors/{id}/summary):
+"""The summary the Inference engines tab shows when a connector engine is picked (GET /api/connectors/{id}/summary):
 its state, non-secret settings, model counts and, where the provider reports it, usage."""
 
 import logging

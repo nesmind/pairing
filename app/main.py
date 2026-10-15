@@ -22,7 +22,6 @@ from app.routers import (
     channels,
     chat,
     cluster_admin,
-    comfyui_admin,
     connectors,
     context_window_admin,
     conversations,
@@ -128,7 +127,6 @@ app.include_router(notes.router)
 app.include_router(health.router)
 app.include_router(instances_admin.router)
 app.include_router(image_generation.router)
-app.include_router(comfyui_admin.router)
 app.include_router(image_engine_admin.router)
 app.include_router(image_model_admin.router)
 app.include_router(sdcpp_admin.router)

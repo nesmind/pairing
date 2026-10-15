@@ -4,7 +4,7 @@ with its cross-instance gap): the ImageGenerationJob row is all a poller reads, 
 
 Cancellation is DB-driven: the cancel endpoint flips the row to "cancelled" (any instance can), and the
 running instance notices on its next poll, tells the engine to stop (stable-diffusion.cpp
-/sdcpp/v1/jobs/{id}/cancel, ComfyUI /interrupt) and exits without writing a result.
+/sdcpp/v1/jobs/{id}/cancel) and exits without writing a result.
 """
 
 import asyncio
@@ -20,16 +20,12 @@ from app.config import IMAGES_DIR
 from app.database import AsyncSessionLocal
 from app.models import ImageGenerationJob
 from app.schemas import ImageGenerationRequest
-from app.services import comfyui_client, image_engine_service, image_init, sdcpp_client, sdcpp_progress
-from app.services.comfyui_client import ComfyUIError
+from app.services import image_engine_service, image_init, sdcpp_client, sdcpp_progress
 from app.services.sdcpp_client import SdCppError
 
 logger = logging.getLogger("llama_chat")
 
 _POLL_INTERVAL_SECONDS = 2.0
-# Bounds so a stuck engine job doesn't stay "running" forever: ~5 minutes for ComfyUI, ~30 for
-# stable-diffusion.cpp (CPU-only runs can take many minutes).
-_MAX_POLL_ATTEMPTS = 150
 
 # As reply_generation_service._background_generation_tasks: asyncio keeps only a weak reference to a bare
 # create_task result, so the task could be garbage-collected mid-run.
@@ -81,8 +77,7 @@ async def _run_job(job_id: str) -> None:
 
         engine = await image_engine_service.get_active_image_engine(db)
         job.status = "running"
-        if engine == "sdcpp":
-            job.log_offset = sdcpp_progress.current_offset()
+        job.log_offset = sdcpp_progress.current_offset()
         await db.commit()
 
         params = {
@@ -101,13 +96,10 @@ async def _run_job(job_id: str) -> None:
             await _mark_error(db, job, str(exc))
             return
         try:
-            if engine == "sdcpp":
-                image_bytes = await _sdcpp_image_bytes(db, job, params)
-            else:
-                image_bytes = await _comfyui_image_bytes(db, job, params)
+            image_bytes = await _sdcpp_image_bytes(db, job, params)
         except _JobCancelled:
             return
-        except (SdCppError, ComfyUIError, _GenerationFailed) as exc:
+        except (SdCppError, _GenerationFailed) as exc:
             await _mark_error(db, job, str(exc))
             return
         if await _is_cancelled(db, job):
@@ -161,7 +153,7 @@ async def _sdcpp_image_bytes(db: AsyncSession, job: ImageGenerationJob, params: 
     on builds without cancel_generating (the engine is shared, never restarted for this) and its result is discarded.
     """
     host, engine_job_id = await sdcpp_client.submit_job(params)
-    job.comfy_prompt_id = engine_job_id  # the engine's own job id
+    job.engine_job_id = engine_job_id
     await db.commit()
     deadline = time.monotonic() + (await image_engine_service.get_sdcpp_config(db)).timeout_minutes * 60
     while time.monotonic() < deadline:
@@ -177,39 +169,6 @@ async def _sdcpp_image_bytes(db: AsyncSession, job: ImageGenerationJob, params: 
         await asyncio.sleep(_POLL_INTERVAL_SECONDS)
     await sdcpp_client.cancel_job(host, engine_job_id)
     raise _GenerationFailed("Generation timed out.")
-
-
-async def _comfyui_image_bytes(db: AsyncSession, job: ImageGenerationJob, params: dict) -> bytes:
-    """Submits to ComfyUI, polls /history, fetches the PNG. Raises ComfyUIError/_GenerationFailed."""
-    host, prompt_id = await comfyui_client.submit_job(params)
-    job.comfy_prompt_id = prompt_id
-    await db.commit()
-
-    history = await _poll_until_done(db, job, host, prompt_id)
-    if history is None:
-        raise _GenerationFailed("Generation timed out.")
-    try:
-        image_entry = history["outputs"][comfyui_client.SAVE_IMAGE_NODE_ID]["images"][0]
-        return await comfyui_client.fetch_image_bytes(
-            host, image_entry["filename"], image_entry.get("subfolder", ""), image_entry.get("type", "output")
-        )
-    except (ComfyUIError, KeyError, IndexError) as exc:
-        raise _GenerationFailed(f"Could not retrieve the generated image: {exc}") from exc
-
-
-async def _poll_until_done(db: AsyncSession, job: ImageGenerationJob, host: str, prompt_id: str) -> dict | None:
-    """Bounded polling of GET /history/{id} on the host the job was submitted to (no failover, see comfyui_client;
-    no websocket progress yet). None if _MAX_POLL_ATTEMPTS runs out; raises _JobCancelled on user cancel.
-    """
-    for _ in range(_MAX_POLL_ATTEMPTS):
-        await asyncio.sleep(_POLL_INTERVAL_SECONDS)
-        if await _is_cancelled(db, job):
-            await comfyui_client.cancel_job(host, prompt_id)
-            raise _JobCancelled
-        history = await comfyui_client.get_history(host, prompt_id)
-        if history is not None:
-            return history
-    return None
 
 
 async def _mark_error(db: AsyncSession, job: ImageGenerationJob, message: str) -> None:

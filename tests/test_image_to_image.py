@@ -99,7 +99,7 @@ def test_init_params_is_empty_for_text_to_image_and_refuses_other_engines():
     assert image_init.init_params(ImageGenerationJob(id="j2", mode="text_to_image"), "sdcpp") == {}
     image_init.stash("j3", _b64())
     with pytest.raises(ValueError, match="stable-diffusion.cpp"):
-        image_init.init_params(ImageGenerationJob(id="j3", mode="image_to_image", strength=0.5), "comfyui")
+        image_init.init_params(ImageGenerationJob(id="j3", mode="image_to_image", strength=0.5), "other")
     assert "j3" not in image_init._pending
 
 

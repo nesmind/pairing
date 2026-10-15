@@ -6,7 +6,7 @@ timeout are in tests/test_chat_settings_service.py (moved to chat_settings_servi
 import pytest
 
 from app.models import SYSTEM_OWNER_ID, AppSetting
-from app.schemas import ComfyUIProcessConfig, OllamaServerConfig
+from app.schemas import OllamaServerConfig
 from app.services import engine_service, settings_service
 
 
@@ -77,60 +77,6 @@ async def test_get_ollama_server_config_self_heals_an_already_stuck_remote_row(d
     config = await settings_service.get_ollama_server_config(db)
 
     assert config.mode == "local"
-
-
-@pytest.mark.asyncio
-async def test_get_comfyui_config_defaults_mode_and_remote_hosts_for_a_pre_existing_row(db):
-    """A row saved before mode/remote_hosts existed (the three original path fields) must load, with the new fields
-    defaulted, not crash or drop an old value."""
-    db.add(
-        AppSetting(
-            owner_id=SYSTEM_OWNER_ID,
-            key=settings_service.COMFYUI_CONFIG_KEY,
-            value={"python_path": "/opt/venv/bin/python", "main_py_path": "/opt/ComfyUI/main.py", "extra_args": None},
-        )
-    )
-    await db.commit()
-
-    config = await settings_service.get_comfyui_config(db)
-
-    assert config.python_path == "/opt/venv/bin/python"
-    assert config.mode == "local"
-    assert config.remote_hosts == []
-
-
-@pytest.mark.asyncio
-async def test_set_comfyui_config_round_trips_remote_mode(db):
-    await settings_service.set_comfyui_config(
-        db, ComfyUIProcessConfig(mode="remote", remote_hosts=["http://10.0.0.1:8188"])
-    )
-
-    config = await settings_service.get_comfyui_config(db)
-
-    assert config.mode == "remote"
-    assert config.remote_hosts == ["http://10.0.0.1:8188"]
-
-
-def test_comfyui_config_falls_back_to_local_when_remote_has_no_hosts():
-    # See test_ollama_server_config_falls_back_to_local_when_remote_has_no_hosts: same regression and fix on
-    # ComfyUIProcessConfig.
-    config = ComfyUIProcessConfig(mode="remote", remote_hosts=[])
-    assert config.mode == "local"
-
-
-@pytest.mark.asyncio
-async def test_set_comfyui_config_normalizes_remote_with_no_hosts_to_local(db):
-    await settings_service.set_comfyui_config(db, ComfyUIProcessConfig(mode="remote", remote_hosts=[]))
-
-    config = await settings_service.get_comfyui_config(db)
-
-    assert config.mode == "local"
-
-
-# default model (per-engine)
-# Bug found: one shared "default_model" key meant switching engines had to wipe it (the removed
-# engine_switch_service), losing the admin's preference. default_model_key scopes it per engine, so neither a switch nor
-# a restart loses it.
 
 
 @pytest.fixture(autouse=True)

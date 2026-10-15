@@ -1,5 +1,5 @@
 """Settings > Image > stable-diffusion.cpp admin: launch config for `sd-server` and start/stop/status
-(app/services/sdcpp_service.py). Same shape as comfyui_admin.py.
+(app/services/sdcpp_service.py). Same shape as ollama_admin.py.
 """
 
 import json

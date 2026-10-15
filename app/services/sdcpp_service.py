@@ -1,5 +1,5 @@
 """stable-diffusion.cpp supervision (Settings > Image): start/stop/status of `sd-server`. Same design as
-comfyui_service: explicit start/stop, primary only, never auto-started/stopped with the app (see its docstring).
+ollama_process: explicit start/stop, primary only, never auto-started/stopped with the app (see its docstring).
 """
 
 import asyncio

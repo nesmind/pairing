@@ -87,7 +87,7 @@ class ConnectorUsage(BaseModel):
 
 
 class ConnectorSummary(BaseModel):
-    """GET /api/connectors/{id}/summary: what the External servers tab shows for a connector engine."""
+    """GET /api/connectors/{id}/summary: what the Inference engines tab shows for a connector engine."""
 
     id: str
     display_name: str

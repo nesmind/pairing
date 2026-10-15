@@ -1,5 +1,5 @@
 """Settings > System > Outbound HTTP proxy: the admin-configured IP:port (optional username/password) for
-internet-facing downloads: Ollama/ComfyUI installers (ollama_installer.py, comfyui_installer.py) and, in
+internet-facing downloads: Ollama, Matricxon and stable-diffusion.cpp installers (ollama_installer.py, ...) and, in
 local mode, Ollama's model pulls (ollama_process.py _build_env). Unrelated to proxy_admin.py, which
 load-balances incoming requests across local instances ("Local pAIring server mode" in the UI).
 """

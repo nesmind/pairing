@@ -11,7 +11,6 @@ from app.database import AsyncSessionLocal, init_db
 from app.models import User
 from app.services import (
     cluster_membership,
-    comfyui_pool,
     connector_config_cache,
     engine_service,
     image_engine_service,
@@ -86,13 +85,11 @@ async def run_startup_tasks() -> None:
 
         await db.commit()
 
-        # Primes the engine/ComfyUI host pools (Settings > External servers) from what's saved. Unlike the
+        # Primes the engine and image-engine host pools (Settings > Inference engines) from what's saved. Unlike the
         # instance-count/proxy-mode priming below, this runs on *every* instance: each routes its own chat/image
-        # requests
-        # through these pools (ollama_pool/comfyui_pool) and needs its cache warm before the connectivity check after
-        # this block.
+        # requests through these pools (ollama_pool/sdcpp_pool) and needs its cache warm before the connectivity check
+        # after this block.
         ollama_pool.refresh_from_config(await settings_service.get_ollama_server_config(db))
-        comfyui_pool.refresh_from_config(await settings_service.get_comfyui_config(db))
         sdcpp_pool.refresh_from_config(await image_engine_service.get_sdcpp_config(db))
         matricxon_config = await settings_service.get_matricxon_server_config(db)
         matricxon_pool.refresh_from_config(matricxon_config)
@@ -151,9 +148,8 @@ async def run_startup_tasks() -> None:
                 )
 
             # Same restart gap as the reply sweep, for jobs left "queued"/"running" (mark_interrupted_jobs_as_errored).
-            # ComfyUI itself is NOT stopped (it survives app restarts, see comfyui_service.py); only this app's
-            # bookkeeping
-            # of a job it can no longer track is corrected.
+            # The image engine itself is NOT stopped (it survives app restarts, see sdcpp_service.py); only this app's
+            # bookkeeping of a job it can no longer track is corrected.
             interrupted_jobs = await mark_interrupted_jobs_as_errored(db)
             if interrupted_jobs:
                 logger.info(

@@ -1,8 +1,7 @@
-"""Tests for services/matricxon_installer.py, the twin of tests/test_comfyui_installer.py (same approach: every
-git/venv/pip call goes through a fake asyncio.create_subprocess_exec; no network, clone or pip install).
-Differences from ComfyUI's: a `.venv` directory, a saved project_dir (not python_path/main_py_path) in the
-completion event, no GPU/--cpu extra_args (Matricxon is CPU-only), no AVX2 gate (see install_stream) and an
-is_installed that delegates to matricxon_process, not a completion marker.
+"""Tests for services/matricxon_installer.py: every git/venv/pip call goes through a fake
+asyncio.create_subprocess_exec; no network, clone or pip install. Checked: a `.venv` directory, a saved project_dir
+in the completion event, no AVX2 gate (see install_stream) and an is_installed that delegates to matricxon_process,
+not a completion marker.
 """
 
 import shutil
@@ -72,9 +71,9 @@ async def test_install_stream_blocks_on_an_unsupported_os(monkeypatch, tmp_path)
     assert called == []
 
 
-def test_install_stream_has_no_avx2_gate_unlike_comfyui_installer():
-    """An earlier version copied comfyui_installer's AVX2 gate, refusing every reinstall on a working machine (Sandy
-    Bridge, no AVX2); see install_stream for why Matricxon's dependencies don't need it (ComfyUI's gate stays).
+def test_install_stream_has_no_avx2_gate():
+    """An earlier version had an AVX2 gate (copied from the removed ComfyUI installer), refusing every reinstall on a
+    working machine (Sandy Bridge, no AVX2); see install_stream for why Matricxon's dependencies don't need it.
     Asserts the import is absent rather than proving a negative through behavior.
     """
     assert not hasattr(matricxon_installer, "has_avx2")
@@ -109,8 +108,7 @@ class _FakeSubprocess:
 
 def _fake_clone_and_venv(tmp_path):
     """Shared fake create_subprocess_exec: git creates the target directory + requirements.txt, and venv creation
-    produces the interpreter install_stream's pip step invokes (the idiom of test_comfyui_installer's helper, inlined
-    there).
+    produces the interpreter install_stream's pip step invokes.
     """
 
     async def fake_create_subprocess_exec(*argv, **_kwargs):

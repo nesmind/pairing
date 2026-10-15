@@ -1,4 +1,4 @@
-"""Tests for the External servers connector summary: services/connector_summary.py (GET /api/connectors/{id}/summary)
+"""Tests for the Inference engines connector summary: services/connector_summary.py (GET /api/connectors/{id}/summary)
 and services/cloudflare_usage.py (token status and Workers AI usage from Cloudflare's analytics). No network."""
 
 import json

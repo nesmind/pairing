@@ -165,7 +165,7 @@ async def check_health() -> dict[str, bool]:
 
 
 async def account_details() -> list[tuple[str, str]]:
-    """Key status, free-model requests today and credit use, for the External servers summary."""
+    """Key status, free-model requests today and credit use, for the Inference engines summary."""
     config = connector_config_cache.get_config(_CONNECTOR_ID)
     try:
         resp = await key_info(config)

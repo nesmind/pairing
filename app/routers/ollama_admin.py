@@ -1,6 +1,6 @@
-"""Settings > External servers > Ollama admin: local-mode params (num_parallel/keep_alive/max_loaded_models/
+"""Settings > Inference engines > Ollama admin: local-mode params (num_parallel/keep_alive/max_loaded_models/
 context_length) or remote host list, and start/stop/status of the local `ollama serve`
-(app/services/ollama_process.py). Same shape as comfyui_admin.py.
+(app/services/ollama_process.py). Same shape as sdcpp_admin.py.
 
 Not to be confused with app/services/ollama_admin.py (model pull/delete). Replaces the old
 "Ollama concurrency" endpoints (num_parallel only, restarted on save).

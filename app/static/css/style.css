@@ -92,3 +92,10 @@ body {
   box-sizing: border-box;
   border: 2px solid rgb(226 232 240);
 }
+
+/* Active engine picker (engine_picker.js): a Cloud badge on the highlighted row, white on the selection colour. */
+.engine-badge.engine-badge-on {
+  color: #fff;
+  border-color: rgb(255 255 255 / 0.6);
+  background-color: rgb(255 255 255 / 0.12);
+}

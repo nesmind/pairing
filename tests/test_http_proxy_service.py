@@ -1,5 +1,5 @@
 """Tests for services/http_proxy_service.py and schemas/http_proxy_config.py's HttpProxyConfig.proxy_url;
-the round-trip convention of tests/test_settings_service.py's get/set_comfyui_config.
+the round-trip convention of tests/test_settings_service.py's round trips.
 """
 
 import pytest

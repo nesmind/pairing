@@ -1,5 +1,5 @@
 """Process primitives for the stable-diffusion.cpp `sd-server` subprocess: tracking file and spawn. Liveness and
-termination reuse comfyui_process (they need only a pid and a path in its cmdline).
+termination come from tracked_process (they need only a pid and a path in its cmdline).
 """
 
 import json
@@ -11,8 +11,8 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from app.config import DATA_DIR, SDCPP_HOST
-from app.services.comfyui_process import is_alive, terminate
 from app.services.image_companions import ImageCompanions
+from app.services.tracked_process import is_alive, terminate
 
 __all__ = ["is_alive", "terminate", "read_tracking", "write_tracking", "spawn", "StartupError"]
 

@@ -167,7 +167,7 @@ async def rag_availability(db: AsyncSession = Depends(get_db), _user: User = Dep
         return RagAvailability(
             available=False,
             reason=f"{engine.display_name} doesn't support embeddings — the knowledge base needs a different "
-            "active engine (see External servers/Connectors).",
+            "active engine (see Inference engines/Connectors).",
         )
     if (await get_default_embedding_model(db)) is None:
         return RagAvailability(available=False, reason="No embedding model found yet — ask admin.")
@@ -252,7 +252,7 @@ async def change_password(
 
 @router.get("/system-info", response_model=SystemInfo)
 def system_info(_admin: User = Depends(require_admin)):
-    """Admin snapshot for the System tab: hardware and app version. (Engine/ComfyUI hosts are on the External
+    """Admin snapshot for the System tab: hardware and app version. (Engine and image-engine hosts are on the External
     servers tab, users in routers/users.py.)
     """
     return SystemInfo(

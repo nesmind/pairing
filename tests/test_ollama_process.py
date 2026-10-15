@@ -1,6 +1,6 @@
-"""Tests for services/ollama_process.py, the local Ollama supervisor behind Settings > External servers. A real
+"""Tests for services/ollama_process.py, the local Ollama supervisor behind Settings > Inference engines. A real
 stop/start isn't exercised here (verified live with a real process and curl, like instance_process.py and
-comfyui_process.py's tests); subprocess/pgrep/pkill and httpx are patched.
+sdcpp_process.py's tests); subprocess/pgrep/pkill and httpx are patched.
 """
 
 import subprocess

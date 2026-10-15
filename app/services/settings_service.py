@@ -1,5 +1,5 @@
 """Per-user and system-wide settings: default model, default generation params, admin RAG upload limits,
-local-instances/proxy-mode knobs and how to launch ComfyUI (read by comfyui_service.py). Reply-generation
+local-instances/proxy-mode knobs and the Ollama and Matricxon server configs. Reply-generation
 settings (title mode, channel delivery, reply timeout) are in chat_settings_service.py (file-size rule); the
 UI theme in theme_service.py; the model catalog in model_catalog_service.py; accounts in user_service.py.
 This file is the plain key/value half of the Settings page.
@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import DEFAULT_GENERATION_PARAMS, DEFAULT_MODEL
 from app.models import SYSTEM_OWNER_ID, AppSetting, User
-from app.schemas import ComfyUIProcessConfig, MatricxonServerConfig, OllamaServerConfig, RagLimits
+from app.schemas import MatricxonServerConfig, OllamaServerConfig, RagLimits
 from app.services import engine_service, secret_crypto
 
 DEFAULTS_KEY = "default_generation_params"
@@ -17,7 +17,6 @@ DEFAULT_MODEL_KEY = "default_model"
 RAG_LIMITS_KEY = "rag_limits"
 INSTANCE_COUNT_KEY = "instance_count"
 PROXY_MODE_KEY = "proxy_mode"
-COMFYUI_CONFIG_KEY = "comfyui_config"
 OLLAMA_SERVER_CONFIG_KEY = "ollama_server_config"
 MATRICXON_SERVER_CONFIG_KEY = "matricxon_server_config"
 
@@ -147,25 +146,6 @@ async def set_proxy_mode(db: AsyncSession, mode: str) -> None:
     value = {"mode": mode}
     if row is None:
         db.add(AppSetting(owner_id=SYSTEM_OWNER_ID, key=PROXY_MODE_KEY, value=value))
-    else:
-        row.value = value
-    await db.commit()
-
-
-async def get_comfyui_config(db: AsyncSession) -> ComfyUIProcessConfig:
-    """How to launch ComfyUI here (read by comfyui_service.start and the Settings page). System-wide, unset (all None)
-    until saved once."""
-    row = await db.get(AppSetting, (SYSTEM_OWNER_ID, COMFYUI_CONFIG_KEY))
-    if row:
-        return ComfyUIProcessConfig(**row.value)
-    return ComfyUIProcessConfig()
-
-
-async def set_comfyui_config(db: AsyncSession, config: ComfyUIProcessConfig) -> None:
-    row = await db.get(AppSetting, (SYSTEM_OWNER_ID, COMFYUI_CONFIG_KEY))
-    value = config.model_dump()
-    if row is None:
-        db.add(AppSetting(owner_id=SYSTEM_OWNER_ID, key=COMFYUI_CONFIG_KEY, value=value))
     else:
         row.value = value
     await db.commit()

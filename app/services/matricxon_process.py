@@ -1,10 +1,10 @@
 """Starts/stops the local Matricxon via its scripts/start.sh and scripts/stop.sh: the supervisor behind
-Settings > External servers > Matricxon "local" mode. Unlike Ollama (one binary, ollama_process.py) or
-ComfyUI (a `python main.py` this app tracks, comfyui_process.py), Matricxon is a sibling Python project
+Settings > Inference engines > Matricxon "local" mode. Unlike Ollama (one binary, ollama_process.py) or
+stable-diffusion.cpp (an `sd-server` this app tracks, sdcpp_process.py), Matricxon is a sibling Python project
 with its own venv whose scripts/start.sh manages a PID file (`run/matricxon.pid` in the project), read here
 directly instead of reinventing tracking.
 
-Only the primary (app.config.IS_PRIMARY) may start/stop it, as comfyui_service.py.
+Only the primary (app.config.IS_PRIMARY) may start/stop it, as sdcpp_service.py.
 """
 
 import asyncio
@@ -31,13 +31,13 @@ _DEFAULT_PROJECT_DIR = BASE_DIR.parent / "matricxon"
 _START_TIMEOUT_SECONDS = 30.0
 _HEALTH_CHECK_TIMEOUT = httpx.Timeout(3.0, connect=2.0)
 
-# As ollama_process._lock / comfyui_service._lock: a Start/Stop must not interleave with a status poll or another
+# As ollama_process._lock / sdcpp_service._lock: a Start/Stop must not interleave with a status poll or another
 # start/stop.
 _lock = asyncio.Lock()
 
 
 def _find_project_dir(project_dir: str | None = None) -> Path | None:
-    """`project_dir` is the admin's override (Settings > External servers' "Already have Matricxon installed
+    """`project_dir` is the admin's override (Settings > Inference engines' "Already have Matricxon installed
     elsewhere?"): used exclusively if it looks like a checkout (has scripts/start.sh), else the sibling-directory
     default (like ollama_process._find_binary).
     """
@@ -231,7 +231,7 @@ def _start(project_dir: Path, config: MatricxonServerConfig, proxy_url: str | No
 
 def _stop(project_dir: Path) -> None:
     # scripts/stop.sh already waits gracefully then SIGKILLs; no polling loop like
-    # ollama_process._stop/comfyui_process.terminate's raw signals.
+    # ollama_process._stop/tracked_process.terminate's raw signals.
     if not _is_running(project_dir):
         return
     result = _run_script(project_dir, "stop.sh", {**os.environ})

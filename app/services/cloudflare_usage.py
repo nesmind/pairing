@@ -1,4 +1,4 @@
-"""What the External servers tab shows about the Cloudflare account: token status and Workers AI usage
+"""What the Inference engines tab shows about the Cloudflare account: token status and Workers AI usage
 (Cloudflare's GraphQL analytics, dataset aiInferenceAdaptiveGroups). Usage needs the token to also have the
 "Account Analytics: Read" permission; without it the tab says so instead."""
 

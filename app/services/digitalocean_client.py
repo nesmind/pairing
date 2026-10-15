@@ -138,7 +138,7 @@ async def check_health() -> dict[str, bool]:
 
 
 async def rate_limit_details() -> list[tuple[str, str]]:
-    """The hourly rate limit DigitalOcean reports in response headers, for the External servers summary."""
+    """The hourly rate limit DigitalOcean reports in response headers, for the Inference engines summary."""
     try:
         resp = await get_models(connector_config_cache.get_config(_CONNECTOR_ID))
     except httpx.HTTPError:

@@ -24,7 +24,7 @@
     </div>
   </header>
 
-  <!-- Tab nav: /settings (every account, admins too) has Models, Behavior, Knowledge and Account; /admin-settings (admins only) has Models, System, External servers, MCP servers, Users and Channels. Panels not listed for a page stay in the DOM, hidden and unreachable, so settings.js still finds the elements it binds. -->
+  <!-- Tab nav: /settings (every account, admins too) has Models, Behavior, Knowledge and Account; /admin-settings (admins only) has Models, System, Inference engines, MCP servers, Users and Channels. Panels not listed for a page stay in the DOM, hidden and unreachable, so settings.js still finds the elements it binds. -->
   <div class="border-b border-slate-800 px-4">
     <nav class="mx-auto max-w-3xl flex gap-1 -mb-px">
       <button type="button" data-tab="model"
@@ -38,7 +38,7 @@
       </button>
       <button type="button" data-tab="external-servers"
         class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
-        External servers
+        Inference engines
       </button>
       <button type="button" data-tab="mcp-servers"
         class="settings-tab-btn border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-300">
@@ -94,7 +94,7 @@
           </p>
 
           {% if is_admin %}
-          <!-- Admin-only, three steps: search Hugging Face for a repo, pick a repo to see its GGUF files (both read-only; app/services/huggingface_client.py), then Add a file, which re-verifies server-side instead of trusting the earlier round trip (extended_model_catalog_service.add_model). All three use the admin-configured outbound proxy, as the Ollama/ComfyUI installers (Admin settings > System), and need internet or that proxy, except Add for a tag already installed here, which skips the network. -->
+          <!-- Admin-only, three steps: search Hugging Face for a repo, pick a repo to see its GGUF files (both read-only; app/services/huggingface_client.py), then Add a file, which re-verifies server-side instead of trusting the earlier round trip (extended_model_catalog_service.add_model). All three use the admin-configured outbound proxy, as the Ollama and stable-diffusion.cpp installers (Admin settings > System), and need internet or that proxy, except Add for a tag already installed here, which skips the network. -->
           <div class="rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
             <label class="block text-xs font-medium text-slate-400">Search Hugging Face</label>
             <div class="flex items-center gap-2">
@@ -128,7 +128,7 @@
       <section class="space-y-4">
         <h2 class="text-sm font-semibold text-slate-200">Installed models</h2>
         {% if admin_page %}
-        <p class="text-xs text-slate-500 -mt-2">Models available for the active inference engine — the one you select on external servers tab becomes the default engine for the UI. Please note that each inference engine has its own separate models repository.</p>
+        <p class="text-xs text-slate-500 -mt-2">Models available for the active inference engine — the one you select on the Inference engines tab becomes the default engine for the UI. Please note that each inference engine has its own separate models repository.</p>
         <!-- Shown by settings_quorum.js while the Matricxon cluster has no quorum (downloads need it). -->
         <p id="model-quorum-warning" class="hidden rounded-lg border border-red-800/60 bg-red-900/20 px-4 py-2 text-xs text-red-200">
           The Matricxon cluster has no quorum (a majority of its voters is not reachable), so model downloads will
@@ -1022,7 +1022,7 @@
       {% include "_mcp_global_switch.html" %}
     </div>
 
-    <!-- External servers tab: admin-only. Ollama and ComfyUI get identically shaped subsections: local (this app owns the process: start/stop + key tunables) or remote (up to 12 load-balanced hosts). See app/routers/ollama_admin.py / comfyui_admin.py. -->
+    <!-- Inference engines tab: admin-only. Ollama, Matricxon and stable-diffusion.cpp get identically shaped subsections: local (this app owns the process: start/stop + key tunables) or remote (up to 12 load-balanced hosts). See app/routers/ollama_admin.py, matricxon_admin.py and sdcpp_admin.py. -->
     <div id="tab-external-servers" class="hidden mx-auto max-w-3xl px-4 py-8 space-y-8">
       <!-- Which kind of server to configure; only that group's sections below show (app/static/js/settings_group_select.js). More groups can be added as options. -->
       <section class="space-y-3">
@@ -1049,8 +1049,9 @@
           <select id="active-engine-select" title="Which engine below actually answers chat and embedding requests right now. Switching here doesn't start or stop either engine — configure and start them independently below."
             class="rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
           </select>
+          <!-- self-stretch: as tall as the engine picker beside it (its own padding made it a little taller). -->
           <button id="active-engine-save-btn" type="button"
-            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
+            class="self-stretch rounded-lg bg-brand-600 px-4 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
             Save
           </button>
           <span id="active-engine-status" class="text-xs text-slate-500"></span>
@@ -1090,7 +1091,8 @@
             <p data-field="status-line" class="text-xs text-slate-400 font-mono"></p>
 
             <!-- Visible whatever the install state (see applyServerVisibility), so an admin can see what's installed and reinstall another version/repo later. Hidden only in manual-path-entry mode, where "Install"/"Reinstall" would replace a path the admin deliberately pointed elsewhere with the managed install. -->
-            <div data-field="install-controls" class="space-y-3">
+            <!-- Its own inner section, set a little apart from the status above: installing is a separate, occasional task. -->
+            <div data-field="install-controls" class="mt-1 space-y-3 rounded-md border border-slate-800 bg-slate-950/40 px-3 py-3">
               <div data-field="install-idle" class="space-y-2">
                 <div class="flex items-center gap-3">
                   <button type="button" data-action="install"
@@ -1237,7 +1239,8 @@
           <div data-mode-section="local" class="space-y-3">
             <p data-field="status-line" class="text-xs text-slate-400 font-mono"></p>
 
-            <div data-field="install-controls" class="space-y-3">
+            <!-- Its own inner section, set a little apart from the status above: installing is a separate, occasional task. -->
+            <div data-field="install-controls" class="mt-1 space-y-3 rounded-md border border-slate-800 bg-slate-950/40 px-3 py-3">
               <div data-field="install-idle" class="space-y-2">
                 <div class="flex items-center gap-3">
                   <button type="button" data-action="install"
@@ -1436,134 +1439,8 @@
       </div>
 
       <div data-group="image" class="hidden space-y-8">
-      <!-- stable-diffusion.cpp is the only selectable image engine (app.services.image_engine_service.ENABLED_IMAGE_ENGINES), so there is no engine picker. ComfyUI's section below is switched off with a Jinja comment until its integration is removed. -->
+      <!-- stable-diffusion.cpp is the only image engine (app.services.image_engine_service.ENABLED_IMAGE_ENGINES), so there is no engine picker. -->
       {% include "_sdcpp_server.html" %}
-
-      {# ComfyUI — disabled; the section stays here only until its removal.
-      <section class="space-y-3" data-server="comfyui">
-        <h2 class="text-sm font-semibold text-slate-200">ComfyUI</h2>
-        <p class="text-xs text-slate-500 -mt-2">
-          The image-generation engine (see the Images page). <span class="font-mono">Local</span> lets this
-          app install (from GitHub) and start/stop ComfyUI on this machine, or point at one you already have
-          installed; <span class="font-mono">Remote</span> points at one or more external ComfyUI servers instead.
-        </p>
-        <div data-field="fetch-panel" class="relative rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 space-y-3">
-          <div>
-            <label class="block text-xs font-medium text-slate-400 mb-1">Mode</label>
-            <select data-field="mode" title="Local: this app installs and starts/stops ComfyUI itself on this machine. Remote: point at one or more ComfyUI servers already running elsewhere." class="server-mode-select w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
-              <option value="local">Local — this app manages the process</option>
-              <option value="remote">Remote — external server(s)</option>
-            </select>
-          </div>
-
-          <div data-mode-section="local" class="space-y-3">
-            <p data-field="status-line" class="text-xs text-slate-400 font-mono"></p>
-
-            <div data-field="install-controls" class="space-y-3">
-              <div data-field="install-idle" class="space-y-2">
-                <div class="flex items-center gap-3">
-                  <button type="button" data-action="install"
-                    class="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-800 transition-colors">
-                    Install from GitHub
-                  </button>
-                  <span data-field="install-version-label" class="text-xs text-slate-500"></span>
-                </div>
-                <p data-field="install-os-note" class="hidden text-xs text-warning-400"></p>
-                <button type="button" data-action="toggle-install-source"
-                  class="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors">
-                  Use a different version or repo
-                </button>
-                <div data-field="install-source-panel" class="hidden space-y-2 rounded-md bg-slate-950 border border-slate-800 px-3 py-3">
-                  <div>
-                    <label class="block text-xs font-medium text-slate-400 mb-1">GitHub repo</label>
-                    <input data-field="install_repo" type="text" placeholder="comfyanonymous/ComfyUI" title="Which GitHub repo to install ComfyUI from. Leave blank to use the default pinned repo."
-                      class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
-                  </div>
-                  <div>
-                    <label class="block text-xs font-medium text-slate-400 mb-1">Version / tag</label>
-                    <input data-field="install_version" type="text" placeholder="v0.35.1" list="comfyui-version-options" title="Which release tag to install. Leave blank to use the default pinned version — start typing to pick from real tags fetched live from GitHub, or enter any tag/branch by hand."
-                      class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
-                    <datalist id="comfyui-version-options" data-field="install-version-datalist"></datalist>
-                  </div>
-                  <div class="flex items-center gap-3">
-                    <button type="button" data-action="save-install-source"
-                      class="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 transition-colors">
-                      Save
-                    </button>
-                    <button type="button" data-action="reset-install-source"
-                      class="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors">
-                      Reset to default
-                    </button>
-                    <span data-field="install-source-status" class="text-xs text-slate-500"></span>
-                  </div>
-                </div>
-              </div>
-              <div data-field="install-progress-panel" class="hidden space-y-2 rounded-md bg-slate-950 border border-slate-800 px-3 py-3">
-                <div class="flex items-center justify-between">
-                  <span data-field="install-step-label" class="text-xs font-medium text-slate-300"></span>
-                  <span data-field="install-percent" class="text-xs text-slate-500"></span>
-                </div>
-                <progress data-field="install-bar" class="w-full h-1.5 accent-brand-500" max="100"></progress>
-                <div data-field="install-log" class="max-h-32 overflow-hidden text-[11px] font-mono text-slate-500 space-y-0.5"></div>
-              </div>
-            </div>
-
-            <div data-field="local-not-installed" class="space-y-3">
-              <button type="button" data-action="manual-path-entry"
-                class="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors">
-                Already have ComfyUI installed elsewhere? Enter its paths manually instead.
-              </button>
-            </div>
-
-            <div data-field="local-installed" class="hidden space-y-3">
-              <div>
-                <label class="block text-xs font-medium text-slate-400 mb-1">Python executable path</label>
-                <input data-field="python_path" type="text" placeholder="/opt/ComfyUI/venv/bin/python" title="Path to the Python interpreter inside ComfyUI's own virtual environment — used to launch it."
-                  class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
-              </div>
-              <div>
-                <label class="block text-xs font-medium text-slate-400 mb-1">main.py path</label>
-                <input data-field="main_py_path" type="text" placeholder="/opt/ComfyUI/main.py" title="Path to ComfyUI's own main.py entry point, inside its installed checkout."
-                  class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
-              </div>
-              <div>
-                <label class="block text-xs font-medium text-slate-400 mb-1">Extra launch args (optional)</label>
-                <input data-field="extra_args" type="text" placeholder="--listen 0.0.0.0 --port 8188" title="Additional command-line arguments passed to ComfyUI when it's launched, e.g. --listen 0.0.0.0 --port 8188. Leave blank for none."
-                  class="w-full rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-500">
-              </div>
-              <button type="button" data-action="manual-path-entry-back"
-                class="hidden text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors">
-                ← Back to installing from GitHub instead
-              </button>
-            </div>
-          </div>
-
-          <div data-mode-section="remote" class="hidden space-y-2">
-            <p class="text-xs text-slate-500">Up to 120 hosts — load-balanced across whichever is least busy.</p>
-            <div data-field="remote-hosts-list" class="space-y-1.5"></div>
-            <button type="button" data-action="add-host"
-              class="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800 transition-colors">
-              + Add host
-            </button>
-          </div>
-        </div>
-        <div data-field="actions-bar" class="hidden flex items-center gap-3">
-          <button type="button" data-action="start"
-            class="rounded-lg bg-[rgb(var(--solid-emerald))] px-4 py-2 text-sm font-medium text-white hover:bg-[rgb(var(--solid-emerald-hover))] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-            Start
-          </button>
-          <button type="button" data-action="stop"
-            class="rounded-lg bg-[rgb(var(--solid-rose))] px-4 py-2 text-sm font-medium text-white hover:bg-[rgb(var(--solid-rose-hover))] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-            Stop
-          </button>
-          <button type="button" data-action="save"
-            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 transition-colors">
-            Save
-          </button>
-          <span data-field="status" class="text-xs text-slate-500"></span>
-        </div>
-      </section>
-      #}
       </div>
     </div>
 
@@ -1660,6 +1537,7 @@
 <script src="/static/js/app.js?v={{ static_version }}"></script>
 <script src="/static/js/theme.js?v={{ static_version }}"></script>
 <script src="/static/js/settings.js?v={{ static_version }}"></script>
+<script src="/static/js/engine_picker.js?v={{ static_version }}"></script>
 <script src="/static/js/engine_capability_notes.js?v={{ static_version }}"></script>
 <script src="/static/js/settings_cache_persistence.js?v={{ static_version }}"></script>
 {% if admin_page %}<script src="/static/js/settings_cluster_managed.js?v={{ static_version }}"></script>

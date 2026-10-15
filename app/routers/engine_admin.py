@@ -1,4 +1,4 @@
-"""GET/PUT for Settings > External servers' "Active engine" picker: which engine app.services.inference_client
+"""GET/PUT for Settings > Inference engines' "Active engine" picker: which engine app.services.inference_client
 dispatches chat, embedding and model management to (engine_service). A separate router since it belongs to neither
 engine.
 """

@@ -22,7 +22,7 @@ def test_has_avx2_true_when_the_flag_is_present(monkeypatch):
 
 def test_has_avx2_false_when_the_flag_is_absent(monkeypatch):
     # Confirmed live: a 2011-era CPU with AVX but not AVX2. Modern prebuilt numpy/torch wheels assume AVX2 and
-    # SIGILL without it: the case comfyui_installer's AVX2 gate catches up front.
+    # SIGILL without it: the case an installer's AVX2 check catches up front.
     monkeypatch.setattr(hardware, "Path", lambda _p: _FakePath("flags : fpu vme avx sse4_2"))
     assert hardware.has_avx2() is False
 
