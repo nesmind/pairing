@@ -139,17 +139,3 @@ async def channel_manager_user(db: AsyncSession) -> User:
     await db.commit()
     await db.refresh(u)
     return u
-
-
-@pytest.fixture
-def runpod_listed():
-    """Puts RunPod back on the connector list for one test: it is unlisted in the app until it can be tested on a real
-    endpoint (connectors/registry.py), but the shared connector tests use it as their example."""
-    from app.services.connectors import registry
-    from app.services.connectors.runpod_connector import RUNPOD_CONNECTOR
-
-    registry.CONNECTORS.insert(0, RUNPOD_CONNECTOR)
-    registry._BY_ID[RUNPOD_CONNECTOR.id] = RUNPOD_CONNECTOR
-    yield
-    registry.CONNECTORS.remove(RUNPOD_CONNECTOR)
-    registry._BY_ID.pop(RUNPOD_CONNECTOR.id, None)

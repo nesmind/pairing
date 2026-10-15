@@ -35,6 +35,9 @@ VENDORS = {
     "bge": "BAAI",
     "gte": "Alibaba",
     "e5": "Microsoft",
+    "command": "Cohere",
+    "aya": "Cohere",
+    "c4ai": "Cohere",
 }
 # Leading words that only name the vendor, dropped from the display name ("openai-gpt-4o" -> "GPT 4o").
 _VENDOR_ONLY_WORDS = {"openai", "anthropic", "alibaba"}

@@ -45,7 +45,8 @@
 <!-- Template for one connector row, cloned and filled by connectors.js. Kept in the DOM (hidden) rather than built as an HTML string, so the toggle/inputs are real, inspectable elements. Collapsed by default (the hidden + rotating-chevron idiom of Settings > Model's "Browse more models"); clicking reveals the config form, and only one form is open at a time (connectors.js). -->
 <template id="connector-card-template">
   <div class="connector-card rounded-lg bg-slate-900 border border-slate-800 overflow-hidden">
-    <div class="flex items-center justify-between gap-3 px-4 py-3">
+    <!-- Hovering this row shows the full description in a floating box (connectors.js DescriptionPopover). -->
+    <div class="connector-card-head flex items-center justify-between gap-3 px-4 py-3">
       <button type="button" class="connector-card-toggle flex flex-1 min-w-0 items-center gap-2 text-left">
         <svg class="connector-chevron h-4 w-4 shrink-0 text-slate-500 transition-transform" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="m6 9 6 6 6-6"/>

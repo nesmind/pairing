@@ -23,6 +23,72 @@ function layoutConnectorCards() {
 
 twoColumns.addEventListener("change", layoutConnectorCards);
 
+/* The full description of a card, floating next to the pointer after a short pause over the card's top row (the line
+on the card is cut to fit). One shared box, inverted colours so it stands out in every theme, kept inside the window. */
+class DescriptionPopover {
+  constructor(delayMs = 500) {
+    this.delayMs = delayMs;
+    this.timer = null;
+    this.box = document.createElement("div");
+    this.box.className =
+      "pointer-events-none fixed z-50 max-w-[22rem] rounded-md bg-slate-100 px-3 py-2 text-xs leading-relaxed " +
+      "text-slate-900 shadow-xl opacity-0 transition-opacity duration-150";
+    this.box.hidden = true;
+    this.text = document.createElement("div");
+    this.arrow = document.createElement("div");
+    this.arrow.className = "absolute h-2.5 w-2.5 rotate-45 bg-slate-100";
+    this.box.append(this.arrow, this.text);
+    document.body.appendChild(this.box);
+    window.addEventListener("scroll", () => this.hide(), true);
+  }
+
+  attach(target, text) {
+    let pointer = { x: 0, y: 0 };
+    target.addEventListener("mouseenter", (e) => {
+      pointer = { x: e.clientX, y: e.clientY };
+      clearTimeout(this.timer);
+      this.timer = setTimeout(() => this.show(text, pointer), this.delayMs);
+    });
+    target.addEventListener("mousemove", (e) => {
+      pointer = { x: e.clientX, y: e.clientY };
+      if (!this.box.hidden) this.place(pointer);
+    });
+    target.addEventListener("mouseleave", () => this.hide());
+    target.addEventListener("click", () => this.hide());
+  }
+
+  show(text, pointer) {
+    this.text.textContent = text;
+    this.box.hidden = false;
+    this.place(pointer);
+    requestAnimationFrame(() => this.box.classList.replace("opacity-0", "opacity-100"));
+  }
+
+  hide() {
+    clearTimeout(this.timer);
+    this.box.classList.replace("opacity-100", "opacity-0");
+    this.box.hidden = true;
+  }
+
+  /* Below and right of the pointer; above it when there is no room below; shifted left near the window's edge. The
+  arrow points back at the pointer. */
+  place({ x, y }) {
+    const gap = 14;
+    const margin = 8;
+    const { width, height } = this.box.getBoundingClientRect();
+    const left = Math.max(margin, Math.min(x - 16, window.innerWidth - width - margin));
+    const below = y + gap + height + margin <= window.innerHeight;
+    const top = below ? y + gap : y - gap - height;
+    this.box.style.left = `${left}px`;
+    this.box.style.top = `${top}px`;
+    this.arrow.style.left = `${Math.max(8, Math.min(x - left - 5, width - 18))}px`;
+    this.arrow.style.top = below ? "-5px" : "";
+    this.arrow.style.bottom = below ? "" : "-5px";
+  }
+}
+
+const descriptionPopover = new DescriptionPopover();
+
 async function loadConnectors() {
   const errorEl = document.getElementById("connectors-error");
   try {
@@ -42,6 +108,7 @@ function renderConnectorCard(connector) {
   card.querySelector(".connector-name").textContent = connector.display_name;
   card.querySelector(".connector-name").title = connector.display_name;
   card.querySelector(".connector-description").textContent = connector.description;
+  descriptionPopover.attach(card.querySelector(".connector-card-head"), connector.description);
   card.querySelector(".connector-ready-badge").classList.toggle("hidden", !connector.ready);
 
   const detailEl = card.querySelector(".connector-detail");

@@ -7,8 +7,6 @@ from app.routers import connectors
 from app.schemas import ConnectorConfigUpdate, ConnectorEnabledUpdate
 from app.services import connector_config_cache, runpod_client, server_pool_broadcast
 
-pytestmark = pytest.mark.usefixtures("runpod_listed")  # RunPod is the example connector here
-
 
 class _FakeClient:
     def __init__(self, host):
