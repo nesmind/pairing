@@ -9,6 +9,13 @@ from app.services.update_process import UpdateProcess
 
 _PROGRESS = re.compile(r"^(Counting objects|Compressing objects|Receiving objects|Resolving deltas):\s+(\d+)%")
 _MAX_CHANGES = 20
+# Fetch GitHub over HTTPS even when the remote is SSH: no keys needed, and the proxy applies. Remotes stay as they are.
+_HTTPS_FETCH = (
+    "-c",
+    "url.https://github.com/.insteadOf=git@github.com:",
+    "-c",
+    "url.https://github.com/.insteadOf=ssh://git@github.com/",
+)
 
 
 class GitSource:
@@ -32,7 +39,7 @@ class GitSource:
         return await self._git("rev-parse", "--short", "@{u}")
 
     async def fetch(self) -> None:
-        await self._git("fetch", "--quiet", timeout=45.0)
+        await self._git(*_HTTPS_FETCH, "fetch", "--quiet", timeout=45.0)
 
     async def counts(self) -> tuple[int, int]:
         """(behind, ahead) relative to upstream."""
@@ -49,7 +56,7 @@ class GitSource:
 
     async def fetch_stream(self) -> AsyncIterator[dict]:
         """git fetch with percent events; other lines as status."""
-        async for line in self._process.stream(["git", "fetch", "--progress"], cwd=self.path):
+        async for line in self._process.stream(["git", *_HTTPS_FETCH, "fetch", "--progress"], cwd=self.path):
             match = _PROGRESS.match(line)
             if match:
                 yield {"activity": match[1].lower(), "completed": int(match[2]), "total": 100, "unit": "percent"}
