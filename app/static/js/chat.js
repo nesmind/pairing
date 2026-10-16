@@ -373,7 +373,12 @@ function bubbleFor(role, senderLabel, avatarUrl, initials, senderId) {
   return { wrapper, bubble };
 }
 
-/* Sets a bubble's timestamp from the message's server `created_at` (no-op if unknown). */
+/* A message's display time: when a reply finished (`completed_at`), else when it was created. */
+function messageTime(message) {
+  return message && (message.completed_at || message.created_at);
+}
+
+/* Sets a bubble's timestamp from a server time (no-op if unknown). */
 function setBubbleTime(wrapper, createdAt) {
   const time = wrapper && wrapper.querySelector(".message-time");
   if (time && createdAt) time.textContent = formatShortDateTime(createdAt);
@@ -504,7 +509,7 @@ function addMessageBubble(
     wrapper.dataset.messageId = messageId;
     attachDeleteButtonIfEligible(wrapper, messageId);
   }
-  setBubbleTime(wrapper, attachmentSource && attachmentSource.created_at);
+  setBubbleTime(wrapper, messageTime(attachmentSource));
   // A finished private-chat message can be shared to a channel; a message shared into this channel carries a "Shared
   // from a private chat" remark (chat_share.js).
   if (messageId && (!status || status === "complete")) ChannelShare.decorate(wrapper, messageId, role);
@@ -725,7 +730,7 @@ async function runChannelPoll(conversationId) {
       message.sender_initials,
       senderId
     );
-    setBubbleTime(bubble.closest("[data-message-id]"), message.created_at);
+    setBubbleTime(bubble.closest("[data-message-id]"), messageTime(message));
     // A message another member shared in from a private chat also arrives here while this tab is open.
     ChannelShare.remark(bubble.closest("[data-message-id]"), message.shared_from, message.sender_display_name);
     bubble._toolEvents = message.tool_events;
@@ -1620,6 +1625,8 @@ async function readAssistantReplyStream(
       }
       if (payload.done) {
         if (bubble) renderReplyBody(bubble, fullText, "complete", payload.sources);
+        // The reply's time is when it finished, not when its bubble appeared.
+        if (wrapper) setBubbleTime(wrapper, new Date().toISOString());
         if (bubble && wrapper.dataset.messageId) ChannelShare.decorate(wrapper, wrapper.dataset.messageId, "assistant");
         if (isChannel && askAi) {
           channelReplyInFlight = false;

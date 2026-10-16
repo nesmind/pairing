@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal
 from app.models import Message
+from app.models._base import utcnow
 from app.services import reply_broadcast_service, reply_cancellation_service, reply_cross_instance_service
 from app.services.inference_client import stop_model
 
@@ -23,6 +24,7 @@ async def mark_error(
     message.content = full_reply
     message.status = "error"
     message.error_message = error_text
+    message.completed_at = utcnow()
     await db.commit()
     reply_broadcast_service.publish_error(conversation_id, error_text)
 

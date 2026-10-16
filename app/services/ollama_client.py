@@ -212,7 +212,7 @@ async def chat_once(model: str, messages: list[dict], params: dict | None = None
 
 async def stop_model(model: str) -> None:
     """Forces Ollama to unload `model` now (`keep_alive: 0`, no messages; like `ollama stop <model>`): cleanup after
-    this app gave up on a generation (reply timeout or cancel; reply_generation_service/reply_termination_service),
+    this app gave up on a generation (reply timeout or cancel; reply_generation_service/reply_model_unload_service),
     since closing our connection doesn't reliably interrupt llama.cpp compute (prompt/image processing seemingly
     ignores disconnects).
 

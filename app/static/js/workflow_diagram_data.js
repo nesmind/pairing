@@ -2,7 +2,7 @@
  * Content for the Stats "Visual chat workflow" diagram: a hand-laid-out node graph of what the chat pipeline does end
  * to end, checked against the source (app/routers/chat.py and app/services/: chat_service, chat_history_service,
  * reply_generation_service, inference_client, ollama_client, ollama_pool, matricxon_client, matricxon_pool,
- * model_catalog_service, reply_broadcast_service, document_retrieval, reply_termination_service,
+ * model_catalog_service, reply_broadcast_service, document_retrieval, reply_model_unload_service,
  * reply_cross_instance_service, title_service, chat_attachment_service, tool_loop_service). Separate from
  * workflow_diagram.js (rendering) so the text can be edited on its own.
  * 
@@ -410,8 +410,8 @@ const WORKFLOW_NODES = [
 
   // ---- Branch: error / timeout / cancellation ------------------------
   {
-    id: "termination_service",
-    label: "reply_termination_service",
+    id: "model_unload_service",
+    label: "reply_model_unload_service",
     category: "service",
     x: 860,
     y: 850,
@@ -420,7 +420,7 @@ const WORKFLOW_NODES = [
     detail: {
       server: APP_NAME,
       title: "When a reply doesn't finish cleanly",
-      location: "app/services/reply_termination_service.py",
+      location: "app/services/reply_model_unload_service.py",
       body: "An InferenceError (either engine's own failure, normalized — see inference_client.chat_stream above) or a reply-timeout both mark the message status=\"error\", persisting whatever partial content was generated so far — never silently discarded. A timeout ALSO force-unloads the model (inference_client.stop_model, dispatched to whichever engine is active): closing the HTTP connection to the engine alone doesn't reliably stop an in-progress compute phase, especially prompt/image processing, which doesn't appear to check for client disconnection at all. A personal chat's sender-disconnect cancellation can't safely await anything in its own already-cancelled task, so it schedules a brand-new, uncancelled task to do this same persistence instead.",
     },
   },
@@ -621,8 +621,8 @@ const WORKFLOW_EDGES = [
   { from: "attachment_text_fold", to: "chat_prompt_service", branch: true },
 
   // Error/timeout/cancellation branch
-  { from: "run_generation_task", to: "termination_service", branch: true },
-  { from: "inference_client_stream", to: "termination_service", branch: true },
+  { from: "run_generation_task", to: "model_unload_service", branch: true },
+  { from: "inference_client_stream", to: "model_unload_service", branch: true },
 
   // Live delivery branch
   { from: "broadcast_publish", to: "subscribe_router", branch: true },

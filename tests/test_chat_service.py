@@ -17,7 +17,7 @@ from app.services import (
     conversation_service,
     model_catalog_service,
     reply_generation_service,
-    reply_termination_service,
+    reply_model_unload_service,
     title_service,
 )
 from app.services.auth_service import hash_password
@@ -354,10 +354,10 @@ async def test_build_reply_stream_cancels_a_personal_reply_on_disconnect(db, use
     await gen.aclose()
 
     # Waits for the cancelled task *and* the fresh task it spawns to persist the cancellation (a cancelled task can't
-    # await its own cleanup; reply_termination_service.schedule_cancelled_write has its own tracking set).
+    # await its own cleanup; reply_model_unload_service.schedule_cancelled_write has its own tracking set).
     for _ in range(200):
         tasks = list(reply_generation_service._background_generation_tasks) + list(
-            reply_termination_service._background_tasks
+            reply_model_unload_service._background_tasks
         )
         if not tasks:
             break

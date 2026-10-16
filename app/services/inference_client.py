@@ -1,6 +1,6 @@
 """Engine-agnostic front door for chat/embedding/model-management calls. Every call site outside the
 Ollama/Matricxon admin plumbing (routers/settings.py, users.py; document_retrieval/sync/ingest,
-reply_generation_service, reply_termination_service, chat_prompt_service, title_service,
+reply_generation_service, reply_model_unload_service, chat_prompt_service, title_service,
 model_catalog_service, extended_model_catalog_service, startup_service) imports from here instead of
 ollama_client/matricxon_client. engines.registry resolves engine_service.current_engine per call, so an
 engine switch (routers/engine_admin.py) applies to the next request.

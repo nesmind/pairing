@@ -1,4 +1,4 @@
-"""Tests for reply_termination_service's _persist_cancelled_reply, apart from the full detached-generation
+"""Tests for reply_model_unload_service's _persist_cancelled_reply, apart from the full detached-generation
 machinery (tests/test_reply_generation_service.py covers it end to end). Uses that module's in-memory
 session_factory pattern, not the shared `db` fixture, since AsyncSessionLocal is patched directly.
 """
@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
 from app.models import Conversation, Message
-from app.services import reply_termination_service
+from app.services import reply_model_unload_service
 
 
 async def _build_session_factory():
@@ -36,15 +36,15 @@ async def test_persist_cancelled_reply_stops_the_model_when_the_message_row_is_g
     to write the cancelled text into (conversation_service.delete_conversation relies on it).
     """
     engine, session_factory = await _build_session_factory()
-    monkeypatch.setattr(reply_termination_service, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(reply_model_unload_service, "AsyncSessionLocal", session_factory)
     stopped_models = []
 
     async def fake_stop_model(model, request_id=None):
         stopped_models.append(model)
 
-    monkeypatch.setattr(reply_termination_service, "stop_model", fake_stop_model)
+    monkeypatch.setattr(reply_model_unload_service, "stop_model", fake_stop_model)
 
-    await reply_termination_service._persist_cancelled_reply(
+    await reply_model_unload_service._persist_cancelled_reply(
         "missing-message-id", "fake-model", "partial", "missing-conversation-id"
     )
 
@@ -56,20 +56,21 @@ async def test_persist_cancelled_reply_stops_the_model_when_the_message_row_is_g
 async def test_persist_cancelled_reply_writes_the_message_and_stops_the_model(monkeypatch):
     """The normal case: the row exists, so both the error write and the stop_model call happen."""
     engine, session_factory = await _build_session_factory()
-    monkeypatch.setattr(reply_termination_service, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(reply_model_unload_service, "AsyncSessionLocal", session_factory)
     conversation_id, message_id = await _make_streaming_message(session_factory)
     stopped_models = []
 
     async def fake_stop_model(model, request_id=None):
         stopped_models.append(model)
 
-    monkeypatch.setattr(reply_termination_service, "stop_model", fake_stop_model)
+    monkeypatch.setattr(reply_model_unload_service, "stop_model", fake_stop_model)
 
-    await reply_termination_service._persist_cancelled_reply(message_id, "fake-model", "partial", conversation_id)
+    await reply_model_unload_service._persist_cancelled_reply(message_id, "fake-model", "partial", conversation_id)
 
     assert stopped_models == ["fake-model"]
     async with session_factory() as db:
         message = await db.get(Message, message_id)
         assert message.status == "error"
         assert message.content == "partial"
+        assert message.completed_at is not None and message.completed_at >= message.created_at
     await engine.dispose()

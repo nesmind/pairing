@@ -23,7 +23,7 @@ from app.services import (
     chat_settings_service,
     reply_cross_instance_service,
     reply_generation_service,
-    reply_termination_service,
+    reply_model_unload_service,
 )
 from app.services.inference_client import InferenceError
 
@@ -60,12 +60,12 @@ async def _make_conversation(session_factory) -> str:
 
 async def _drain_background_tasks() -> None:
     """Waits for every tracked background task, including one a cancelled task spawns to persist its final state
-    (reply_termination_service.schedule_cancelled_write, tracked in a *separate* set) that doesn't exist when the
+    (reply_model_unload_service.schedule_cancelled_write, tracked in a *separate* set) that doesn't exist when the
     original is cancelled, so awaiting the known tasks isn't enough.
     """
     for _ in range(200):
         tasks = list(reply_generation_service._background_generation_tasks) + list(
-            reply_termination_service._background_tasks
+            reply_model_unload_service._background_tasks
         )
         if not tasks:
             return
@@ -82,9 +82,9 @@ async def _drain_background_tasks() -> None:
 async def test_stream_reply_creates_a_streaming_placeholder_before_any_chunk(monkeypatch):
     engine, session_factory = await _build_session_factory()
     monkeypatch.setattr(reply_generation_service, "AsyncSessionLocal", session_factory)
-    # reply_termination_service (a cancelled reply's write, split out of reply_generation_service) imports
+    # reply_model_unload_service (a cancelled reply's write, split out of reply_generation_service) imports
     # AsyncSessionLocal independently, so it needs this too.
-    monkeypatch.setattr(reply_termination_service, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(reply_model_unload_service, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(reply_cross_instance_service, "AsyncSessionLocal", session_factory)
     conversation_id = await _make_conversation(session_factory)
 
@@ -127,9 +127,9 @@ async def test_stream_reply_stores_reply_to_message_id_on_the_placeholder(monkey
     """
     engine, session_factory = await _build_session_factory()
     monkeypatch.setattr(reply_generation_service, "AsyncSessionLocal", session_factory)
-    # reply_termination_service (a cancelled reply's write, split out of reply_generation_service) imports
+    # reply_model_unload_service (a cancelled reply's write, split out of reply_generation_service) imports
     # AsyncSessionLocal independently, so it needs this too.
-    monkeypatch.setattr(reply_termination_service, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(reply_model_unload_service, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(reply_cross_instance_service, "AsyncSessionLocal", session_factory)
     conversation_id = await _make_conversation(session_factory)
 
@@ -165,9 +165,9 @@ async def test_generation_survives_the_consumer_disconnecting_early_by_default(m
     """
     engine, session_factory = await _build_session_factory()
     monkeypatch.setattr(reply_generation_service, "AsyncSessionLocal", session_factory)
-    # reply_termination_service (a cancelled reply's write, split out of reply_generation_service) imports
+    # reply_model_unload_service (a cancelled reply's write, split out of reply_generation_service) imports
     # AsyncSessionLocal independently, so it needs this too.
-    monkeypatch.setattr(reply_termination_service, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(reply_model_unload_service, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(reply_cross_instance_service, "AsyncSessionLocal", session_factory)
     conversation_id = await _make_conversation(session_factory)
 
@@ -194,6 +194,8 @@ async def test_generation_survives_the_consumer_disconnecting_early_by_default(m
         message = await verify_db.get(Message, message_id)
         assert message.status == "complete"
         assert message.content == "Hello, world!"
+        # Shown as the reply's time: when it finished, not when it started.
+        assert message.completed_at is not None and message.completed_at >= message.created_at
 
     await engine.dispose()
 
@@ -211,9 +213,9 @@ async def test_cancel_on_disconnect_stops_generation_and_marks_it_errored(monkey
     """
     engine, session_factory, db_path = await _build_file_session_factory()
     monkeypatch.setattr(reply_generation_service, "AsyncSessionLocal", session_factory)
-    # reply_termination_service (a cancelled reply's write, split out of reply_generation_service) imports
+    # reply_model_unload_service (a cancelled reply's write, split out of reply_generation_service) imports
     # AsyncSessionLocal independently, so it needs this too.
-    monkeypatch.setattr(reply_termination_service, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(reply_model_unload_service, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(reply_cross_instance_service, "AsyncSessionLocal", session_factory)
     conversation_id = await _make_conversation(session_factory)
 
@@ -228,14 +230,14 @@ async def test_cancel_on_disconnect_stops_generation_and_marks_it_errored(monkey
     monkeypatch.setattr(reply_generation_service, "chat_stream", fake_chat_stream)
 
     # A cancelled reply also force-stops the model (ollama_client.stop_model), faked to avoid a real Ollama host.
-    # reply_termination_service calls it (schedule_cancelled_write/_persist_cancelled_reply), not
+    # reply_model_unload_service calls it (schedule_cancelled_write/_persist_cancelled_reply), not
     # reply_generation_service.
     stopped_models: list[str] = []
 
     async def fake_stop_model(model, request_id=None):
         stopped_models.append(model)
 
-    monkeypatch.setattr(reply_termination_service, "stop_model", fake_stop_model)
+    monkeypatch.setattr(reply_model_unload_service, "stop_model", fake_stop_model)
 
     async with session_factory() as db:
         conversation = await db.get(Conversation, conversation_id)
@@ -275,9 +277,9 @@ async def test_cancel_generation_stops_an_in_progress_reply_and_marks_it_errored
     """
     engine, session_factory, db_path = await _build_file_session_factory()
     monkeypatch.setattr(reply_generation_service, "AsyncSessionLocal", session_factory)
-    # reply_termination_service (a cancelled reply's write, split out of reply_generation_service) imports
+    # reply_model_unload_service (a cancelled reply's write, split out of reply_generation_service) imports
     # AsyncSessionLocal independently, so it needs this too.
-    monkeypatch.setattr(reply_termination_service, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(reply_model_unload_service, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(reply_cross_instance_service, "AsyncSessionLocal", session_factory)
     conversation_id = await _make_conversation(session_factory)
 
@@ -295,7 +297,7 @@ async def test_cancel_generation_stops_an_in_progress_reply_and_marks_it_errored
     async def fake_stop_model(model, request_id=None):
         stopped_models.append(model)
 
-    monkeypatch.setattr(reply_termination_service, "stop_model", fake_stop_model)
+    monkeypatch.setattr(reply_model_unload_service, "stop_model", fake_stop_model)
 
     async with session_factory() as db:
         conversation = await db.get(Conversation, conversation_id)
@@ -339,9 +341,9 @@ async def test_cancel_generation_never_overwrites_a_message_already_marked_delet
     """
     engine, session_factory, db_path = await _build_file_session_factory()
     monkeypatch.setattr(reply_generation_service, "AsyncSessionLocal", session_factory)
-    # reply_termination_service (a cancelled reply's write, split out of reply_generation_service) imports
+    # reply_model_unload_service (a cancelled reply's write, split out of reply_generation_service) imports
     # AsyncSessionLocal independently, so it needs this too.
-    monkeypatch.setattr(reply_termination_service, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(reply_model_unload_service, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(reply_cross_instance_service, "AsyncSessionLocal", session_factory)
     conversation_id = await _make_conversation(session_factory)
 
@@ -396,7 +398,7 @@ async def test_cross_instance_deletion_detected_mid_stream_also_stops_the_model(
     """
     engine, session_factory, db_path = await _build_file_session_factory()
     monkeypatch.setattr(reply_generation_service, "AsyncSessionLocal", session_factory)
-    monkeypatch.setattr(reply_termination_service, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(reply_model_unload_service, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(reply_cross_instance_service, "AsyncSessionLocal", session_factory)
     conversation_id = await _make_conversation(session_factory)
 
@@ -456,9 +458,9 @@ async def test_cross_instance_deletion_detected_mid_stream_also_stops_the_model(
 async def test_generation_batches_db_writes_rather_than_committing_every_chunk(monkeypatch):
     engine, session_factory = await _build_session_factory()
     monkeypatch.setattr(reply_generation_service, "AsyncSessionLocal", session_factory)
-    # reply_termination_service (a cancelled reply's write, split out of reply_generation_service) imports
+    # reply_model_unload_service (a cancelled reply's write, split out of reply_generation_service) imports
     # AsyncSessionLocal independently, so it needs this too.
-    monkeypatch.setattr(reply_termination_service, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(reply_model_unload_service, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(reply_cross_instance_service, "AsyncSessionLocal", session_factory)
     conversation_id = await _make_conversation(session_factory)
 
@@ -504,9 +506,9 @@ async def test_generation_error_preserves_partial_content_and_marks_status_error
     whole reply on a mid-stream Ollama failure: what was generated before the error is kept."""
     engine, session_factory = await _build_session_factory()
     monkeypatch.setattr(reply_generation_service, "AsyncSessionLocal", session_factory)
-    # reply_termination_service (a cancelled reply's write, split out of reply_generation_service) imports
+    # reply_model_unload_service (a cancelled reply's write, split out of reply_generation_service) imports
     # AsyncSessionLocal independently, so it needs this too.
-    monkeypatch.setattr(reply_termination_service, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(reply_model_unload_service, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(reply_cross_instance_service, "AsyncSessionLocal", session_factory)
     conversation_id = await _make_conversation(session_factory)
 
@@ -548,9 +550,9 @@ async def test_generation_times_out_and_marks_it_errored(monkeypatch):
     """
     engine, session_factory = await _build_session_factory()
     monkeypatch.setattr(reply_generation_service, "AsyncSessionLocal", session_factory)
-    # reply_termination_service (a cancelled reply's write, split out of reply_generation_service) imports
+    # reply_model_unload_service (a cancelled reply's write, split out of reply_generation_service) imports
     # AsyncSessionLocal independently, so it needs this too.
-    monkeypatch.setattr(reply_termination_service, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(reply_model_unload_service, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(reply_cross_instance_service, "AsyncSessionLocal", session_factory)
     conversation_id = await _make_conversation(session_factory)
 
@@ -611,7 +613,7 @@ async def test_has_image_uses_the_separate_vision_timeout_setting(monkeypatch):
     """
     engine, session_factory = await _build_session_factory()
     monkeypatch.setattr(reply_generation_service, "AsyncSessionLocal", session_factory)
-    monkeypatch.setattr(reply_termination_service, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(reply_model_unload_service, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(reply_cross_instance_service, "AsyncSessionLocal", session_factory)
     conversation_id = await _make_conversation(session_factory)
 
@@ -661,9 +663,9 @@ async def test_generation_is_not_cut_off_when_timeout_is_disabled(monkeypatch):
     """
     engine, session_factory = await _build_session_factory()
     monkeypatch.setattr(reply_generation_service, "AsyncSessionLocal", session_factory)
-    # reply_termination_service (a cancelled reply's write, split out of reply_generation_service) imports
+    # reply_model_unload_service (a cancelled reply's write, split out of reply_generation_service) imports
     # AsyncSessionLocal independently, so it needs this too.
-    monkeypatch.setattr(reply_termination_service, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(reply_model_unload_service, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(reply_cross_instance_service, "AsyncSessionLocal", session_factory)
     conversation_id = await _make_conversation(session_factory)
 

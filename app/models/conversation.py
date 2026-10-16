@@ -83,11 +83,14 @@ class Message(Base):
     # an AI reply); this only drives the "Shared from a private chat" remark. No link back, to keep the chat private.
     shared_from = Column(String(20), nullable=True)
     # The real failure reason of a status="error" message (e.g. Matricxon's "not enough memory to load...",
-    # matricxon_client._error_detail_from_body), set by reply_termination_service.mark_error; null otherwise.
+    # matricxon_client._error_detail_from_body), set by reply_model_unload_service.mark_error; null otherwise.
     # Before this column the text reached only live SSE viewers (reply_broadcast_service.publish_error);
     # MessageOut.error_message now lets a reload show it too.
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=utcnow)
+    # When an assistant reply ended (complete, error or cancelled); shown as its time. created_at is when it
+    # started and still orders the messages. Null for user messages and replies still streaming.
+    completed_at = Column(DateTime, nullable=True)
     # Bumped on every content update, including streaming flushes (reply_generation_service); lets
     # conversation_service.get_messages_since report changes without a change log. Nullable for migrated
     # rows, always set by the ORM default/onupdate.

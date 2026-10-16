@@ -7,7 +7,7 @@ from app.models import Conversation, Message
 from app.services import (
     reply_cross_instance_service,
     reply_generation_service,
-    reply_termination_service,
+    reply_model_unload_service,
     tool_event_service,
     tool_loop_service,
 )
@@ -27,7 +27,7 @@ EVENT = {
 @pytest.mark.asyncio
 async def test_tool_events_are_stored_on_the_message_and_streamed_with_the_text(monkeypatch):
     engine, session_factory = await _build_session_factory()
-    for module in (reply_generation_service, reply_termination_service, reply_cross_instance_service):
+    for module in (reply_generation_service, reply_model_unload_service, reply_cross_instance_service):
         monkeypatch.setattr(module, "AsyncSessionLocal", session_factory)
     conversation_id = await _make_conversation(session_factory)
     seen_params: list[dict] = []
@@ -67,7 +67,7 @@ async def test_tool_events_are_stored_on_the_message_and_streamed_with_the_text(
 @pytest.mark.asyncio
 async def test_a_reply_that_used_tools_but_wrote_nothing_is_marked_as_an_error(monkeypatch):
     engine, session_factory = await _build_session_factory()
-    for module in (reply_generation_service, reply_termination_service, reply_cross_instance_service):
+    for module in (reply_generation_service, reply_model_unload_service, reply_cross_instance_service):
         monkeypatch.setattr(module, "AsyncSessionLocal", session_factory)
     conversation_id = await _make_conversation(session_factory)
 

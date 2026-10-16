@@ -17,7 +17,7 @@ from app.services import (
     ollama_ps_poller,
     reply_cross_instance_service,
     reply_generation_service,
-    reply_termination_service,
+    reply_model_unload_service,
     retention_poller,
     system_metrics_poller,
 )
@@ -86,7 +86,7 @@ async def db(monkeypatch) -> AsyncSession:
     test that drains build_reply_stream see the task's writes through this `db`. A test needing a *second*, later
     session builds its own engine.
 
-    Patched in reply_termination_service and reply_cross_instance_service too: `from app.database import
+    Patched in reply_model_unload_service and reply_cross_instance_service too: `from app.database import
     AsyncSessionLocal` binds a name in *each* module, so patching one never affects another. Same for
     image_generation_service (its job task), ollama_ps_poller/matricxon_ps_poller, system_metrics_poller and
     retention_poller.
@@ -97,7 +97,7 @@ async def db(monkeypatch) -> AsyncSession:
 
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     monkeypatch.setattr(reply_generation_service, "AsyncSessionLocal", session_factory)
-    monkeypatch.setattr(reply_termination_service, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(reply_model_unload_service, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(reply_cross_instance_service, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(image_generation_service, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(ollama_ps_poller, "AsyncSessionLocal", session_factory)

@@ -31,7 +31,7 @@ class MessageOut(BaseModel):
     # it to remove a rendered bubble.
     status: str = "complete"
     # The real failure reason of a status="error" message (Message.error_message, set by
-    # reply_termination_service.mark_error); null otherwise and for older errors (no backfill). chat.js shows
+    # reply_model_unload_service.mark_error); null otherwise and for older errors (no backfill). chat.js shows
     # it instead of its generic notice.
     error_message: str | None = None
     # Sender label (username plus first/last name; Message.sender_display_name) for every "user" message, but
@@ -48,6 +48,8 @@ class MessageOut(BaseModel):
     # /api/account/{id} (routers/account.py get_public_profile).
     sender_id: str | None = None
     created_at: datetime
+    # When a reply ended (Message.completed_at); chat.js shows it instead of created_at.
+    completed_at: datetime | None = None
 
 
 class MessagesLatestResponse(BaseModel):

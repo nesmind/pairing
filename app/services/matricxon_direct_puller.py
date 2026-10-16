@@ -80,7 +80,7 @@ class MatricxonDirectPuller:
     async def _get_config() -> MatricxonServerConfig:
         """Fetches its own session: this chain (routers/settings.py pull_model -> inference_client.pull_model_stream ->
         matricxon_admin.pull_model_stream) has no request `db`, and threading one through the engine-agnostic
-        dispatch for one engine's need isn't worth it (as reply_termination_service._persist_cancelled_reply).
+        dispatch for one engine's need isn't worth it (as reply_model_unload_service._persist_cancelled_reply).
         """
         async with AsyncSessionLocal() as db:
             return await settings_service.get_matricxon_server_config(db)

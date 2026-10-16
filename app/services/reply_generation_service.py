@@ -20,12 +20,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal
 from app.models import Conversation, Message
+from app.models._base import utcnow
 from app.services import (
     chat_settings_service,
     reply_broadcast_service,
     reply_cancellation_service,
     reply_cross_instance_service,
-    reply_termination_service,
+    reply_model_unload_service,
     tool_event_service,
     tool_loop_service,
 )
@@ -195,13 +196,13 @@ async def _run_generation(
                                 return
             except InferenceError as exc:
                 # Keeps what was generated before the failure (a timeout too).
-                await reply_termination_service.mark_error(db, message, full_reply, conversation_id, str(exc))
+                await reply_model_unload_service.mark_error(db, message, full_reply, conversation_id, str(exc))
                 return
             except TimeoutError:
                 # asyncio.timeout's deadline, not a raw CancelledError: cancellation state is cleared, so `await`
                 # works
                 # here (unlike the CancelledError branch below).
-                await reply_termination_service.mark_error(
+                await reply_model_unload_service.mark_error(
                     db, message, full_reply, conversation_id, f"Reply timed out after {timeout_seconds} seconds."
                 )
                 # Closing our side doesn't reliably stop an in-progress compute phase (see stop_model).
@@ -211,7 +212,7 @@ async def _run_generation(
                 # cancel_on_disconnect or cancel_generation: cancellation is pending, so an `await` here would re-raise.
                 # Write
                 # from a fresh, non-cancelled task, then re-raise so this one stays cancelled.
-                reply_termination_service.schedule_cancelled_write(message_id, model, full_reply, conversation_id)
+                reply_model_unload_service.schedule_cancelled_write(message_id, model, full_reply, conversation_id)
                 raise
 
             if reply_cancellation_service.is_message_deleted(message_id):
@@ -221,12 +222,13 @@ async def _run_generation(
             if fresh is None or fresh.status == "deleted":
                 return
             if message.tool_events and not full_reply.strip():  # went quiet after using tools
-                await reply_termination_service.mark_error(
+                await reply_model_unload_service.mark_error(
                     db, message, full_reply, conversation_id, tool_event_service.NO_ANSWER
                 )
                 return
             message.content = full_reply
             message.status = "complete"
+            message.completed_at = utcnow()
             message.sources = source_filenames or None
             await db.commit()
             reply_broadcast_service.publish_done(conversation_id, source_filenames)
