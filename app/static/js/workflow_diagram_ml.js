@@ -38,7 +38,7 @@ const ML_NATIVE = new Set([
   "ml_norm_attn", "ml_norm_ffn", "ml_final_norm", "ml_sampler",
 ]);
 
-// Stages that can run on the GPU (Matricxon's experimental MATRICXON_DEVICE=cuda): the forward pass proper. Tokenizing,
+// Stages that can run on the GPU (Matricxon's experimental MATRICXON_DEVICE=cuda or mps): the forward pass proper. Tokenizing,
 // sampling, the stop check, the vision tower and MoE routing stay on the CPU. Marked "G"; a stage also in ML_NATIVE
 // shows "K|G" (C kernels on the CPU, or the GPU when the engine runs on one).
 const ML_GPU = new Set([

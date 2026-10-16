@@ -2302,7 +2302,8 @@ async function loadServerSection(server) {
     // A hand-set "cuda:1" has no option of its own; show it as generic CUDA and remember it (matricxonDeviceValue) so
     // saving doesn't change the GPU index.
     section.dataset.savedDevice = config.device ?? "cpu";
-    section.querySelector('[data-field="device"]').value = (config.device ?? "cpu").startsWith("cuda") ? "cuda" : "cpu";
+    const device = config.device ?? "cpu";
+    section.querySelector('[data-field="device"]').value = device.startsWith("cuda") ? "cuda" : device === "mps" ? "mps" : "cpu";
     section.querySelector('[data-field="gpu_weight_mode"]').value = config.gpu_weight_mode ?? "dequantized";
     syncMatricxonKernelSelect(section);
   } else if (server === "sdcpp") {
@@ -4186,7 +4187,7 @@ function syncMatricxonKernelSelect(section) {
   const checkbox = section.querySelector('[data-field="enable_quantized_native_compute"]');
   const select = section.querySelector('[data-field="gemv_backend"]');
   if (checkbox && select) select.disabled = !checkbox.checked;
-  // "GPU weights" only applies with a CUDA device selected.
+  // "GPU weights" only applies with a GPU device (CUDA or MPS) selected.
   const device = section.querySelector('[data-field="device"]');
   const weights = section.querySelector('[data-field="gpu_weight_mode"]');
   if (device && weights) weights.disabled = device.value === "cpu";

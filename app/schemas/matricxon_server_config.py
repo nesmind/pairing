@@ -51,10 +51,11 @@ class MatricxonServerConfig(BaseModel):
     # Local mode only: MATRICXON_TORCH_THREADS, CPU threads for PyTorch and the native kernels. None = every core.
     # Fewer threads means less heat.
     torch_threads: int | None = Field(default=None, ge=1, le=256)
-    # Local mode only: MATRICXON_DEVICE, "cpu" (default) or "cuda"/"cuda:N". GPU mode is EXPERIMENTAL (never run
-    # on GPU hardware, see../matricxon/ROADMAP.md); a missing GPU fails startup instead of falling back to CPU.
-    device: str = Field(default="cpu", pattern=r"^(cpu|cuda(:\d+)?)$")
-    # Local mode only, cuda only: MATRICXON_GPU_WEIGHT_MODE, "dequantized" (default; bf16/fp16 in VRAM, fastest,
+    # Local mode only: MATRICXON_DEVICE, "cpu" (default), "cuda"/"cuda:N" or "mps" (Apple Silicon). GPU mode is
+    # EXPERIMENTAL (never run on GPU hardware, see../matricxon/ROADMAP.md); a missing GPU fails startup instead of
+    # falling back to CPU.
+    device: str = Field(default="cpu", pattern=r"^(cpu|cuda(:\d+)?|mps)$")
+    # Local mode only, GPU only: MATRICXON_GPU_WEIGHT_MODE, "dequantized" (default; bf16/fp16 in VRAM, fastest,
     # ~2 bytes/param) or "packed" (quantized in VRAM, dequantized per call; less VRAM, slower).
     gpu_weight_mode: Literal["dequantized", "packed"] = "dequantized"
     # Local mode only: MATRICXON_LOG_LEVEL (as Matricxon's Settings.log_level): 0 warnings/errors, 1 per-request

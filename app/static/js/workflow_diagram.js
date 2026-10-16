@@ -183,7 +183,7 @@ function initWorkflowDiagram() {
   // run on the GPU (experimental); "K|G" = either: C kernels on the CPU, or the GPU when the engine runs on one.
   const BADGE_TITLES = {
     K: "Runs on native C kernels",
-    G: "Can run on the GPU (experimental, MATRICXON_DEVICE=cuda)",
+    G: "Can run on the GPU (experimental, MATRICXON_DEVICE=cuda or mps)",
     "K|G": "Runs on native C kernels on the CPU, or on the GPU (experimental) when the engine is set to use one",
     MCP: "MCP stage: only runs when the chat has Tools turned on",
   };

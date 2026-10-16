@@ -563,10 +563,14 @@ def test_device_and_gpu_weight_mode_reach_the_env_and_the_env_file(tmp_path):
     assert "MATRICXON_GPU_WEIGHT_MODE=packed" in env_text
 
 
-@pytest.mark.parametrize("device", ["mps", "cuda:", "gpu", "cuda:x"])
-def test_device_rejects_anything_but_cpu_or_cuda(device):
+@pytest.mark.parametrize("device", ["mps:0", "cuda:", "gpu", "cuda:x"])
+def test_device_rejects_anything_but_cpu_cuda_or_mps(device):
     with pytest.raises(ValidationError):
         MatricxonServerConfig(device=device)
+
+
+def test_mps_device_reaches_the_env():
+    assert matricxon_process._build_env(_config(device="mps"))["MATRICXON_DEVICE"] == "mps"
 
 
 def test_startup_failure_reason_picks_the_last_error_line_of_a_traceback():
