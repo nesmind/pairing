@@ -10,6 +10,8 @@ class MatricxonCachePersistence(BaseModel):
     budget_mb: int
     ttl_hours: int
     files: int
+    # Distinct chats with a saved copy; `files` can be more (branches of one chat).
+    chats: int = 0
     used_bytes: int
     hosts: int
     unreachable: list[str] = Field(default_factory=list)

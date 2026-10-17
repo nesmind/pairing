@@ -32,7 +32,10 @@ class MatricxonCachePanel {
     this.budget.value = state.budget_mb;
     this.ttl.value = state.ttl_hours;
     const hosts = state.hosts > 1 ? ` on ${state.hosts} hosts` : "";
-    let text = `${state.files} saved chat${state.files === 1 ? "" : "s"}, ${MatricxonCachePanel.formatBytes(state.used_bytes)}${hosts}`;
+    // One chat can have several files (branches), so chats are counted, with files shown when they differ.
+    const chats = state.chats ?? state.files;
+    const files = chats === state.files ? "" : ` (${state.files} files)`;
+    let text = `${chats} saved chat${chats === 1 ? "" : "s"}${files}, ${MatricxonCachePanel.formatBytes(state.used_bytes)}${hosts}`;
     if (state.unreachable.length) text += ` — unreachable: ${state.unreachable.join(", ")}`;
     this.status.textContent = text;
   }

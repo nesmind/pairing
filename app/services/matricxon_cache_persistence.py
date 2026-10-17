@@ -68,23 +68,25 @@ class MatricxonCachePersistenceService:
                     results.append(resp.json())
         if not results:
             raise MatricxonError("; ".join(errors) or "no Matricxon host is configured")
-        files, used = self._totals(results)
+        files, chats, used = self._totals(results)
         return MatricxonCachePersistence(
             enabled=all(r["enabled"] for r in results),
             budget_mb=results[0]["budget_mb"],
             ttl_hours=results[0]["ttl_hours"],
             files=files,
+            chats=chats,
             used_bytes=used,
             hosts=len(results),
             unreachable=unreachable,
         )
 
-    def _totals(self, results: list[dict]) -> tuple[int, int]:
-        """(files, bytes). Nodes reading the same shared folder report the same files: count each folder once. Forced
+    def _totals(self, results: list[dict]) -> tuple[int, int, int]:
+        """(files, chats, bytes); a Matricxon without `chats` counts its files. Nodes reading the same shared
+        folder report the same files: count each folder once. Forced
         for a cluster; otherwise a node says if it is on a network mount and where (older ones say nothing: own disk).
         """
         seen: set[str] = set()
-        files = used = 0
+        files = chats = used = 0
         for r in results:
             folder = r.get("folder") if r.get("shared") else None
             if self._shared:
@@ -94,5 +96,6 @@ class MatricxonCachePersistenceService:
                     continue
                 seen.add(folder)
             files += r["files"]
+            chats += r.get("chats", r["files"])
             used += r["used_bytes"]
-        return files, used
+        return files, chats, used

@@ -39,6 +39,7 @@ async def test_status_sums_files_and_bytes_across_hosts() -> None:
     )
     result = await service.status()
     assert (result.files, result.used_bytes, result.hosts) == (3, 350, 2)
+    assert result.chats == 3  # these hosts report no `chats`: their files count
     assert result.enabled is False  # on only if every host has it on
     assert (result.budget_mb, result.ttl_hours, result.unreachable) == (4096, 168, [])
 
@@ -163,3 +164,14 @@ async def test_nodes_that_say_they_share_a_folder_are_counted_once_even_outside_
     answers[B] = state("/mnt/x/cache", False)
     answers[A] = state("/mnt/x/cache", False)
     assert (await MatricxonCachePersistenceService([A, B], transport).status()).files == 12
+
+
+@pytest.mark.asyncio
+async def test_status_reports_distinct_chats_when_hosts_send_them() -> None:
+    """One chat can have several files, so "saved chats" counts chats, not files."""
+    states = {A: _state(4, 300) | {"chats": 2}, B: _state(1, 50) | {"chats": 1}}
+    service, _ = _service(
+        lambda r: httpx.Response(200, json=states[f"{r.url.scheme}://{r.url.host}:{r.url.port}"]), [A, B]
+    )
+    result = await service.status()
+    assert (result.files, result.chats) == (5, 3)
